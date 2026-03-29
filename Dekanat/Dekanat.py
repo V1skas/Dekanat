@@ -3,6 +3,7 @@
 import reflex as rx
 
 from rxconfig import config
+from Dekanat import models
 
 
 class State(rx.State):
