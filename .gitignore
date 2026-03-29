@@ -1,0 +1,36 @@
+*.py[cod]
+*.db
+.web
+assets/external/
+.states
+
+# Python и Reflex
+__pycache__/
+*.pyc
+.env
+venv/
+env/
+/build
+dist/
+*.egg-info/
+/node_modules
+
+# Alembic
+# alembic.ini
+# versions/
+# alembic/
+
+# Логи
+*.log
+
+# Данные
+*.sqlite
+*.csv
+
+# Разное
+.idea/
+*.swp
+*~
+tmp/
+temp/
+/tmp
