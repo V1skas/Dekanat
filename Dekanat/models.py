@@ -53,12 +53,26 @@ class ActionModel(rx.Model, table=True):
 
     # Table columns
     id: str = Field(primary_key=True)
+    code: str = Field(nullable=False)
     title: str
     description: Optional[str]
 
     # Relationships
     # roles: Optional[List['Role']] = Relationship(back_populates="actions", link_model=RolesActions)
     # workers: Optional[List['Worker']] = Relationship(back_populates="actions", link_model=WorkersActions)
+
+    
+@rx.ModelRegistry.register
+class AuthTokenModel(rx.Model, table=True):
+    __tablename__ = "auth_tokens" # type: ignore
+
+    # Table columns
+    id: int = Field(primary_key=True, nullable=True) # type: ignore
+    token: str = Field(nullable=False, unique=True)
+    id_worker: int = Field(foreign_key="workers.id", nullable=False)
+
+    # Relationships
+    worker: Optional['WorkerModel'] = Relationship(back_populates="auth_tokens")
 
 
 @rx.ModelRegistry.register
@@ -73,11 +87,13 @@ class WorkerModel(rx.Model, table=True):
     email: Optional[str]
     login: str = Field(unique=True)
     password: str
+    password_salt: str
     is_deleted: bool = False
 
     # Relationships
-    actions: Optional[List[ActionModel]] = Relationship(back_populates="workers", link_model=WorkersActionsModel)
-    roles: Optional[List[RoleModel]] = Relationship(back_populates="workers", link_model=WorkersRolesModel)
+    actions: Optional[List[ActionModel]] = Relationship(link_model=WorkersActionsModel)
+    roles: Optional[List[RoleModel]] = Relationship(link_model=WorkersRolesModel)
+    auth_tokens: Optional[List[AuthTokenModel]] = Relationship(back_populates="worker")
 
 
 @rx.ModelRegistry.register
@@ -192,7 +208,7 @@ class EntrantModel(rx.Model, table=True):
     # Relationships
     person: 'PersonModel' = Relationship()
     application_status: ApplicationStatusModel = Relationship()
-    specialties: Optional[List['SpecialtieEntrantModel']] = Relationship(sa_relationship_kwargs={"order_by": "SpecialtieEntrant.priority"})
+    specialties: Optional[List['SpecialtieEntrantModel']] = Relationship(sa_relationship_kwargs={"order_by": "SpecialtieEntrantModel.priority"})
 
 
 @rx.ModelRegistry.register

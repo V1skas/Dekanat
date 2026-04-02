@@ -1,15 +1,10 @@
-"""Welcome to Reflex! This file outlines the steps to create a basic app."""
-
 import reflex as rx
 
 from rxconfig import config
-from Dekanat import models
+from Dekanat.views.auth import require_login, index as login_page
+from Dekanat import models, routes
 
-
-class State(rx.State):
-    """The app state."""
-
-
+@require_login
 def index() -> rx.Component:
     # Welcome Page (Index)
     return rx.container(
@@ -33,5 +28,14 @@ def index() -> rx.Component:
     )
 
 
-app = rx.App()
+app = rx.App(
+    theme=rx.theme(
+            appearance="light",
+            has_background=True,
+            radius="large",
+            accent_color="brown",
+        )
+)
+
 app.add_page(index)
+app.add_page(login_page, route=routes.LOGIN)
