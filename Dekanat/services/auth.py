@@ -7,7 +7,6 @@ from Dekanat.dao.worker import WorkerDao
 from Dekanat.models import AuthTokenModel, WorkerModel
 from Dekanat.utils import generators
 
-
 class AuthService:
     def get_auth_token(self, cache_token: str) -> Optional[AuthTokenModel]:
         with rx.session() as session:

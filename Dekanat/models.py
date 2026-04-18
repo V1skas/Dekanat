@@ -76,7 +76,7 @@ class AuthTokenModel(rx.Model, table=True):
 
 
 @rx.ModelRegistry.register
-class WorkerModel(rx.Model, table=True):
+class WorkerModel(rx.Model, table=True): # type: ignore
     __tablename__ = "workers"
 
     # Table columns

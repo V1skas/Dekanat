@@ -1,2 +1,5 @@
 LOGIN = "/login"
 DASHBOARD = "/dashboard"
+BASE = "/base"
+CONTINGENT = "/contingent"
+APPLICANTS = "/contingent/applicants"

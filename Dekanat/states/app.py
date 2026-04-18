@@ -4,8 +4,9 @@ import reflex as rx
 
 from Dekanat import routes
 
-from Dekanat.services.auth import AuthService, WorkerModel, AuthTokenModel, Actions
+from Dekanat.services.auth import AuthService, WorkerModel, AuthTokenModel
 from Dekanat.dao.worker import WorkerDao
+from Dekanat.actions import Actions
 
 
 class AppState(rx.State):
@@ -15,6 +16,13 @@ class AppState(rx.State):
     actions_worker: Optional[List[str]] = None
     auth_token: Optional[AuthTokenModel] = None
     token: str = rx.Cookie(name="auth_token")
+
+    page_title: str = "Головна"
+    sidebar_open: bool = True
+
+    def toggle_sidebar(self):
+        """Инвертирует состояние панели (открыто/закрыто)"""
+        self.sidebar_open = not self.sidebar_open
 
     def has_permission(self, action: Actions) -> bool:
         try:
