@@ -91,12 +91,12 @@ def require_login(page: rx.app.ComponentCallable) -> rx.app.ComponentCallable:
 
     def protected_page():
         return rx.cond(
-            AppState.is_auth,  # type: ignore
+            AppState.is_hydrated & AppState.is_auth,  # type: ignore
             page(),
             rx.center(
                 rx.hstack(
                     rx.spinner(size="3"),
-                    rx.text("Завантаження...", size="3", on_mount=rx.redirect(routes.LOGIN)),  # type: ignore
+                    rx.text("Завантаження...", size="3", on_mount=AppState.require_auth),  # type: ignore
                 ),
                 height="100vh",
             ),

@@ -173,6 +173,8 @@ def base_layout(page_header: rx.Component, page_content: rx.Component, global_ti
                 margin_bottom="1vh", 
                 padding="0.7rem",
 
+                flex="1",
+
                 width="100%",
                 height="100%"
             ),
@@ -190,9 +192,9 @@ def base_layout(page_header: rx.Component, page_content: rx.Component, global_ti
         spacing="0",
     )
 
-def header_subpage(*args, **prop) -> rx.Component:
+def header_subpage(title: str, *args, **prop) -> rx.Component:
     return rx.hstack(
-        rx.heading("Tittle page", size="8", weight="bold", background_image=f"linear-gradient(135deg, {rx.color('accent', 11)} 20%, {rx.color('accent', 9)} 65%)", background_clip="text", color="transparent"),
+        rx.heading(title, size="8", weight="bold", background_image=f"linear-gradient(135deg, {rx.color('accent', 11)} 20%, {rx.color('accent', 9)} 65%)", background_clip="text", color="transparent"),
         rx.spacer(),
         *args,
         **prop,

@@ -13,10 +13,10 @@ class AuthService:
             return AuthTokenDao.get_by_token(cache_token, session)
 
     def get_list_worker_actions(self, id_worker: int) -> List[str]:
-        worker_actions: Set[str] = []
+        worker_actions: List[str] = []
         with rx.session() as session:
-            worker_actions = [action.code for action in WorkerDao.get_worker_actions_by_id(id, session)]
-            worker_actions = worker_actions | set([action.code for action in WorkerDao.get_worker_actions_in_roles_by_id(id, session)])
+            worker_actions = [action.code for action in WorkerDao.get_worker_actions_by_id(id_worker, session)]
+            worker_actions = worker_actions + [action.code for action in WorkerDao.get_worker_actions_in_roles_by_id(id_worker, session)]
             return list(worker_actions)
 
     def logout(self, token: AuthTokenModel):
@@ -29,17 +29,15 @@ class AuthService:
             worker = WorkerDao.get_by_login(login, session)
             if worker is None:
                 return worker
-            
+
             calculated_hash = generators.generate_password_hash(password, worker.password_salt)
 
             if calculated_hash != worker.password:
                 return None
-            
+
             auth_token = AuthTokenModel(token=generators.generate_auth_token(), id_worker=worker.id)
-            AuthTokenDao.add_one()
+            AuthTokenDao.add_one(auth_token, session)
             session.commit()
             session.refresh(auth_token)
             return (worker, auth_token)
-            
-            
 

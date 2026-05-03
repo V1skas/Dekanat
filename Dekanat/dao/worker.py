@@ -1,5 +1,3 @@
-import reflex as rx
-
 from typing import Optional, List
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
@@ -18,7 +16,7 @@ class WorkerDao:
 
             return session.exec(statement).one_or_none()
         except Exception as e:
-            print(f"[WorkerDao][ERROR] {e}")
+            print(f"[WorkerDao][get_by_id_with_roles_and_actions][ERROR] {e}")
             return None
 
     @staticmethod
@@ -27,7 +25,7 @@ class WorkerDao:
             statement = select(WorkerModel).where(WorkerModel.id == id)
             return session.exec(statement).one_or_none()
         except Exception as e:
-            print(f"[WorkerDao][ERROR] {e}")
+            print(f"[WorkerDao][get_by_id][ERROR] {e}")
             return None
 
     @staticmethod
@@ -42,7 +40,7 @@ class WorkerDao:
                     )
             return session.exec(statement).all()
         except Exception as e:
-            print(f"[WorkerDao][ERROR] {e}")
+            print(f"[WorkerDao][get_worker_actions_by_id][ERROR] {e}")
             return []
 
     @staticmethod
@@ -61,7 +59,7 @@ class WorkerDao:
             )
             return session.exec(statement).all()
         except Exception as e:
-            print(f"[WorkerDao][ERROR] {e}")
+            print(f"[WorkerDao][get_worker_actions_in_roles_by_id][ERROR] {e}")
             return []
     
     @staticmethod
@@ -70,7 +68,10 @@ class WorkerDao:
             statement = select(WorkerModel).where(WorkerModel.login == login)
             if not with_delete:
                 statement = statement.where(WorkerModel.is_deleted == False)
-            return session.exec(statement).one_or_none()
+            result = session.exec(statement).one_or_none()
+            if result:
+                session.expunge_all()
+            return result
         except Exception as e:
-            print(f"[WorkerDao][ERROR] {e}")
+            print(f"[WorkerDao][get_by_login][ERROR] {e}")
             return None

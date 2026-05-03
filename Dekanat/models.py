@@ -11,8 +11,8 @@ class RolesActionsModel(rx.Model, table=True):
     __tablename__ = "roles_actions"
 
     # Table columns
-    role_id: int = Field(default=None, foreign_key="roles.id", primary_key=True)
-    action_id: str = Field(default=None, foreign_key="actions.id", primary_key=True)
+    id_role: int = Field(default=None, foreign_key="roles.id", primary_key=True)
+    id_action: str = Field(default=None, foreign_key="actions.id", primary_key=True)
 
 
 @rx.ModelRegistry.register
@@ -20,7 +20,7 @@ class WorkersActionsModel(rx.Model, table=True):
     __tablename__ = "workers_actions"
 
     # Table columns
-    id_user: str = Field(default=None, foreign_key="workers.id", primary_key=True)
+    id_worker: str = Field(default=None, foreign_key="workers.id", primary_key=True)
     id_action: str = Field(default=None, foreign_key="actions.id", primary_key=True)
 
 @rx.ModelRegistry.register
@@ -52,10 +52,10 @@ class ActionModel(rx.Model, table=True):
     __tablename__ = "actions"
 
     # Table columns
-    id: str = Field(primary_key=True)
-    code: str = Field(nullable=False)
-    title: str
-    description: Optional[str]
+    id: int = Field(primary_key=True) # type: ignore
+    code: str = Field(default=None, nullable=False, unique=True)
+    title: str = Field(default=None, nullable=False)
+    description: Optional[str] = Field(nullable=True)
 
     # Relationships
     # roles: Optional[List['Role']] = Relationship(back_populates="actions", link_model=RolesActions)
@@ -82,9 +82,9 @@ class WorkerModel(rx.Model, table=True): # type: ignore
     # Table columns
     id: int = Field(primary_key=True)
     pib: str
-    photo: Optional[str]
-    phone_number: Optional[str]
-    email: Optional[str]
+    photo: Optional[str] = None
+    phone_number: Optional[str] = None
+    email: Optional[str] = None
     login: str = Field(unique=True)
     password: str
     password_salt: str
@@ -257,11 +257,12 @@ class MedicalReferenceModel(rx.Model, table=True):
 
 @rx.ModelRegistry.register
 class IdentityDocumentTypeModel(rx.Model, table=True):
-    __tablename__ = "identity_document_type"
+    __tablename__ = "identity_document_type" #type: ignore
 
     # Table columns
-    id: int = Field(primary_key=True)
-    title: str
+    id: int = Field(primary_key=True) #type: ignore
+    title: str = ""
+    description: Optional[str] = None
     is_deleted: bool = False
 
 
