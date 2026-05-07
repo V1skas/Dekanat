@@ -10,5 +10,6 @@ CONTINGENT = [
 ]
 
 BASE = [
-    ("Типи посвідчень особи", "file-user", routes.IDENTITY_DOCUMENT_TYPE_LIST)
+    ("Типи посвідчень особи", "file-user", routes.IDENTITY_DOCUMENT_TYPE_LIST),
+    ("Тип родинних зв'язків", "file-user", routes.KINSHIP_LIST)
 ]

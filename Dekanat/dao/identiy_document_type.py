@@ -1,9 +1,7 @@
-import reflex as rx
-
 from typing import Sequence, Optional
 from sqlmodel import Session, select
 
-from Dekanat.models import IdentityDocumentTypeModel 
+from Dekanat.models import IdentityDocumentTypeModel, KinshipModel 
 
 
 class IdentityDocumentTypeDao:
@@ -14,7 +12,9 @@ class IdentityDocumentTypeDao:
 
     @staticmethod
     def get_by_id(id: int, session: Session, with_del: bool = False) -> Optional[IdentityDocumentTypeModel]:
-        statement = select(IdentityDocumentTypeModel).where(IdentityDocumentTypeModel.id == id).where(IdentityDocumentTypeModel.is_deleted == with_del)
+        statement = select(IdentityDocumentTypeModel).where(IdentityDocumentTypeModel.id == id).where(IdentityDocumentTypeModel.is_deleted == False)
+        if with_del:
+            statement = statement.where(KinshipModel.is_deleted == True)
         return session.exec(statement).one_or_none()
 
     @staticmethod
