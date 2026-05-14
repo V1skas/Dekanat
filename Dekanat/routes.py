@@ -2,7 +2,21 @@ LOGIN = "/login"
 DASHBOARD = "/dashboard"
 BASE = "/base"
 CONTINGENT = "/contingent"
+ADMIN = "/admin"
+
 APPLICANTS = "/contingent/applicants"
+
+ROLES = ADMIN+"/roles"
+ROLES_LIST = ROLES+"/list"
+ROLES_ADD = ROLES+"/add"
+ROLES_EDIT = ROLES+"/edit/"
+ROLES_VIEW = ROLES+"/view/"
+
+WORKERS = ADMIN+"/workers"
+WORKERS_LIST = WORKERS+"/list"
+WORKERS_ADD = WORKERS+"/add"
+WORKERS_EDIT = WORKERS+"/edit/"
+WORKERS_VIEW = WORKERS+"/view/"
 
 IDENTITY_DOCUMENT_TYPE = BASE+"/identity_document_type"
 IDENTITY_DOCUMENT_TYPE_LIST = IDENTITY_DOCUMENT_TYPE+"/list"

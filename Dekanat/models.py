@@ -11,7 +11,7 @@ class RolesActionsModel(rx.Model, table=True):
 
     # Table columns
     id_role: int = Field(default=None, foreign_key="roles.id", primary_key=True)
-    id_action: str = Field(default=None, foreign_key="actions.id", primary_key=True)
+    id_action: int = Field(default=None, foreign_key="actions.id", primary_key=True)
 
 
 @rx.ModelRegistry.register
@@ -19,8 +19,8 @@ class WorkersActionsModel(rx.Model, table=True):
     __tablename__ = "workers_actions"
 
     # Table columns
-    id_worker: str = Field(default=None, foreign_key="workers.id", primary_key=True)
-    id_action: str = Field(default=None, foreign_key="actions.id", primary_key=True)
+    id_worker: int = Field(default=None, foreign_key="workers.id", primary_key=True)
+    id_action: int = Field(default=None, foreign_key="actions.id", primary_key=True)
 
 @rx.ModelRegistry.register
 class WorkersRolesModel(rx.Model, table=True):
@@ -39,6 +39,7 @@ class RoleModel(rx.Model, table=True):
     id: int = Field(primary_key=True)
     title: str
     description: Optional[str]
+    is_deleted: bool = False
     # ad_tag: Optional[str]
 
     # Relationships

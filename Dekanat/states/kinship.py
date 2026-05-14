@@ -2,8 +2,6 @@ import reflex as rx
 
 from typing import Sequence, Optional
 
-from reflex.constants import route
-
 from Dekanat.actions import Actions
 from Dekanat import routes
 from Dekanat.states.app import AppState
@@ -94,7 +92,9 @@ class EditKinshipState(AppState):
 
     def _reload_item(self):
         service = KinshipService()
-        self.item = service.get_by_id(self.router.page.params.get("id", -1))
+        loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        if loaded is not None:
+            self.item = loaded
 
     @rx.event
     def on_load(self):
@@ -104,8 +104,15 @@ class EditKinshipState(AppState):
             return
 
         self.in_process = True
-        self._reload_item()
-        self.in_process = False
+        try:
+            self._reload_item()
+            if self.item is None:
+                yield rx.toast.warning("Запис не знайдено!")
+                yield rx.redirect(routes.KINSHIP_LIST)
+                return
+            self.in_process = False
+        except Exception:
+            yield rx.toast.error("Під час завантаження даних виникла помилка. Спробуйте ще раз.")
         return
 
     @rx.var
@@ -183,7 +190,7 @@ class ViewKinshipSate(AppState):
             yield rx.redirect(routes.KINSHIP_LIST)
             yield rx.toast.success("Видалено!")
         else:
-            yield rx.toast.error("Не вдалось вдалось видалити. Спробуйте ще раз.")
+            yield rx.toast.error("Не вдалось видалити. Спробуйте ще раз.")
         return
 
     @rx.var

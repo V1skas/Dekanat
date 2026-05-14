@@ -13,6 +13,8 @@ class AuthState(AppState):
 
     @rx.event
     def on_load(self):
+        if self.is_auth:
+            return rx.redirect(routes.DASHBOARD)
         self.worker = WorkerModel(login=None, password=None)
 
     @rx.var
@@ -36,7 +38,7 @@ class AuthState(AppState):
     @rx.event
     def on_auth(self):
         if self.worker.login is None or self.worker.password is None:
-            self.error_text = "Заповніть поля логіну та поролю."
+            self.error_text = "Заповніть поля логіну та пароля."
             return
 
         self.error_text = None

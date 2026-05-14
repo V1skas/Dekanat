@@ -23,7 +23,7 @@ class AuthService:
         with rx.session() as session:
             AuthTokenDao.delete(token, session)
 
-    def auth(self, login: str, password: str) -> Optional[Tuple[WorkerModel, str]]:
+    def auth(self, login: str, password: str) -> Optional[Tuple[WorkerModel, AuthTokenModel]]:
         worker: Optional[WorkerModel] = None
         with rx.session() as session:
             worker = WorkerDao.get_by_login(login, session)

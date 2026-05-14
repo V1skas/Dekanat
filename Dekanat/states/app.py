@@ -19,10 +19,22 @@ class AppState(rx.State):
 
     page_title: str = "Головна"
     sidebar_open: bool = True
+    expanded_groups: List[str] = []
+    user_menu_open: bool = False
 
     def toggle_sidebar(self):
         """Инвертирует состояние панели (открыто/закрыто)"""
         self.sidebar_open = not self.sidebar_open
+
+    def toggle_group(self, group_key: str):
+        if group_key in self.expanded_groups:
+            self.expanded_groups = [g for g in self.expanded_groups if g != group_key]
+        else:
+            self.expanded_groups = self.expanded_groups + [group_key]
+
+    @rx.event
+    def set_user_menu_open(self, value: bool):
+        self.user_menu_open = value
 
     def has_permission(self, action: Actions) -> bool:
         try:
@@ -83,12 +95,15 @@ class AppState(rx.State):
     @rx.event
     def logout(self):
         try:
-            self._auth_service.logout(self.auth_token)
-            yield rx.redirect(routes.LOGIN)
-            self.worker = None
-            self.auth_token = None
-            self.actions_worker = []
-            rx.remove_cookie("auth_token")
+            if self.auth_token is not None:
+                self._auth_service.logout(self.auth_token)
         except Exception as e:
             print(f"[AppState][logout][ERROR] {e}")
-            return
+
+        self.user_menu_open = False
+        self.worker = None
+        self.auth_token = None
+        self.actions_worker = []
+
+        yield rx.remove_cookie("auth_token")
+        yield rx.redirect(routes.LOGIN)

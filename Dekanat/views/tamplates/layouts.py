@@ -1,195 +1,243 @@
-from typing import List, Tuple
+from typing import List
 
 import reflex as rx
 
 from Dekanat.states.app import AppState
+from Dekanat.declared.submenu import MenuItem
 
-def header(title: str) -> rx.Component:
+
+def _menu_visibility(items: List[MenuItem]):
+    """OR over children's required_action. Returns None if any child is always-visible."""
+    actions = [c.required_action for c in items]
+    if not actions or any(a is None for a in actions):
+        return None
+    cond = AppState.get_user_actions.contains(actions[0])
+    for a in actions[1:]:
+        cond = cond | AppState.get_user_actions.contains(a)
+    return cond
+
+
+_ACCENT_GRADIENT = f"linear-gradient(135deg, {rx.color('accent', 11)} 20%, {rx.color('accent', 9)} 65%)"
+_PANEL_SHADOW = "inset 0 0 0 0.1rem rgba(255, 255, 255, 0.4), 0.2rem 0.2rem 0.4rem 0 rgba(0, 0, 0, 0.25)"
+
+
+def _user_popover() -> rx.Component:
+    return rx.popover.root(
+        rx.popover.trigger(
+            rx.hstack(
+                rx.text(AppState.worker_pib, size="4", weight="medium", color="white"),
+                rx.avatar(fallback="ІІ", size="2", color_scheme="gray", variant="solid", radius="full"),
+                align="center",
+                spacing="3",
+                cursor="pointer",
+            ),
+        ),
+        rx.popover.content(
+            rx.hstack(
+                rx.icon("log-out", size=18, color="white"),
+                rx.text("Вийти", size="3", weight="medium", color="white", white_space="nowrap"),
+                align="center",
+                spacing="2",
+                padding_y="0.5rem",
+                padding_x="0.75rem",
+                border_radius="0.8rem",
+                cursor="pointer",
+                transition="background-color 0.2s ease",
+                _hover={"background_color": "rgba(255, 255, 255, 0.15)"},
+                on_click=AppState.logout,
+            ),
+
+            side="bottom",
+            align="end",
+            side_offset=20,
+
+            padding="0.5rem",
+            background_image=_ACCENT_GRADIENT,
+            background_color="transparent",
+            border="none",
+            border_radius="1.2rem",
+            box_shadow=_PANEL_SHADOW,
+        ),
+        open=AppState.user_menu_open,
+        on_open_change=AppState.set_user_menu_open,
+    )
+
+
+def header() -> rx.Component:
     return rx.hstack(
-        # ... (Вся левая часть, отступы и профиль остаются без изменений) ...
         rx.link(
             rx.hstack(
                 rx.icon("graduation-cap", size=32, color="white"),
                 rx.heading("Деканат", size="5", weight="bold", color="white"),
-                align_items="center",
+                align="center",
                 spacing="3",
             ),
-            href="/", 
+            href="/",
             underline="none",
         ),
-        
-        rx.spacer(),
-        rx.heading(title, size="7", weight="bold", color="white"),
-        rx.spacer(),
-        
-        rx.hstack(
-            rx.text("Іванов І.І.", size="4", weight="medium", color="white"),
-            rx.avatar(fallback="ІІ", size="2", color_scheme="gray", variant="solid", radius="full"),
-            align_items="center",
-            spacing="3",
-            cursor="pointer",
-        ),
 
-        # Габариты (твои)
-        width="98vw",
+        _user_popover(),
+
+        width="100%",
         height="3.7rem",
-        margin_top="1vh",
-        margin_bottom="1vh", 
-        margin_left="auto",
-        margin_right="auto",
-        padding_left="1vw",
-        padding_right="1vw",
-        align_items="center", 
+        padding_left="1.2rem",
+        padding_right="1.2rem",
+        align="center",
+        justify="between",
 
-        # --- ДИЗАЙН (Добавляем глубину) ---
-        # 1. Легкий градиент (от 8-го к 10-му оттенку акцентного цвета)
-        background_image=f"linear-gradient(135deg, {rx.color('accent', 11)} 20%, {rx.color('accent', 9)} 65%)", 
-        border_radius="1.2rem",                         
-        
-        # 2. Многослойная тень: первая для объема, вторая для мягкого рассеивания
-        box_shadow="inset 0 0 0 0.1rem rgba(255, 255, 255, 0.4), 0.2rem 0.2rem 0.4rem 0 rgba(0, 0, 0, 0.25)",
-        
-        # 3. Эффект блика на верхнем и левом крае (свет падает сверху-слева)
-        #border_top="1px solid rgba(255, 255, 255, 0.2)",
-        #border_left="1px solid rgba(255, 255, 255, 0.1)",
+        background_image=_ACCENT_GRADIENT,
+        border_radius="1.2rem",
+        box_shadow=_PANEL_SHADOW,
     )
 
-def sidebar_item(text: str, icon_name: str, url: str) -> rx.Component:
-    return rx.link(
+def sidebar_item(item: MenuItem, indent: bool = False) -> rx.Component:
+    rendered = rx.link(
         rx.hstack(
-            # Иконка теперь белая
-            rx.icon(icon_name, size=24, color="white", flex_shrink="0"),
+            rx.icon(item.icon, size=24, color="white", flex_shrink="0"),
             rx.cond(
                 AppState.sidebar_open,
-                # Текст теперь тоже белый
-                rx.text(text, size="3", weight="medium", color="white", white_space="nowrap"),
-                #   rx.fragment()
+                rx.text(item.label, size="3", weight="medium", color="white", white_space="nowrap"),
             ),
             width="100%",
             padding_y="0.7rem",
             padding_x="0.75rem",
-            align_items="center",
+            padding_left=("2rem" if indent else "0.75rem"),
+            align="center",
             spacing="3",
             border_radius="1.2rem",
-            
+            overflow="hidden",
             transition="all 0.2s ease",
-            
-            # НОВЫЙ ХОВЕР: Так как фон темный, мы используем полупрозрачный белый цвет
-            # для эффекта выделения при наведении
             _hover={
-                "background_color": "rgba(255, 255, 255, 0.15)", 
+                "background_color": "rgba(255, 255, 255, 0.15)",
             },
         ),
-        href=url,
+        href=item.url or "#",
         width="100%",
         underline="none",
-        #padding_x="10px",
+    )
+    if item.required_action is None:
+        return rendered
+    return rx.cond(
+        AppState.get_user_actions.contains(item.required_action),
+        rendered,
+        rx.fragment(),
     )
 
-def sidebar(menu: List[Tuple[str, str, str]]) -> rx.Component:
+def sidebar_group(item: MenuItem) -> rx.Component:
+    expanded = AppState.expanded_groups.contains(item.label)
+    head = rx.hstack(
+        rx.icon(item.icon, size=24, color="white", flex_shrink="0"),
+        rx.cond(
+            AppState.sidebar_open,
+            rx.hstack(
+                rx.text(item.label, size="3", weight="medium", color="white", white_space="nowrap", overflow="hidden", flex="1", min_width="0"),
+                rx.icon(
+                    "chevron-right",
+                    size=18, color="white", flex_shrink="0",
+                    transform=rx.cond(expanded, "rotate(90deg)", "rotate(0deg)"),
+                    transition="transform 0.2s ease",
+                ),
+                width="100%",
+                align="center",
+                spacing="2",
+                overflow="hidden",
+            ),
+        ),
+        width="100%",
+        padding_y="0.7rem",
+        padding_x="0.75rem",
+        align="center",
+        spacing="3",
+        border_radius="1.2rem",
+        cursor="pointer",
+        overflow="hidden",
+        transition="all 0.2s ease",
+        _hover={"background_color": "rgba(255, 255, 255, 0.15)"},
+        on_click=AppState.toggle_group(item.label),
+    )
+
+    children_visible = expanded & AppState.sidebar_open
+    children_open = rx.box(
+        rx.vstack(
+            *[sidebar_item(c, indent=True) for c in item.children],
+            spacing="0",
+            width="100%",
+        ),
+        max_height=rx.cond(children_visible, "500px", "0px"),
+        opacity=rx.cond(children_visible, "1", "0"),
+        overflow="hidden",
+        transition="max-height 0.3s ease, opacity 0.2s ease",
+        width="100%",
+    )
+
+    rendered = rx.vstack(head, children_open, spacing="0", width="100%")
+    visibility = _menu_visibility(item.children)
+    if visibility is None:
+        return rendered
+    return rx.cond(visibility, rendered, rx.fragment())
+
+def render_menu_item(item: MenuItem) -> rx.Component:
+    if item.children:
+        return sidebar_group(item)
+    return sidebar_item(item)
+
+def sidebar(menu: List[MenuItem]) -> rx.Component:
     return rx.vstack(
-        # ... (Содержимое меню остается твоим) ...
         rx.hstack(
             rx.icon("menu", size=28, color="white", cursor="pointer", flex_shrink="0"),
             rx.cond(
                 AppState.sidebar_open,
-                rx.heading("Головна", size="5", weight="bold", color="white"),
+                rx.heading("Меню", size="5", weight="bold", color="white"),
                 rx.fragment()
             ),
-            align_items="center",
+            align="center",
             spacing="3",
             padding_y="0.7rem",
             padding_x="0.7rem",
             width="100%",
             on_click=AppState.toggle_sidebar
         ),
-        
-        rx.vstack(
-            rx.foreach(menu, lambda item: sidebar_item(item[0], item[1], item[2])),
-            spacing="0",
 
+        rx.vstack(
+            *[render_menu_item(item) for item in menu],
+            spacing="0",
             width="100%",
             height="100%"
         ),
-        
+
         spacing="3",
-        
-        # --- ДИЗАЙН (Добавляем глубину) ---
-        # 1. Тот же градиент для единообразия
+
         background_image=f"linear-gradient(135deg, {rx.color('accent', 11)} 20%, {rx.color('accent', 9)} 65%)",
-        border_radius="1.2rem",                         
-        
-        # 2. Тень уходит чуть больше вправо и вниз (5px по оси X)
+        border_radius="1.2rem",
         box_shadow="inset 0 0 0rem 0.1rem rgba(255, 255, 255, 0.4), 0.2rem 0.2rem 0.4rem 0 rgba(0, 0, 0, 0.25)",
-        
-        # 3. Блик света на гранях
-        #border_top="1px solid rgba(255, 255, 255, 0.2)",
-        #border_left="1px solid rgba(255, 255, 255, 0.1)",
-        #border_right="1px solid rgba(0, 0, 0, 0.05)", # Легкое затемнение правого края
-        
-        # Габариты (твои)
-        margin="10px", 
-        margin_left="1vw",
-        margin_top="1vh",
-        margin_bottom="1vh", 
-        padding_top="15px", # Исправил опечатку paddind_top
+
+        padding_top="15px",
         padding_bottom="15px",
         padding_left="8px",
         padding_right="8px",
-        height="96%",
-        width=rx.cond(AppState.sidebar_open, "15rem", "4.2rem"),
-        transition="width 0.3s ease-in-out",
-        flex_shrink="0",
+        height="100%",
+        width="100%",
         overflow_x="hidden",
         overflow_y="auto",
     )
 
-def base_layout(page_header: rx.Component, page_content: rx.Component, global_title: str, sidebar_menu: List[Tuple[str, str, str]]) -> rx.Component:
-    """Главный каркас приложения (Desktop Style)"""
-    
+def page_wrapper(page_header: rx.Component, page_content: rx.Component) -> rx.Component:
+    """Каркас отдельной страницы. Внешний chrome (шапка/сайдбар) приходит из app_wraps и не пересоздаётся при навигации."""
     return rx.vstack(
-        # --- СТРОКА 1: Шапка ---
-        header(global_title),
-        
-        # --- СТРОКА 2: Рабочая область (Меню + Контент) ---
-        rx.hstack(
-            # --- КОНТЕЙНЕР ДЛЯ КОНТЕНТА СТРАНИЦЫ ---
-            sidebar(sidebar_menu),
-            rx.vstack(
-                page_header,
-                rx.box(
-                    page_content,
+        page_header,
+        rx.box(
+            page_content,
 
-                    flex="1", # 5. Забирает всю оставшуюся ширину
-                    height="100%", # Забирает всю доступную высоту
-                    width="100%",
-                    overflow_y="auto", # 5. ГЛАВНАЯ МАГИЯ: Скроллбар появляется ТОЛЬКО здесь!
-                    #padding="30px",
-                    #background_color="#ffffff",
-                ),
-
-                margin_right="1vw",
-                margin_top="1vh",
-                margin_bottom="1vh", 
-                padding="0.7rem",
-
-                flex="1",
-
-                width="100%",
-                height="100%"
-            ),
-            
+            flex="1",
+            height="100%",
             width="100%",
-            flex="1", # Рабочая область забирает всю высоту, оставшуюся от шапки
-            overflow="hidden", # Прячем лишнее, чтобы hstack не сломал верстку
-            spacing="0",
+            overflow_y="auto",
         ),
-        
-        # --- НАСТРОЙКИ САМОГО ГЛАВНОГО ОКНА ---
-        width="100vw",
-        height="100vh", # 6. Жестко привязываем к размеру экрана
-        overflow="hidden", # 7. ЗАПРЕЩАЕМ появление глобального скроллбара в браузере
-        spacing="0",
+
+        flex="1",
+        width="100%",
+        height="100%",
+        spacing="3",
     )
 
 def header_subpage(title: str, *args, **prop) -> rx.Component:
@@ -204,13 +252,12 @@ def header_subpage(title: str, *args, **prop) -> rx.Component:
 
         style={
             "&::after": {
-                "content": '""', # Создаем пустой элемент
+                "content": '""',
                 "position": "absolute",
                 "left": "0",
                 "bottom": "0",
-                "width": "100%", # Линия на всю ширину
-                "height": "0.2rem", # Толщина линии
-                # Твой новый градиент для линии
+                "width": "100%",
+                "height": "0.2rem",
                 "background": f"linear-gradient(135deg, {rx.color('accent', 11)} 20%, {rx.color('accent', 9)} 65%)",
                 "border_radius": "2px",
             }

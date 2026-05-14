@@ -5,9 +5,8 @@ from Dekanat.actions import Actions
 from Dekanat.states.identity_document_type import AddIdentityDocumentTypeState, EditIdentityDocumentTypeState, ViewIdentityDocumentTypeState, ListIdentityDocumentTypeState
 from Dekanat.models import IdentityDocumentTypeModel
 
-from Dekanat.views.tamplates.layouts import base_layout, header_subpage
+from Dekanat.views.tamplates.layouts import page_wrapper, header_subpage
 from Dekanat.views.tamplates import controlls
-from Dekanat.declared import submenu
 from Dekanat.views.auth import require_login
 
 
@@ -51,7 +50,7 @@ def list_page_content() -> rx.Component:
 def view_page_content():
     return rx.vstack(
         rx.heading(ViewIdentityDocumentTypeState.title),
-        rx.text(ViewIdentityDocumentTypeState.desctiption),
+        rx.text(ViewIdentityDocumentTypeState.description),
 
         height="100%",
         width="100%"
@@ -62,7 +61,7 @@ def add_page_content() -> rx.Component:
         rx.text("*Назва:"),
         rx.input(required=True, value=AddIdentityDocumentTypeState.title, on_change=AddIdentityDocumentTypeState.set_title),
         rx.text("Опис:"),
-        rx.text_area(value=AddIdentityDocumentTypeState.desctiption, on_change=AddIdentityDocumentTypeState.set_description),
+        rx.text_area(value=AddIdentityDocumentTypeState.description, on_change=AddIdentityDocumentTypeState.set_description),
 
         align="stretch",
         width="100%"
@@ -73,23 +72,15 @@ def edit_page_content() -> rx.Component:
         rx.text("*Назва:"),
         rx.input(required=True, value=EditIdentityDocumentTypeState.title, on_change=EditIdentityDocumentTypeState.set_title),
         rx.text("Опис:"),
-        rx.text_area(value=EditIdentityDocumentTypeState.desctiption, on_change=EditIdentityDocumentTypeState.set_description),
+        rx.text_area(value=EditIdentityDocumentTypeState.description, on_change=EditIdentityDocumentTypeState.set_description),
 
         align="stretch",
         width="100%"
     )
 
-def identity_document_type_base_layout(page_header, page_content) -> rx.Component:
-    return base_layout(
-       page_header, 
-       page_content,
-       "Типи посвідчень особи",
-       submenu.BASE
-    )
-
 @require_login
 def list_page() -> rx.Component:
-    return identity_document_type_base_layout(
+    return page_wrapper(
         header_subpage(
             "Список",
             rx.cond(ListIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_ADD), controlls.button_image_primery(name_icon="plus", on_click=ListIdentityDocumentTypeState.on_click_add)),
@@ -100,7 +91,7 @@ def list_page() -> rx.Component:
 
 @require_login
 def view_page() -> rx.Component:
-    return identity_document_type_base_layout(
+    return page_wrapper(
         header_subpage(
             "Перегляд",
             rx.cond(ViewIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_DELETE), controlls.button_image_secondary(name_icon="trash_2", on_click=ViewIdentityDocumentTypeState.on_click_delete)),
@@ -112,7 +103,7 @@ def view_page() -> rx.Component:
 
 @require_login
 def add_page() -> rx.Component:
-    return identity_document_type_base_layout(
+    return page_wrapper(
         header_subpage(
             "Додавання",
             controlls.button_image_secondary(name_icon="circle_x", on_click=AddIdentityDocumentTypeState.on_cancel),
@@ -124,7 +115,7 @@ def add_page() -> rx.Component:
 
 @require_login
 def edit_page() -> rx.Component:
-    return identity_document_type_base_layout(
+    return page_wrapper(
         header_subpage(
             "Редагування",
             controlls.button_image_secondary(name_icon="circle_x", on_click=EditIdentityDocumentTypeState.on_cancel),

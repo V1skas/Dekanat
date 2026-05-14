@@ -65,7 +65,7 @@ class AddIdentityDocumentTypeState(AppState):
         self.item.title = value.strip()
 
     @rx.var
-    def desctiption(self) -> str:
+    def description(self) -> str:
         return self.item.description if self.item.description is not None else ""
 
     @rx.event
@@ -130,7 +130,7 @@ class EditIdentityDocumentTypeState(AppState):
         self.item.title = value.strip()
 
     @rx.var
-    def desctiption(self) -> str:
+    def description(self) -> str:
         return self.item.description if self.item.description is not None else ""
 
     @rx.event
@@ -150,7 +150,7 @@ class EditIdentityDocumentTypeState(AppState):
         service = IdentityDocumentTypeService()
         try:
             self.item = service.edit_one(self.item)
-            yield rx.toast.success("Запис додано!")
+            yield rx.toast.success("Запис змінено!")
             yield rx.redirect(routes.IDENTITY_DOCUMENT_TYPE_VIEW+str(self.item.id))
         except Exception:
             yield rx.toast.error("Під час виконання запиту трапилась помилка. Спробуйте ще раз.")
@@ -212,6 +212,6 @@ class ViewIdentityDocumentTypeState(AppState):
         return self.item.title
 
     @rx.var
-    def desctiption(self) -> str:
+    def description(self) -> str:
         return self.item.description if self.item.description is not None else ""
 

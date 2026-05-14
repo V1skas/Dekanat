@@ -1,16 +1,7 @@
 import reflex as rx
 
-from Dekanat.views.tamplates.layouts import base_layout, header_subpage
+from Dekanat.views.tamplates.layouts import page_wrapper
 from Dekanat.views.auth import require_login
-from Dekanat.declared import submenu
-
-def dashboard_base_layout(page_header, page_content) -> rx.Component:
-    return base_layout(
-        page_header,
-        page_content,
-        "Головна",
-        submenu.MAIN
-    )
 
 def dashboard_page_content():
     return rx.center(
@@ -24,7 +15,7 @@ def dashboard_page_content():
 
 @require_login
 def dashboard_page() -> rx.Component:
-    return dashboard_base_layout(
+    return page_wrapper(
         rx.box(),
         dashboard_page_content()
     )

@@ -5,9 +5,8 @@ from Dekanat.actions import Actions
 from Dekanat.states.kinship import ListKinshipState, AddKinshipState, EditKinshipState, ViewKinshipSate
 from Dekanat.models import KinshipModel
 
-from Dekanat.views.tamplates.layouts import base_layout, header_subpage
+from Dekanat.views.tamplates.layouts import page_wrapper, header_subpage
 from Dekanat.views.tamplates import controlls
-from Dekanat.declared import submenu
 from Dekanat.views.auth import require_login
 
 
@@ -69,17 +68,9 @@ def edit_page_content() -> rx.Component:
         rx.input(id="title", required=True, value=EditKinshipState.title, on_change=EditKinshipState.set_title),
     )
 
-def kinship_base_layout(page_header, page_content) -> rx.Component:
-    return base_layout(
-        page_header,
-        page_content,
-        "Тип родинних зв'язків",
-        submenu.BASE
-    )
-
 @require_login
 def list_page() -> rx.Component:
-    return kinship_base_layout(
+    return page_wrapper(
         header_subpage(
             "Список",
             rx.cond(ListKinshipState.get_user_actions.contains(Actions.KINSHIP_ADD), controlls.button_image_primery(name_icon="plus", on_click=ListKinshipState.on_click_add)),
@@ -90,7 +81,7 @@ def list_page() -> rx.Component:
 
 @require_login
 def view_page() -> rx.Component:
-    return kinship_base_layout(
+    return page_wrapper(
         header_subpage(
             "Перегляд",
             rx.cond(ViewKinshipSate.get_user_actions.contains(Actions.KINSHIP_DELETE), controlls.button_image_secondary(name_icon="trash_2", on_click=ViewKinshipSate.on_click_delete)),
@@ -102,7 +93,7 @@ def view_page() -> rx.Component:
 
 @require_login
 def add_page() -> rx.Component:
-    return kinship_base_layout(
+    return page_wrapper(
         header_subpage(
             "Додавання",
             controlls.button_image_secondary(name_icon="circle_x", on_click=AddKinshipState.on_cancel),
@@ -114,7 +105,7 @@ def add_page() -> rx.Component:
 
 @require_login
 def edit_page() -> rx.Component:
-    return kinship_base_layout(
+    return page_wrapper(
         header_subpage(
             "Редагування",
             controlls.button_image_secondary(name_icon="circle_x", on_click=EditKinshipState.on_cancel),

@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Sequence
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
 
@@ -6,6 +6,17 @@ from Dekanat.models import RoleModel, WorkerModel, ActionModel, WorkersActionsMo
 
 
 class WorkerDao:
+    @staticmethod
+    def get_all(session: Session, with_del: bool = False) -> Sequence[WorkerModel]:
+        try:
+            statement = select(WorkerModel)
+            if not with_del:
+                statement = statement.where(WorkerModel.is_deleted == False)
+            return session.exec(statement).all()
+        except Exception as e:
+            print(f"[WorkerDao][get_all][ERROR] {e}")
+            return []
+
     @staticmethod
     def get_by_id_with_roles_and_actions(id: int, session: Session) -> Optional[WorkerModel]:
         try:
@@ -55,13 +66,13 @@ class WorkerDao:
             ).where(
                 RoleModel.id == WorkersRolesModel.id_role
             ).where(
-                WorkersRolesModel.id_worker == WorkerModel.id
+                WorkersRolesModel.id_worker == id
             )
             return session.exec(statement).all()
         except Exception as e:
             print(f"[WorkerDao][get_worker_actions_in_roles_by_id][ERROR] {e}")
             return []
-    
+
     @staticmethod
     def get_by_login(login: str, session: Session, with_delete=False):
         try:
