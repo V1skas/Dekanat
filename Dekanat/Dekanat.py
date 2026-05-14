@@ -6,6 +6,7 @@ from Dekanat.views.auth import require_login, index as login_page
 from Dekanat.views.templates.layouts import page_wrapper, header_subpage
 from Dekanat.views.templates.app_shell import app_shell_wrap, content_area_wrap
 from Dekanat.views import dashboard
+from Dekanat.views import department
 from Dekanat.views import identity_document_type
 from Dekanat.views import kinship
 from Dekanat.views import role
@@ -14,6 +15,7 @@ from Dekanat.views import special_condition
 from Dekanat.views import worker
 
 from Dekanat.states.auth import AuthState
+from Dekanat.states import department as department_states
 from Dekanat.states import identity_document_type as identity_document_type_states
 from Dekanat.states import kinship as kinship_states
 from Dekanat.states import role as role_states
@@ -56,6 +58,11 @@ app.add_page(source_of_funding.list_page, route=routes.SOURCE_OF_FUNDING_LIST, o
 app.add_page(source_of_funding.add_page, route=routes.SOURCE_OF_FUNDING_ADD, on_load=source_of_funding_states.AddSourceOfFundingState.on_load)
 app.add_page(source_of_funding.edit_page, route=routes.SOURCE_OF_FUNDING_EDIT+"[id]", on_load=source_of_funding_states.EditSourceOfFundingState.on_load)
 app.add_page(source_of_funding.view_page, route=routes.SOURCE_OF_FUNDING_VIEW+"[id]", on_load=source_of_funding_states.ViewSourceOfFundingState.on_load)
+
+app.add_page(department.list_page, route=routes.DEPARTMENT_LIST, on_load=department_states.ListDepartmentState.on_load)
+app.add_page(department.add_page, route=routes.DEPARTMENT_ADD, on_load=department_states.AddDepartmentState.on_load)
+app.add_page(department.edit_page, route=routes.DEPARTMENT_EDIT+"[id]", on_load=department_states.EditDepartmentState.on_load)
+app.add_page(department.view_page, route=routes.DEPARTMENT_VIEW+"[id]", on_load=department_states.ViewDepartmentState.on_load)
 
 app.add_page(role.list_page, route=routes.ROLES_LIST, on_load=role_states.ListRoleState.on_load)
 app.add_page(role.add_page, route=routes.ROLES_ADD, on_load=role_states.AddRoleState.on_load)
