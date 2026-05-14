@@ -22,6 +22,7 @@ MAIN: List[MenuItem] = [
         MenuItem("Джерела фінансування", "wallet", routes.SOURCE_OF_FUNDING_LIST, required_action=Actions.SOURCE_OF_FUNDING_LIST),
         MenuItem("Відділення", "building-2", routes.DEPARTMENT_LIST, required_action=Actions.DEPARTMENT_LIST),
         MenuItem("Спеціальності", "graduation-cap", routes.SPECIALITY_LIST, required_action=Actions.SPECIALITY_LIST),
+        MenuItem("Статуси заявок", "clipboard-list", routes.APPLICATION_STATUS_LIST, required_action=Actions.APPLICATION_STATUS_LIST),
     ]),
     MenuItem("Контингент", "graduation-cap", children=[
         MenuItem("Абітурієнти", "user-plus", routes.APPLICANTS),

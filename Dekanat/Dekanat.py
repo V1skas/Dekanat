@@ -5,6 +5,7 @@ from Dekanat import routes
 from Dekanat.views.auth import require_login, index as login_page
 from Dekanat.views.templates.layouts import page_wrapper, header_subpage
 from Dekanat.views.templates.app_shell import app_shell_wrap, content_area_wrap
+from Dekanat.views import application_status
 from Dekanat.views import dashboard
 from Dekanat.views import department
 from Dekanat.views import identity_document_type
@@ -16,6 +17,7 @@ from Dekanat.views import speciality
 from Dekanat.views import worker
 
 from Dekanat.states.auth import AuthState
+from Dekanat.states import application_status as application_status_states
 from Dekanat.states import department as department_states
 from Dekanat.states import identity_document_type as identity_document_type_states
 from Dekanat.states import kinship as kinship_states
@@ -70,6 +72,11 @@ app.add_page(speciality.list_page, route=routes.SPECIALITY_LIST, on_load=special
 app.add_page(speciality.add_page, route=routes.SPECIALITY_ADD, on_load=speciality_states.AddSpecialityState.on_load)
 app.add_page(speciality.edit_page, route=routes.SPECIALITY_EDIT+"[dept_id]/[spec_code]", on_load=speciality_states.EditSpecialityState.on_load)
 app.add_page(speciality.view_page, route=routes.SPECIALITY_VIEW+"[dept_id]/[spec_code]", on_load=speciality_states.ViewSpecialityState.on_load)
+
+app.add_page(application_status.list_page, route=routes.APPLICATION_STATUS_LIST, on_load=application_status_states.ListApplicationStatusState.on_load)
+app.add_page(application_status.add_page, route=routes.APPLICATION_STATUS_ADD, on_load=application_status_states.AddApplicationStatusState.on_load)
+app.add_page(application_status.edit_page, route=routes.APPLICATION_STATUS_EDIT+"[id]", on_load=application_status_states.EditApplicationStatusState.on_load)
+app.add_page(application_status.view_page, route=routes.APPLICATION_STATUS_VIEW+"[id]", on_load=application_status_states.ViewApplicationStatusState.on_load)
 
 app.add_page(role.list_page, route=routes.ROLES_LIST, on_load=role_states.ListRoleState.on_load)
 app.add_page(role.add_page, route=routes.ROLES_ADD, on_load=role_states.AddRoleState.on_load)
