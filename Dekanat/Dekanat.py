@@ -12,6 +12,7 @@ from Dekanat.views import kinship
 from Dekanat.views import role
 from Dekanat.views import source_of_funding
 from Dekanat.views import special_condition
+from Dekanat.views import speciality
 from Dekanat.views import worker
 
 from Dekanat.states.auth import AuthState
@@ -21,6 +22,7 @@ from Dekanat.states import kinship as kinship_states
 from Dekanat.states import role as role_states
 from Dekanat.states import source_of_funding as source_of_funding_states
 from Dekanat.states import special_condition as special_condition_states
+from Dekanat.states import speciality as speciality_states
 from Dekanat.states import worker as worker_states
 
 app = rx.App(
@@ -63,6 +65,11 @@ app.add_page(department.list_page, route=routes.DEPARTMENT_LIST, on_load=departm
 app.add_page(department.add_page, route=routes.DEPARTMENT_ADD, on_load=department_states.AddDepartmentState.on_load)
 app.add_page(department.edit_page, route=routes.DEPARTMENT_EDIT+"[id]", on_load=department_states.EditDepartmentState.on_load)
 app.add_page(department.view_page, route=routes.DEPARTMENT_VIEW+"[id]", on_load=department_states.ViewDepartmentState.on_load)
+
+app.add_page(speciality.list_page, route=routes.SPECIALITY_LIST, on_load=speciality_states.ListSpecialityState.on_load)
+app.add_page(speciality.add_page, route=routes.SPECIALITY_ADD, on_load=speciality_states.AddSpecialityState.on_load)
+app.add_page(speciality.edit_page, route=routes.SPECIALITY_EDIT+"[dept_id]/[spec_code]", on_load=speciality_states.EditSpecialityState.on_load)
+app.add_page(speciality.view_page, route=routes.SPECIALITY_VIEW+"[dept_id]/[spec_code]", on_load=speciality_states.ViewSpecialityState.on_load)
 
 app.add_page(role.list_page, route=routes.ROLES_LIST, on_load=role_states.ListRoleState.on_load)
 app.add_page(role.add_page, route=routes.ROLES_ADD, on_load=role_states.AddRoleState.on_load)
