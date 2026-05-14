@@ -9,6 +9,7 @@ from Dekanat.views import dashboard
 from Dekanat.views import identity_document_type
 from Dekanat.views import kinship
 from Dekanat.views import role
+from Dekanat.views import source_of_funding
 from Dekanat.views import special_condition
 from Dekanat.views import worker
 
@@ -16,6 +17,7 @@ from Dekanat.states.auth import AuthState
 from Dekanat.states import identity_document_type as identity_document_type_states
 from Dekanat.states import kinship as kinship_states
 from Dekanat.states import role as role_states
+from Dekanat.states import source_of_funding as source_of_funding_states
 from Dekanat.states import special_condition as special_condition_states
 from Dekanat.states import worker as worker_states
 
@@ -49,6 +51,11 @@ app.add_page(special_condition.list_page, route=routes.SPECIAL_CONDITION_LIST, o
 app.add_page(special_condition.add_page, route=routes.SPECIAL_CONDITION_ADD, on_load=special_condition_states.AddSpecialConditionState.on_load)
 app.add_page(special_condition.edit_page, route=routes.SPECIAL_CONDITION_EDIT+"[code]", on_load=special_condition_states.EditSpecialConditionState.on_load)
 app.add_page(special_condition.view_page, route=routes.SPECIAL_CONDITION_VIEW+"[code]", on_load=special_condition_states.ViewSpecialConditionState.on_load)
+
+app.add_page(source_of_funding.list_page, route=routes.SOURCE_OF_FUNDING_LIST, on_load=source_of_funding_states.ListSourceOfFundingState.on_load)
+app.add_page(source_of_funding.add_page, route=routes.SOURCE_OF_FUNDING_ADD, on_load=source_of_funding_states.AddSourceOfFundingState.on_load)
+app.add_page(source_of_funding.edit_page, route=routes.SOURCE_OF_FUNDING_EDIT+"[id]", on_load=source_of_funding_states.EditSourceOfFundingState.on_load)
+app.add_page(source_of_funding.view_page, route=routes.SOURCE_OF_FUNDING_VIEW+"[id]", on_load=source_of_funding_states.ViewSourceOfFundingState.on_load)
 
 app.add_page(role.list_page, route=routes.ROLES_LIST, on_load=role_states.ListRoleState.on_load)
 app.add_page(role.add_page, route=routes.ROLES_ADD, on_load=role_states.AddRoleState.on_load)
