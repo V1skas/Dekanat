@@ -69,6 +69,71 @@ uv run python update.py # синхронизация enum Actions в БД пос
 9. Если сущность нужна в сайдбаре — добавить пункт в `Dekanat/declared/submenu.py` (`MAIN` — единственный реально используемый список).
 10. **`uv run python update.py`** — синхронизировать новые `Actions` в БД.
 
+### Тонкости из практики
+
+- **Reflex запрещает path-param, имя которого совпадает с `@rx.var` ЛЮБОГО State в проекте** (`DynamicRouteArgShadowsStateVarError`). Конфликты глобальные, не локальные. Имена `code`, `id` уже зарезервированы существующими маршрутами — используй уникальные (`spec_code`, `dept_id`, и т.п.) и/или переименовывай computed var (например, `entity_code`).
+- **Composite PK** требует двух path-параметров (`route+"[a]/[b]"`), DAO-метода `get_by_pk(a, b, session)` и read-only обоих ключей при редактировании.
+- **Свежесозданная `Model()` без аргументов оставляет required-поля как None.** Все `@rx.var def x -> str` должны защищаться: `return self.item.x if self.item is not None and self.item.x is not None else ""`. Иначе в логах появится `Computed var ... must return value of type str, got None`.
+- **FK-поля редактируются через `rx.select`** (см. `views/speciality.py`). В state хранится computed var-обёртка `..._str: str` для значения select и event `set_*`, парсящий int. Список опций готовится в `on_load` через сервис связанной сущности (например, `DepartmentService.get_list_items()`).
+
+## Доменна структура
+
+Система веде облік **абітурієнтів** та **студентів** ВНЗ, навчального процесу і документообігу.
+Центральна сутність БД — **`PersonModel` (особа)**: абітурієнт і студент — це Person + додаткові поля.
+
+### Карта сутностей і статус реалізації
+
+#### Повний CRUD (Model + DAO + Service + State + View + Actions + sidebar)
+
+| Сутність | Модель | Маршрут | Призначення |
+|----------|--------|---------|-------------|
+| Worker | `WorkerModel` | `/admin/workers` | Користувачі системи (логін, пароль, ролі) |
+| Role | `RoleModel` | `/admin/roles` | Ролі для RBAC |
+| Identity document type | `IdentityDocumentTypeModel` | `/base/identity_document_type` | Типи документів |
+| Kinship | `KinshipModel` | `/base/kinship` | Типи родинних зв'язків |
+| Special condition | `SpecialConditionModel` | `/base/special_condition` | Спеціальні умови вступу |
+| Source of funding | `SourceOfFundingModel` | `/base/source_of_funding` | Джерела фінансування |
+| Department | `DepartmentModel` | `/base/department` | Відділення |
+| Speciality | `SpecialityModel` | `/base/speciality` | Спеціальності (FK на department) |
+| Application status | `ApplicationStatusModel` | `/base/application_status` | Статуси заявок |
+
+#### Існують як SQLModel-моделі — UI ще немає
+
+- **`PersonModel`** — центральна сутність "Особа"
+- **`EntrantModel`** — Абітурієнт (Person + `id_application_status` + `comment`)
+- **`SpecialtieEntrantModel`** — Пріоритет спеціальностей абітурієнта
+- **`EntrantGroupModel`** + **`EntrantExamModel`** — Групи на ЗНО і розклад іспитів
+- **`ItemZnoModel`** + **`ResultZnoModel`** — Предмети ЗНО і результати
+- **`DocumentAboutEducationModel`** — Документи про освіту особи
+- **`MilitaryAccountingModel`** — Військовий облік
+- **`MedicalReferenceModel`** — Медичні довідки
+- **`IdentityDocumentModel`** — Паспорти (інстанс типу з `IdentityDocumentTypeModel`)
+- **`InformationAboutRelativesModel`** — Інформація про родичів
+- **`SpecialConditionPersonModel`** — Спеціальні умови, прив'язані до особи
+
+#### За ER-схемою заплановані, моделей ще немає
+
+- **students** — Студенти (Person + group)
+- **groups** — Навчальні групи (`title`, FK speciality, FK curator)
+- **curators** — Куратори (Worker з прив'язкою до групи)
+- **subjects** + **subjects_workers** — Навчальні предмети + викладачі (M2M)
+- **schedule** + **lessons** — Розклад і заняття
+- **orders** + **type_orders** — Накази та їх типи (signed/requires_approval/approved)
+
+> **Примітка про ER-схему.** Реалізовані моделі є нормативом. Якщо ER-схема десь розходиться з кодом (наприклад, `specialties.PK = code` на схемі vs composite `(code, id_department)` у моделі; `entrants.application_status` як вільне поле vs FK на `ApplicationStatusModel`; `mokpp`, `place_of_registration_city`, `departments` тощо) — схема перемальовується під код, а не навпаки.
+
+### Логічні блоки і ключові зв'язки
+
+1. **Особа і її документи**: `person ← identity_document, document_about_education, military_accounting, medical_reference, information_about_relatives, special_conditions_person, results_zno`
+2. **Абітурієнти**: `entrants (id_person → person) → specialties_entrant (priority list)`; `entrants_groups → entrants_exams (date_time, item_zno)`
+3. **Студенти і навчання**: `students (id_person → person, id_group) → groups (id_specialties, id_curator) → specialties`
+4. **Викладання**: `subjects (id_specialties) ↔ workers (через subjects_workers)`; `schedule (group, period) → lessons (subject, worker, schedule)`
+5. **Документообіг**: `orders (id_type → type_orders, id_worker → workers)`
+
+### Угода: FK на `SpecialityModel` — завжди composite
+
+`SpecialityModel` має composite PK `(code, id_department)`. Будь-яка таблиця, що посилається на спеціальність, повинна мати **два FK-стовпці** (`id_speciality_code`, `id_speciality_department`) і `ForeignKeyConstraint` через `__table_args__` — single FK на `code` логічно зламаний. Приклад — `SpecialtieEntrantModel` (`models.py`). Для майбутніх `groups`, `subjects` тощо діє те саме правило.
+
 ## Локализация UI
 
 **Весь пользовательский текст — украинский.** Это касается:

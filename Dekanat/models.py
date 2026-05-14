@@ -1,4 +1,5 @@
 from sqlmodel import Field, Relationship
+from sqlalchemy import ForeignKeyConstraint
 from typing import Optional, List
 from datetime import datetime
 
@@ -316,10 +317,17 @@ class SpecialityModel(rx.Model, table=True):
 @rx.ModelRegistry.register
 class SpecialtieEntrantModel(rx.Model, table=True):
     __tablename__ = "specialties_entrants"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["id_speciality_code", "id_speciality_department"],
+            ["specialties.code", "specialties.id_department"],
+        ),
+    )
 
     # Table columns
     id_entrant: int = Field(primary_key=True, foreign_key="entrants.id")
-    id_specialties: str = Field(primary_key=True, foreign_key="specialties.code")
+    id_speciality_code: str = Field(primary_key=True)
+    id_speciality_department: int = Field(primary_key=True)
     priority: int
 
     # Relationships
