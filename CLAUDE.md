@@ -1,65 +1,132 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Справочник по проекту для Claude Code (claude.ai/code).
 
-## Commands
+## Стек
+
+- **Python 3.13.12** (зафиксирован в `pyproject.toml`, `.python-version`)
+- **Менеджер окружения и пакетов: uv.** Любые команды и установки идут через `uv` (`uv run ...`, `uv add ...`, `uv sync`). Никаких `pip`/`venv` напрямую.
+- **Фреймворк: Reflex 0.8.28.post1** — полностековый Python: модели, состояние и UI описаны в Python.
+- **ORM:** SQLModel поверх SQLAlchemy. БД — SQLite (`reflex.db`, конфиг в `rxconfig.py`).
+- **Стили:** Tailwind v4 (плагин Reflex). Дизайн-токены берутся из темы `rx.theme(accent_color="brown")`.
+- **Миграции:** Alembic (папка `alembic/`).
+
+## Команды
 
 ```bash
-# Run development server
-reflex run
-
-# Type checking
-pyright
-
-# Initial deployment (creates admin user, syncs actions to DB)
-python deploy.py
-
-# Sync Actions enum to DB after adding new actions
-python update.py
+uv run reflex run       # dev-сервер
+uv run pyright          # тайпчек
+uv run python deploy.py # первичный деплой: синхронизация Actions + создание admin/admin
+uv run python update.py # синхронизация enum Actions в БД после добавления новых
 ```
 
-Package manager is **uv** (Python 3.13.12). Database is SQLite at `reflex.db` (configured in `rxconfig.py`).
+## Архитектура: 4 слоя на каждую сущность
 
-## Architecture
+| Слой | Расположение | Ответственность |
+|------|--------------|-----------------|
+| Model | `Dekanat/models.py` | `SQLModel`-классы, декорированные `@rx.ModelRegistry.register`. Все модели лежат в одном файле. |
+| DAO | `Dekanat/dao/<entity>.py` | Класс `<Entity>Dao` со static-методами. Принимают `session: Session`, возвращают модели/коллекции. Никаких commit. |
+| Service | `Dekanat/services/<entity>.py` | Класс `<Entity>Service`. Открывает `with rx.session()`, дергает DAO, делает `commit`/`refresh`. Ловит исключения, логирует, **пробрасывает дальше** (`raise`). |
+| State | `Dekanat/states/<entity>.py` | `rx.State`-наследники от `AppState`. Хранят UI-состояние, проверяют права, вызывают Service. |
+| View | `Dekanat/views/<entity>.py` | Чистые компоненты Reflex. Страницы — функции `list_page/add_page/edit_page/view_page`, декорированные `@require_login`. |
 
-This is a **Reflex** (Python full-stack) web application — a university dean's office management system. UI, state, and backend are all Python.
+Страницы регистрируются в `Dekanat/Dekanat.py` через `app.add_page(...)` с `on_load=...State.on_load`.
 
-### Layer structure (per domain entity)
+### Соглашения по именам
 
-Every domain entity follows this four-layer pattern:
+- **DAO:** `KinshipDao`, методы `get_all`, `get_by_id(id, session, with_del=False)`, `add_one`, `edit_one`.
+- **Service:** `KinshipService`, методы `get_list_items`, `get_by_id`, `add_one`, `edit_one`, `delete_one`. Внутри — `try/except` с `print(f"[KinshipService][method][ERROR] {e}")` и `raise`.
+- **State:** четыре класса на сущность — `List<E>State`, `Add<E>State`, `Edit<E>State`, `View<E>State`. Все наследуют `AppState`.
+- **View:** `list_page_content`, `view_page_content`, `add_page_content`, `edit_page_content` + 4 публичные страницы.
+- **Routes:** константы в `Dekanat/routes.py`. Пары `<E>_LIST/_ADD/_EDIT/_VIEW`. Для edit/view URL заканчивается на `/` — id подклеивается параметром `[id]` в `app.add_page`.
+- **Actions (StrEnum):** `Dekanat/actions.py`. Значение — код `entity:operation` (`worker:list`, `kinship:add`). У каждого пункта есть атрибуты `title_attr`, `description_attr` (украинский язык). После добавления новых пунктов запускать `uv run python update.py`.
 
-| Layer | Location | Responsibility |
-|-------|----------|----------------|
-| Model | `Dekanat/models.py` | SQLModel ORM class registered with `@rx.ModelRegistry.register` |
-| DAO | `Dekanat/dao/<entity>.py` | Static methods accepting a `Session`, raw DB queries only |
-| Service | `Dekanat/services/<entity>.py` | Opens `rx.session()`, calls DAO, commits, raises on error |
-| State | `Dekanat/states/<entity>.py` | `rx.State` subclass — holds UI state, calls Service |
-| View | `Dekanat/views/<entity>.py` | Pure Reflex component functions, uses State vars/events |
+### Soft delete
 
-Pages are registered in `Dekanat/Dekanat.py` with `app.add_page(...)`.
+Все удаляемые модели имеют поле `is_deleted: bool = False`. `delete_one` в сервисе ставит `is_deleted = True` и вызывает `edit_one` — записи **не удаляются физически**. DAO-методы фильтруют по `is_deleted == False`, если не передан `with_del=True`.
 
-### Auth & permissions
+## Auth и права
 
-- `AppState` (`states/app.py`) is the base state all page states inherit from.
-- Auth uses an `auth_token` cookie. `require_login` decorator (`views/auth.py`) wraps all protected pages — it renders a loading spinner while `AppState.require_auth` validates the token, then redirects to login if invalid.
-- `Actions` (`actions.py`) is a `StrEnum` where each member's value is the permission code string. Every action has `title_attr` and `description_attr` attributes.
-- `AppState.has_permission(action: Actions)` checks whether the authenticated worker holds that action (via direct assignment or through a role).
-- Permissions must be checked at the start of every `on_load` handler and before mutating events.
+- **`AppState`** (`Dekanat/states/app.py`) — базовый класс всех protected-стейтов. Хранит `worker`, `actions_worker`, cookie `auth_token`.
+- **Cookie** `auth_token` (`max_age=86400`, SameSite=Lax) → `AuthTokenModel` → `WorkerModel`.
+- **`@require_login`** (`Dekanat/views/auth.py`) — обёртка над компонентом страницы. Рендерит спиннер с `on_mount=AppState.require_auth`, который валидирует токен; при невалидном — редирект на `/login`.
+- **`AppState.has_permission(action: Actions) -> bool`** — проверяет, есть ли у пользователя право (через прямое назначение в `WorkersActionsModel` или через роль в `WorkersRolesModel`).
+- **Где проверять права:**
+  - В **начале каждого `on_load`** state'а: при отсутствии — `yield rx.toast.error(...)` + `yield rx.redirect(routes.DASHBOARD)` + `return`.
+  - В **каждом мутирующем event-обработчике** (`on_save`, `on_click_delete`, `on_click_edit`): при отсутствии — `yield rx.toast.error(...)` + `return`.
+  - В **UI** для скрытия кнопок: `rx.cond(SomeState.get_user_actions.contains(Actions.X), ...)`.
 
-### Adding a new domain entity
+## Добавление новой сущности — чек-лист
 
-1. Add model to `Dekanat/models.py`.
-2. Add `Actions` constants to `Dekanat/actions.py` following the `entity:operation` code format (`list`, `add`, `edit`, `delete`, `view`).
-3. Add route constants to `Dekanat/routes.py`.
-4. Create `Dekanat/dao/<entity>.py` with a DAO class (static methods, session-injected).
-5. Create `Dekanat/services/<entity>.py` wrapping DAO calls in `with rx.session()`.
-6. Create `Dekanat/states/<entity>.py` with State classes (`List*State`, `Add*State`, `Edit*State`, `View*State`) all inheriting `AppState`.
-7. Create `Dekanat/views/<entity>.py` with page component functions decorated with `@require_login`.
-8. Register pages in `Dekanat/Dekanat.py`.
-9. Run `python update.py` to sync new Actions to the database.
+1. Модель в `Dekanat/models.py` (`@rx.ModelRegistry.register`).
+2. Константы прав в `Dekanat/actions.py` (`<E>_LIST/ADD/EDIT/DELETE/VIEW`) — значение в формате `entity:operation`.
+3. Маршруты в `Dekanat/routes.py`.
+4. DAO в `Dekanat/dao/<entity>.py`.
+5. Service в `Dekanat/services/<entity>.py`.
+6. State'ы в `Dekanat/states/<entity>.py` (4 класса, наследуют `AppState`).
+7. View в `Dekanat/views/<entity>.py` (4 страницы, декорированы `@require_login`).
+8. Регистрация страниц в `Dekanat/Dekanat.py` (`app.add_page` + `on_load=...State.on_load`, для edit/view добавляется `+"[id]"`).
+9. Если сущность нужна в сайдбаре — добавить пункт в `Dekanat/declared/submenu.py` (`MAIN` — единственный реально используемый список).
+10. **`uv run python update.py`** — синхронизировать новые `Actions` в БД.
 
-### Navigation / layout
+## Локализация UI
 
-- `declared/submenu.py` defines sidebar menus as lists of `(label, icon_name, route)` tuples (`MAIN`, `BASE`, `ADMIN`, `CONTINGENT`).
-- `views/tamplates/layouts.py` provides `base_layout(page_header, page_content, global_title, sidebar_menu)` — used by every protected page. `header_subpage(title, *action_buttons)` creates the in-page header with a gradient underline.
-- Soft-delete pattern: all deletable models have `is_deleted: bool = False`. Services set `is_deleted = True` and call `edit_one` rather than deleting rows.
+**Весь пользовательский текст — украинский.** Это касается:
+- заголовков страниц и кнопок,
+- toast-сообщений (`rx.toast.error("Під час виконання запиту трапилась помилка...")`),
+- значений `title_attr`/`description_attr` в `Actions`,
+- лейблов в `submenu.py`.
+
+Технические/диагностические сообщения (`print`-логи ошибок) — на английском.
+
+## Стилистика UI
+
+### Цвета и градиенты
+- Акцент темы — `brown` (см. `Dekanat/Dekanat.py`, `rx.theme`).
+- Фирменный градиент акцента используется в шапке, сайдбаре, primary-кнопках и подчёркивании заголовков:
+  ```python
+  f"linear-gradient(135deg, {rx.color('accent', 11)} 20%, {rx.color('accent', 9)} 65%)"
+  ```
+- Тень панелей: `inset 0 0 0 0.1rem rgba(255,255,255,0.4), 0.2rem 0.2rem 0.4rem 0 rgba(0,0,0,0.25)`.
+
+### Каркас страницы
+- **Persistent layout** (шапка + сайдбар) подключается через `app.extra_app_wraps` в `Dekanat/Dekanat.py` — `app_shell_wrap` и `content_area_wrap`. Они **не пересоздаются при навигации**.
+- Тело страницы оборачивается в `page_wrapper(page_header, page_content)` из `Dekanat/views/templates/layouts.py`.
+- Заголовок подстраницы — `header_subpage("Назва", *action_buttons)`. Это `hstack` с градиентным текстом и градиентным подчёркиванием снизу.
+
+### Кнопки (`Dekanat/views/templates/controls.py`)
+- `controls.button_primary(...)` — заполненная градиентом, белый текст.
+- `controls.button_secondary(...)` — `variant="outline"`.
+- `controls.button_image_primary(name_icon=..., on_click=...)` — иконочная primary 2×2rem.
+- `controls.button_image_secondary(name_icon=..., on_click=...)` — иконочная secondary.
+
+### Стандартные иконки действий
+- Добавить: `plus`
+- Сохранить: `save`
+- Отмена: `circle_x`
+- Редактировать: `pencil_line`
+- Удалить: `trash_2`
+
+### Skeleton при загрузке
+Для list/view/edit-страниц контент оборачивается в `rx.skeleton(..., loading=SomeState.in_progress, height="100%")` — у state'а должен быть флаг `in_progress`/`in_process` (текущие имена варьируются).
+
+## Логирование ошибок
+
+В сервисах и `AppState` принят паттерн:
+
+```python
+try:
+    ...
+except Exception as e:
+    print(f"[<ClassName>][<method>][ERROR] {e}")
+    raise   # в сервисах
+    # или return False / fallback — в зависимости от контекста
+```
+
+Тег `[Class][method][ERROR]` помогает грепать логи.
+
+## Прочее
+
+- Все `Optional[List[...]]` отношения в `models.py` намеренно — Reflex/SQLModel требует именно так для lazy-loading.
+- Сессия БД открывается только в сервисах через `with rx.session():`. В DAO `Session` передаётся аргументом — DAO **не управляет** транзакцией.
+- В `submenu.py` структура сайдбара декларативная: `MenuItem(label, icon, url, children=[...], required_action=Actions.X)`. Группа автоматически скрывается, если ни одно её дитя не доступно пользователю (см. `_menu_visibility` в `layouts.py`).

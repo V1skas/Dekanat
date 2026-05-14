@@ -5,8 +5,8 @@ from Dekanat.actions import Actions
 from Dekanat.states.identity_document_type import AddIdentityDocumentTypeState, EditIdentityDocumentTypeState, ViewIdentityDocumentTypeState, ListIdentityDocumentTypeState
 from Dekanat.models import IdentityDocumentTypeModel
 
-from Dekanat.views.tamplates.layouts import page_wrapper, header_subpage
-from Dekanat.views.tamplates import controlls
+from Dekanat.views.templates.layouts import page_wrapper, header_subpage
+from Dekanat.views.templates import controls
 from Dekanat.views.auth import require_login
 
 
@@ -83,7 +83,7 @@ def list_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Список",
-            rx.cond(ListIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_ADD), controlls.button_image_primery(name_icon="plus", on_click=ListIdentityDocumentTypeState.on_click_add)),
+            rx.cond(ListIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_ADD), controls.button_image_primary(name_icon="plus", on_click=ListIdentityDocumentTypeState.on_click_add)),
             width="100%"
         ),
         rx.skeleton(list_page_content(), loading=ListIdentityDocumentTypeState.process_items, height="100%")
@@ -94,8 +94,8 @@ def view_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Перегляд",
-            rx.cond(ViewIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_DELETE), controlls.button_image_secondary(name_icon="trash_2", on_click=ViewIdentityDocumentTypeState.on_click_delete)),
-            rx.cond(ViewIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_EDIT), controlls.button_image_primery(name_icon="pencil_line", on_click=ViewIdentityDocumentTypeState.on_click_edit)),
+            rx.cond(ViewIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_DELETE), controls.button_image_secondary(name_icon="trash_2", on_click=ViewIdentityDocumentTypeState.on_click_delete)),
+            rx.cond(ViewIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_EDIT), controls.button_image_primary(name_icon="pencil_line", on_click=ViewIdentityDocumentTypeState.on_click_edit)),
             width="100%"
         ),
         rx.skeleton(view_page_content(), loading=ViewIdentityDocumentTypeState.in_process, height="100%")
@@ -106,8 +106,8 @@ def add_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Додавання",
-            controlls.button_image_secondary(name_icon="circle_x", on_click=AddIdentityDocumentTypeState.on_cancel),
-            controlls.button_image_primery(name_icon="save", on_click=AddIdentityDocumentTypeState.on_save),
+            controls.button_image_secondary(name_icon="circle_x", on_click=AddIdentityDocumentTypeState.on_cancel),
+            controls.button_image_primary(name_icon="save", on_click=AddIdentityDocumentTypeState.on_save),
             width="100%"
         ),
         add_page_content()
@@ -118,8 +118,8 @@ def edit_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Редагування",
-            controlls.button_image_secondary(name_icon="circle_x", on_click=EditIdentityDocumentTypeState.on_cancel),
-            controlls.button_image_primery(name_icon="save", on_click=EditIdentityDocumentTypeState.on_save),
+            controls.button_image_secondary(name_icon="circle_x", on_click=EditIdentityDocumentTypeState.on_cancel),
+            controls.button_image_primary(name_icon="save", on_click=EditIdentityDocumentTypeState.on_save),
             width="100%"
         ),
         rx.skeleton(edit_page_content(), loading=EditIdentityDocumentTypeState.in_process, height="100%")

@@ -3,8 +3,8 @@ import reflex as rx
 from Dekanat import routes
 
 from Dekanat.views.auth import require_login, index as login_page
-from Dekanat.views.tamplates.layouts import page_wrapper, header_subpage
-from Dekanat.views.tamplates.app_shell import app_shell_wrap, content_area_wrap
+from Dekanat.views.templates.layouts import page_wrapper, header_subpage
+from Dekanat.views.templates.app_shell import app_shell_wrap, content_area_wrap
 from Dekanat.views import dashboard
 from Dekanat.views import identity_document_type
 from Dekanat.views import kinship
@@ -41,7 +41,7 @@ app.add_page(identity_document_type.view_page, route=routes.IDENTITY_DOCUMENT_TY
 app.add_page(kinship.list_page, route=routes.KINSHIP_LIST, on_load=kinship_states.ListKinshipState.on_load)
 app.add_page(kinship.add_page, route=routes.KINSHIP_ADD, on_load=kinship_states.AddKinshipState.on_load)
 app.add_page(kinship.edit_page, route=routes.KINSHIP_EDIT+"[id]", on_load=kinship_states.EditKinshipState.on_load)
-app.add_page(kinship.view_page, route=routes.KINSHIP_VIEW+"[id]", on_load=kinship_states.ViewKinshipSate.on_load)
+app.add_page(kinship.view_page, route=routes.KINSHIP_VIEW+"[id]", on_load=kinship_states.ViewKinshipState.on_load)
 
 app.add_page(role.list_page, route=routes.ROLES_LIST, on_load=role_states.ListRoleState.on_load)
 app.add_page(role.add_page, route=routes.ROLES_ADD, on_load=role_states.AddRoleState.on_load)

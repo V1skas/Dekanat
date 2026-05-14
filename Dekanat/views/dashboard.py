@@ -1,6 +1,6 @@
 import reflex as rx
 
-from Dekanat.views.tamplates.layouts import page_wrapper
+from Dekanat.views.templates.layouts import page_wrapper
 from Dekanat.views.auth import require_login
 
 def dashboard_page_content():

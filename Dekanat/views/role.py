@@ -5,8 +5,8 @@ from Dekanat.actions import Actions
 from Dekanat.states.role import ListRoleState, AddRoleState, EditRoleState, ViewRoleState
 from Dekanat.models import RoleModel, ActionModel
 
-from Dekanat.views.tamplates.layouts import page_wrapper, header_subpage
-from Dekanat.views.tamplates import controlls
+from Dekanat.views.templates.layouts import page_wrapper, header_subpage
+from Dekanat.views.templates import controls
 from Dekanat.views.auth import require_login
 
 
@@ -184,7 +184,7 @@ def list_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Список",
-            rx.cond(ListRoleState.get_user_actions.contains(Actions.ROLE_ADD), controlls.button_image_primery(name_icon="plus", on_click=ListRoleState.on_click_add)),
+            rx.cond(ListRoleState.get_user_actions.contains(Actions.ROLE_ADD), controls.button_image_primary(name_icon="plus", on_click=ListRoleState.on_click_add)),
             width="100%"
         ),
         rx.skeleton(list_page_content(), loading=ListRoleState.in_progress, height="100%")
@@ -195,8 +195,8 @@ def view_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Перегляд",
-            rx.cond(ViewRoleState.get_user_actions.contains(Actions.ROLE_DELETE), controlls.button_image_secondary(name_icon="trash_2", on_click=ViewRoleState.on_click_delete)),
-            rx.cond(ViewRoleState.get_user_actions.contains(Actions.ROLE_EDIT), controlls.button_image_primery(name_icon="pencil_line", on_click=ViewRoleState.on_click_edit)),
+            rx.cond(ViewRoleState.get_user_actions.contains(Actions.ROLE_DELETE), controls.button_image_secondary(name_icon="trash_2", on_click=ViewRoleState.on_click_delete)),
+            rx.cond(ViewRoleState.get_user_actions.contains(Actions.ROLE_EDIT), controls.button_image_primary(name_icon="pencil_line", on_click=ViewRoleState.on_click_edit)),
             width="100%"
         ),
         rx.skeleton(view_page_content(), loading=ViewRoleState.in_process, height="100%")
@@ -207,8 +207,8 @@ def add_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Додавання",
-            controlls.button_image_secondary(name_icon="circle_x", on_click=AddRoleState.on_cancel),
-            controlls.button_image_primery(name_icon="save", on_click=AddRoleState.on_save),
+            controls.button_image_secondary(name_icon="circle_x", on_click=AddRoleState.on_cancel),
+            controls.button_image_primary(name_icon="save", on_click=AddRoleState.on_save),
             width="100%"
         ),
         rx.skeleton(add_page_content(), loading=AddRoleState.in_process, height="100%")
@@ -219,8 +219,8 @@ def edit_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Редагування",
-            controlls.button_image_secondary(name_icon="circle_x", on_click=EditRoleState.on_cancel),
-            controlls.button_image_primery(name_icon="save", on_click=EditRoleState.on_save),
+            controls.button_image_secondary(name_icon="circle_x", on_click=EditRoleState.on_cancel),
+            controls.button_image_primary(name_icon="save", on_click=EditRoleState.on_save),
             width="100%"
         ),
         rx.skeleton(edit_page_content(), loading=EditRoleState.in_process, height="100%")

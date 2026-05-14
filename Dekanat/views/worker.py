@@ -5,8 +5,8 @@ from Dekanat.actions import Actions
 from Dekanat.states.worker import ListWorkerState, AddWorkerState, EditWorkerState, ViewWorkerState
 from Dekanat.models import WorkerModel, RoleModel, ActionModel
 
-from Dekanat.views.tamplates.layouts import page_wrapper, header_subpage
-from Dekanat.views.tamplates import controlls
+from Dekanat.views.templates.layouts import page_wrapper, header_subpage
+from Dekanat.views.templates import controls
 from Dekanat.views.auth import require_login
 
 
@@ -288,7 +288,7 @@ def list_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Список",
-            rx.cond(ListWorkerState.get_user_actions.contains(Actions.WORKER_ADD), controlls.button_image_primery(name_icon="plus", on_click=ListWorkerState.on_click_add)),
+            rx.cond(ListWorkerState.get_user_actions.contains(Actions.WORKER_ADD), controls.button_image_primary(name_icon="plus", on_click=ListWorkerState.on_click_add)),
             width="100%"
         ),
         rx.skeleton(list_page_content(), loading=ListWorkerState.in_progress, height="100%")
@@ -299,8 +299,8 @@ def view_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Перегляд",
-            rx.cond(ViewWorkerState.get_user_actions.contains(Actions.WORKER_DELETE), controlls.button_image_secondary(name_icon="trash_2", on_click=ViewWorkerState.on_click_delete)),
-            rx.cond(ViewWorkerState.get_user_actions.contains(Actions.WORKER_EDIT), controlls.button_image_primery(name_icon="pencil_line", on_click=ViewWorkerState.on_click_edit)),
+            rx.cond(ViewWorkerState.get_user_actions.contains(Actions.WORKER_DELETE), controls.button_image_secondary(name_icon="trash_2", on_click=ViewWorkerState.on_click_delete)),
+            rx.cond(ViewWorkerState.get_user_actions.contains(Actions.WORKER_EDIT), controls.button_image_primary(name_icon="pencil_line", on_click=ViewWorkerState.on_click_edit)),
             width="100%"
         ),
         rx.skeleton(view_page_content(), loading=ViewWorkerState.in_process, height="100%")
@@ -311,8 +311,8 @@ def add_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Додавання",
-            controlls.button_image_secondary(name_icon="circle_x", on_click=AddWorkerState.on_cancel),
-            controlls.button_image_primery(name_icon="save", on_click=AddWorkerState.on_save),
+            controls.button_image_secondary(name_icon="circle_x", on_click=AddWorkerState.on_cancel),
+            controls.button_image_primary(name_icon="save", on_click=AddWorkerState.on_save),
             width="100%"
         ),
         rx.skeleton(add_page_content(), loading=AddWorkerState.in_process, height="100%")
@@ -323,8 +323,8 @@ def edit_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Редагування",
-            controlls.button_image_secondary(name_icon="circle_x", on_click=EditWorkerState.on_cancel),
-            controlls.button_image_primery(name_icon="save", on_click=EditWorkerState.on_save),
+            controls.button_image_secondary(name_icon="circle_x", on_click=EditWorkerState.on_cancel),
+            controls.button_image_primary(name_icon="save", on_click=EditWorkerState.on_save),
             width="100%"
         ),
         rx.skeleton(edit_page_content(), loading=EditWorkerState.in_process, height="100%")

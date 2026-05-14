@@ -2,7 +2,7 @@ import reflex as rx
 
 from typing import Optional, List, Sequence
 
-from Dekanat.dao.identiy_document_type import IdentityDocumentTypeDao
+from Dekanat.dao.identity_document_type import IdentityDocumentTypeDao
 from Dekanat.models import IdentityDocumentTypeModel
 
 class IdentityDocumentTypeService:

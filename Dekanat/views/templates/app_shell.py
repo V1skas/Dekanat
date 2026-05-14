@@ -2,7 +2,7 @@ import reflex as rx
 
 from Dekanat.states.app import AppState
 from Dekanat.declared.submenu import MAIN
-from Dekanat.views.tamplates.layouts import header, sidebar
+from Dekanat.views.templates.layouts import header, sidebar
 
 
 def app_shell_wrap(_stateful: bool) -> rx.Component:

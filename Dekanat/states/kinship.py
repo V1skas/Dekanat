@@ -146,7 +146,7 @@ class EditKinshipState(AppState):
         return rx.redirect(routes.KINSHIP_VIEW+str(self.item.id))
 
 
-class ViewKinshipSate(AppState):
+class ViewKinshipState(AppState):
     item: KinshipModel = KinshipModel()
     in_process = True
 
