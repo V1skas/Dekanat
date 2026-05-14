@@ -13,8 +13,14 @@ class AuthState(AppState):
 
     @rx.event
     def on_load(self):
-        if self.is_auth:
-            return rx.redirect(routes.DASHBOARD)
+        if self.token:
+            existing = self._auth_service.get_auth_token(self.token)
+            if existing is not None:
+                return rx.redirect(routes.DASHBOARD)
+            yield rx.remove_cookie("auth_token")
+
+        self.auth_token = None
+        self.actions_worker = []
         self.worker = WorkerModel(login=None, password=None)
 
     @rx.var

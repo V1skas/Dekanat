@@ -57,7 +57,7 @@ class AddKinshipState(AppState):
 
     @rx.var
     def title(self) -> str:
-        return self.item.title
+        return self.item.title if self.item is not None and self.item.title is not None else ""
 
     @rx.event
     def set_title(self, value: str):
@@ -117,7 +117,7 @@ class EditKinshipState(AppState):
 
     @rx.var
     def title(self) -> str:
-        return self.item.title
+        return self.item.title if self.item is not None and self.item.title is not None else ""
 
     @rx.event
     def set_title(self, value: str):
@@ -195,4 +195,4 @@ class ViewKinshipState(AppState):
 
     @rx.var
     def title(self) -> str:
-        return self.item.title
+        return self.item.title if self.item is not None and self.item.title is not None else ""

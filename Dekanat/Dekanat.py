@@ -9,12 +9,14 @@ from Dekanat.views import dashboard
 from Dekanat.views import identity_document_type
 from Dekanat.views import kinship
 from Dekanat.views import role
+from Dekanat.views import special_condition
 from Dekanat.views import worker
 
 from Dekanat.states.auth import AuthState
 from Dekanat.states import identity_document_type as identity_document_type_states
 from Dekanat.states import kinship as kinship_states
 from Dekanat.states import role as role_states
+from Dekanat.states import special_condition as special_condition_states
 from Dekanat.states import worker as worker_states
 
 app = rx.App(
@@ -42,6 +44,11 @@ app.add_page(kinship.list_page, route=routes.KINSHIP_LIST, on_load=kinship_state
 app.add_page(kinship.add_page, route=routes.KINSHIP_ADD, on_load=kinship_states.AddKinshipState.on_load)
 app.add_page(kinship.edit_page, route=routes.KINSHIP_EDIT+"[id]", on_load=kinship_states.EditKinshipState.on_load)
 app.add_page(kinship.view_page, route=routes.KINSHIP_VIEW+"[id]", on_load=kinship_states.ViewKinshipState.on_load)
+
+app.add_page(special_condition.list_page, route=routes.SPECIAL_CONDITION_LIST, on_load=special_condition_states.ListSpecialConditionState.on_load)
+app.add_page(special_condition.add_page, route=routes.SPECIAL_CONDITION_ADD, on_load=special_condition_states.AddSpecialConditionState.on_load)
+app.add_page(special_condition.edit_page, route=routes.SPECIAL_CONDITION_EDIT+"[code]", on_load=special_condition_states.EditSpecialConditionState.on_load)
+app.add_page(special_condition.view_page, route=routes.SPECIAL_CONDITION_VIEW+"[code]", on_load=special_condition_states.ViewSpecialConditionState.on_load)
 
 app.add_page(role.list_page, route=routes.ROLES_LIST, on_load=role_states.ListRoleState.on_load)
 app.add_page(role.add_page, route=routes.ROLES_ADD, on_load=role_states.AddRoleState.on_load)

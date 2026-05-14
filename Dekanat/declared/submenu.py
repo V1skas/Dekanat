@@ -18,6 +18,7 @@ MAIN: List[MenuItem] = [
     MenuItem("База знань", "book-marked", children=[
         MenuItem("Типи паспортів", "id-card", routes.IDENTITY_DOCUMENT_TYPE_LIST, required_action=Actions.IDENTITY_DOCUMENT_TYPE_LIST),
         MenuItem("Типи родичів", "users-round", routes.KINSHIP_LIST, required_action=Actions.KINSHIP_LIST),
+        MenuItem("Спеціальні умови", "shield-check", routes.SPECIAL_CONDITION_LIST, required_action=Actions.SPECIAL_CONDITION_LIST),
     ]),
     MenuItem("Контингент", "graduation-cap", children=[
         MenuItem("Абітурієнти", "user-plus", routes.APPLICANTS),
