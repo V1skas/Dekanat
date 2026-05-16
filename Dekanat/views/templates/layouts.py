@@ -112,9 +112,20 @@ def sidebar_item(item: MenuItem, indent: bool = False) -> rx.Component:
             rx.icon(item.icon, size=24, color="white", flex_shrink="0"),
             rx.cond(
                 AppState.sidebar_open,
-                rx.text(item.label, size="3", weight="medium", color="white", white_space="nowrap"),
+                rx.text(
+                    item.label,
+                    size="3",
+                    weight="medium",
+                    color="white",
+                    flex="1",
+                    min_width="0",
+                    style={"overflow_wrap": "anywhere", "word_break": "break-word"},
+                ),
             ),
             width="100%",
+            # Фіксована внутрішня ширина дорівнює ширині розгорнутої панелі — щоб під час
+            # анімації grid-треку текст усередині не перекомпоновувався (відкривається з-під overflow:hidden).
+            min_width="14rem",
             padding_y="0.7rem",
             padding_x="0.75rem",
             padding_left=("2rem" if indent else "0.75rem"),
@@ -146,7 +157,15 @@ def sidebar_group(item: MenuItem) -> rx.Component:
         rx.cond(
             AppState.sidebar_open,
             rx.hstack(
-                rx.text(item.label, size="3", weight="medium", color="white", white_space="nowrap", overflow="hidden", flex="1", min_width="0"),
+                rx.text(
+                    item.label,
+                    size="3",
+                    weight="medium",
+                    color="white",
+                    flex="1",
+                    min_width="0",
+                    style={"overflow_wrap": "anywhere", "word_break": "break-word"},
+                ),
                 rx.icon(
                     "chevron-right",
                     size=18, color="white", flex_shrink="0",
@@ -156,10 +175,12 @@ def sidebar_group(item: MenuItem) -> rx.Component:
                 width="100%",
                 align="center",
                 spacing="2",
-                overflow="hidden",
             ),
         ),
         width="100%",
+        # Фіксована внутрішня ширина дорівнює ширині розгорнутої панелі — щоб під час
+        # анімації grid-треку текст усередині не перекомпоновувався.
+        min_width="14rem",
         padding_y="0.7rem",
         padding_x="0.75rem",
         align="center",

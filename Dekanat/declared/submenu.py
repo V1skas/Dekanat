@@ -25,10 +25,12 @@ MAIN: List[MenuItem] = [
         MenuItem("Спеціальності", "graduation-cap", routes.SPECIALITY_LIST, required_action=Actions.SPECIALITY_LIST),
         MenuItem("Статуси заявок", "clipboard-list", routes.APPLICATION_STATUS_LIST, required_action=Actions.APPLICATION_STATUS_LIST),
         MenuItem("Предмети ЗНО", "book-open", routes.ITEM_ZNO_LIST, required_action=Actions.ITEM_ZNO_LIST),
-        MenuItem("Групи ЗНО", "users", routes.ENTRANTS_GROUP_LIST, required_action=Actions.ENTRANTS_GROUP_LIST),
     ]),
     MenuItem("Контингент", "graduation-cap", children=[
         MenuItem("Абітурієнти", "user-plus", routes.ENTRANT_LIST, required_action=Actions.ENTRANT_LIST),
+    ]),
+    MenuItem("Приймальна комісія", "clipboard-pen", children=[
+        MenuItem("Екзаменаційні групи", "users", routes.ENTRANTS_GROUP_LIST, required_action=Actions.ENTRANTS_GROUP_LIST),
     ]),
     MenuItem("Адміністрування", "shield-user", children=[
         MenuItem("Користувачі", "users", routes.WORKERS_LIST, required_action=Actions.WORKER_LIST),

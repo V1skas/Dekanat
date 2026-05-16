@@ -1,14 +1,16 @@
 import reflex as rx
 
-from typing import Sequence, Optional
+from typing import Sequence, Optional, List, Dict
 
 from Dekanat.actions import Actions
 from Dekanat import routes
 from Dekanat.states.app import AppState
 
-from Dekanat.models import EntrantGroupModel
+from Dekanat.models import EntrantGroupModel, EntrantModel, EntrantExamModel
 from Dekanat.services.entrants_group import EntrantsGroupService
 
+
+# ---------- List page ----------
 
 class ListEntrantsGroupState(AppState):
     items: Optional[Sequence[EntrantGroupModel]] = None
@@ -36,12 +38,52 @@ class ListEntrantsGroupState(AppState):
         return rx.redirect(routes.ENTRANTS_GROUP_ADD)
 
 
+# ---------- Form state helpers ----------
+
+def _entrant_to_row(e: EntrantModel) -> Dict[str, str]:
+    return {
+        "value": str(e.id),
+        "label": e.person.pib if e.person is not None else f"Абітурієнт #{e.id}",
+        "subtitle": e.person.phone_number if (e.person is not None and e.person.phone_number) else "",
+    }
+
+
+def _filter_assignable(entrants: List[EntrantModel], chosen_ids: set, query: str) -> List[Dict[str, str]]:
+    """Кандидати на додавання: доступні мінус уже обрані, з пошуком за ПІБ/телефоном."""
+    avail = [e for e in entrants if e.id not in chosen_ids]
+    q = (query or "").lower().strip()
+    if q:
+        def _hit(e: EntrantModel) -> bool:
+            if e.person is None:
+                return False
+            pib = (e.person.pib or "").lower()
+            phone = (e.person.phone_number or "").lower()
+            return q in pib or q in phone
+        avail = [e for e in avail if _hit(e)]
+    return [_entrant_to_row(e) for e in avail]
+
+
+# ---------- Add page ----------
+
 class AddEntrantsGroupState(AppState):
     item: EntrantGroupModel = EntrantGroupModel()
     in_process: bool = False
 
+    # Список абітурієнтів, які належатимуть до групи (поки що тільки в пам'яті форми).
+    entrants_in_group: List[EntrantModel] = []
+    # Усі абітурієнти, доступні для додавання (вільні від інших груп).
+    assignable_entrants: List[EntrantModel] = []
+
+    add_entrant_dialog_open: bool = False
+    add_entrant_dialog_search: str = ""
+
     def _reload_item(self):
         self.item = EntrantGroupModel()
+        self.entrants_in_group = []
+        self.add_entrant_dialog_open = False
+        self.add_entrant_dialog_search = ""
+        service = EntrantsGroupService()
+        self.assignable_entrants = list(service.get_assignable_entrants(None))
 
     @rx.event
     def on_load(self):
@@ -51,8 +93,11 @@ class AddEntrantsGroupState(AppState):
             return
 
         self.in_process = True
-        self._reload_item()
-        self.in_process = False
+        try:
+            self._reload_item()
+            self.in_process = False
+        except Exception:
+            yield rx.toast.error("Під час завантаження даних виникла помилка. Спробуйте ще раз.")
         return
 
     @rx.var
@@ -62,6 +107,50 @@ class AddEntrantsGroupState(AppState):
     @rx.event
     def set_title(self, value: str):
         self.item.title = value
+
+    # --- entrants management ---
+
+    @rx.var
+    def available_to_add_rows(self) -> List[Dict[str, str]]:
+        return _filter_assignable(
+            self.assignable_entrants,
+            {e.id for e in self.entrants_in_group},
+            self.add_entrant_dialog_search,
+        )
+
+    @rx.event
+    def set_add_entrant_dialog_search(self, value: str):
+        self.add_entrant_dialog_search = value
+
+    @rx.event
+    def open_add_entrant_dialog(self):
+        self.add_entrant_dialog_search = ""
+        self.add_entrant_dialog_open = True
+
+    @rx.event
+    def close_add_entrant_dialog(self):
+        self.add_entrant_dialog_open = False
+        self.add_entrant_dialog_search = ""
+
+    @rx.event
+    def pick_entrant_to_add(self, entrant_id_str: str):
+        try:
+            eid = int(entrant_id_str)
+        except (ValueError, TypeError):
+            return
+        match = next((e for e in self.assignable_entrants if e.id == eid), None)
+        if match is None:
+            return
+        if any(e.id == match.id for e in self.entrants_in_group):
+            return
+        self.entrants_in_group.append(match)
+        self.add_entrant_dialog_open = False
+        self.add_entrant_dialog_search = ""
+
+    @rx.event
+    def remove_entrant_from_group(self, index: int):
+        if 0 <= index < len(self.entrants_in_group):
+            del self.entrants_in_group[index]
 
     @rx.event
     def on_save(self):
@@ -75,7 +164,8 @@ class AddEntrantsGroupState(AppState):
 
         service = EntrantsGroupService()
         try:
-            self.item = service.add_one(self.item)
+            entrant_ids = [e.id for e in self.entrants_in_group]
+            self.item = service.add_one(self.item, entrant_ids=entrant_ids)
             yield rx.toast.success("Запис додано!")
             yield rx.redirect(routes.ENTRANTS_GROUP_VIEW + str(self.item.id))
         except Exception:
@@ -86,15 +176,28 @@ class AddEntrantsGroupState(AppState):
         return rx.redirect(routes.ENTRANTS_GROUP_LIST)
 
 
+# ---------- Edit page ----------
+
 class EditEntrantsGroupState(AppState):
     item: EntrantGroupModel = EntrantGroupModel()
     in_process: bool = True
 
+    entrants_in_group: List[EntrantModel] = []
+    assignable_entrants: List[EntrantModel] = []
+
+    add_entrant_dialog_open: bool = False
+    add_entrant_dialog_search: str = ""
+
     def _reload_item(self):
         service = EntrantsGroupService()
-        loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        group_id = int(self.router.page.params.get("id", -1))
+        loaded = service.get_by_id(group_id)
         if loaded is not None:
             self.item = loaded
+            self.entrants_in_group = list(service.get_entrants(loaded.id))
+            self.assignable_entrants = list(service.get_assignable_entrants(loaded.id))
+        self.add_entrant_dialog_open = False
+        self.add_entrant_dialog_search = ""
 
     @rx.event
     def on_load(self):
@@ -123,6 +226,48 @@ class EditEntrantsGroupState(AppState):
     def set_title(self, value: str):
         self.item.title = value
 
+    @rx.var
+    def available_to_add_rows(self) -> List[Dict[str, str]]:
+        return _filter_assignable(
+            self.assignable_entrants,
+            {e.id for e in self.entrants_in_group},
+            self.add_entrant_dialog_search,
+        )
+
+    @rx.event
+    def set_add_entrant_dialog_search(self, value: str):
+        self.add_entrant_dialog_search = value
+
+    @rx.event
+    def open_add_entrant_dialog(self):
+        self.add_entrant_dialog_search = ""
+        self.add_entrant_dialog_open = True
+
+    @rx.event
+    def close_add_entrant_dialog(self):
+        self.add_entrant_dialog_open = False
+        self.add_entrant_dialog_search = ""
+
+    @rx.event
+    def pick_entrant_to_add(self, entrant_id_str: str):
+        try:
+            eid = int(entrant_id_str)
+        except (ValueError, TypeError):
+            return
+        match = next((e for e in self.assignable_entrants if e.id == eid), None)
+        if match is None:
+            return
+        if any(e.id == match.id for e in self.entrants_in_group):
+            return
+        self.entrants_in_group.append(match)
+        self.add_entrant_dialog_open = False
+        self.add_entrant_dialog_search = ""
+
+    @rx.event
+    def remove_entrant_from_group(self, index: int):
+        if 0 <= index < len(self.entrants_in_group):
+            del self.entrants_in_group[index]
+
     @rx.event
     def on_save(self):
         if not self.has_permission(Actions.ENTRANTS_GROUP_EDIT):
@@ -135,7 +280,8 @@ class EditEntrantsGroupState(AppState):
 
         service = EntrantsGroupService()
         try:
-            self.item = service.edit_one(self.item)
+            entrant_ids = [e.id for e in self.entrants_in_group]
+            self.item = service.edit_one(self.item, entrant_ids=entrant_ids)
             yield rx.toast.success("Запис змінено!")
             yield rx.redirect(routes.ENTRANTS_GROUP_VIEW + str(self.item.id))
         except Exception:
@@ -146,15 +292,33 @@ class EditEntrantsGroupState(AppState):
         return rx.redirect(routes.ENTRANTS_GROUP_VIEW + str(self.item.id))
 
 
+# ---------- View page ----------
+
 class ViewEntrantsGroupState(AppState):
     item: EntrantGroupModel = EntrantGroupModel()
     in_process: bool = True
 
+    entrants_in_group: List[EntrantModel] = []
+    exams: List[EntrantExamModel] = []
+    # Передзібрані рядки для таблиці іспитів: дата відформатована на сервері,
+    # бо у Var[datetime] немає зручного локалізованого форматування на фронті.
+    exams_display: List[Dict[str, str]] = []
+
     def _reload_item(self):
         service = EntrantsGroupService()
-        loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        group_id = int(self.router.page.params.get("id", -1))
+        loaded = service.get_by_id(group_id)
         if loaded is not None:
             self.item = loaded
+            self.entrants_in_group = list(service.get_entrants(loaded.id))
+            self.exams = list(service.get_exams(loaded.id))
+            self.exams_display = [
+                {
+                    "subject": (e.item_zno.title if e.item_zno is not None else "—"),
+                    "date_time": e.date_time.strftime("%Y-%m-%d %H:%M") if e.date_time is not None else "—",
+                }
+                for e in self.exams
+            ]
 
     @rx.event
     def on_load(self):
