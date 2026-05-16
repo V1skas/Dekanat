@@ -1,0 +1,1157 @@
+import reflex as rx
+
+from typing import Sequence, Optional, List, Dict
+from datetime import date
+
+from Dekanat.actions import Actions
+from Dekanat import routes
+from Dekanat.states.app import AppState
+
+from Dekanat.models import (
+    EntrantModel,
+    PersonModel,
+    SpecialtieEntrantModel,
+    IdentityDocumentModel,
+    DocumentAboutEducationModel,
+    MilitaryAccountingModel,
+    MedicalReferenceModel,
+    InformationAboutRelativesModel,
+    SpecialConditionPersonModel,
+    ResultZnoModel,
+)
+from Dekanat.services.entrant import EntrantService, photo_to_data_url
+from Dekanat.services.source_of_funding import SourceOfFundingService
+from Dekanat.services.entry_base import EntryBaseService
+from Dekanat.services.application_status import ApplicationStatusService
+from Dekanat.services.entrants_group import EntrantsGroupService
+from Dekanat.services.speciality import SpecialityService
+from Dekanat.services.identity_document_type import IdentityDocumentTypeService
+from Dekanat.services.kinship import KinshipService
+from Dekanat.services.special_condition import SpecialConditionService
+from Dekanat.services.item_zno import ItemZnoService
+
+
+# ---------- List page ----------
+
+class ListEntrantState(AppState):
+    items: Optional[Sequence[EntrantModel]] = None
+    in_progress: bool = True
+
+    @rx.event
+    def on_load(self):
+        if not self.has_permission(Actions.ENTRANT_LIST):
+            yield rx.toast.error("У Вас немає дозволу на перегляд цієї сторінки!")
+            yield rx.redirect(routes.DASHBOARD)
+            return
+
+        try:
+            self.in_progress = True
+            service = EntrantService()
+            self.items = service.get_list_items()
+            self.in_progress = False
+            return
+        except Exception:
+            yield rx.toast.error("Під час виконання запиту сталася помилка :( Спробуйте знову.")
+            return
+
+    @rx.event
+    def on_click_add(self):
+        return rx.redirect(routes.ENTRANT_ADD)
+
+
+# ---------- View page ----------
+
+class ViewEntrantState(AppState):
+    item: Optional[EntrantModel] = None
+    in_process: bool = True
+
+    @rx.event
+    def on_load(self):
+        if not self.has_permission(Actions.ENTRANT_VIEW):
+            yield rx.toast.error("У Вас немає доступу до цієї сторінки!")
+            yield rx.redirect(routes.DASHBOARD)
+            return
+
+        self.in_process = True
+        try:
+            service = EntrantService()
+            self.item = service.get_by_id(int(self.router.page.params.get("id", -1)))
+            if self.item is None:
+                yield rx.toast.warning("Запис не знайдено!")
+                yield rx.redirect(routes.ENTRANT_LIST)
+                return
+            self.in_process = False
+        except Exception:
+            yield rx.toast.error("Під час завантаження даних виникла помилка. Спробуйте ще раз.")
+        return
+
+    @rx.event
+    def on_click_edit(self):
+        if not self.has_permission(Actions.ENTRANT_EDIT):
+            return rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
+        if self.item is None:
+            return None
+        return rx.redirect(routes.ENTRANT_EDIT + str(self.item.id))
+
+    @rx.event
+    def on_click_delete(self):
+        if not self.has_permission(Actions.ENTRANT_DELETE):
+            yield rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
+            return
+        if self.item is None:
+            return
+
+        service = EntrantService()
+        if service.delete_one(self.item):
+            yield rx.redirect(routes.ENTRANT_LIST)
+            yield rx.toast.success("Видалено!")
+        else:
+            yield rx.toast.error("Не вдалось видалити. Спробуйте ще раз.")
+
+    @rx.var
+    def photo_data_url(self) -> str:
+        if self.item is None or self.item.person is None:
+            return ""
+        return photo_to_data_url(self.item.person.photo, self.item.person.photo_mime_type)
+
+    @rx.var
+    def has_photo(self) -> bool:
+        return bool(self.photo_data_url)
+
+    @rx.var
+    def photo_download_name(self) -> str:
+        """Назва файлу для завантаження фото: ПІБ із підкресленнями + розширення з mime."""
+        if self.item is None or self.item.person is None or not self.item.person.pib:
+            return "photo"
+        name = "_".join(self.item.person.pib.strip().split())
+        mime = (self.item.person.photo_mime_type or "").lower()
+        if "png" in mime:
+            ext = "png"
+        elif "webp" in mime:
+            ext = "webp"
+        else:
+            ext = "jpg"
+        return f"{name}.{ext}"
+
+
+# ---------- Add / Edit (shared form state) ----------
+
+CITIZENSHIP_OPTIONS = ["Україна", "Інше"]
+SEX_OPTIONS = ["Чоловіча", "Жіноча"]
+
+
+class EntrantFormState(AppState):
+    """Combined form state for both /add and /edit/{id} entrant pages."""
+
+    # ---- Mode / loading ----
+    mode: str = "add"  # "add" | "edit"
+    entrant_id: int = -1
+    in_process: bool = True
+
+    # ---- Photo (kept as separate bytes/mime; persisted into PersonModel on save) ----
+    photo_bytes: Optional[bytes] = None
+    photo_mime: Optional[str] = None
+
+    # ---- Person fields (flat for easy form binding) ----
+    edbo: str = ""
+    pib: str = ""
+    citizenship: str = "Україна"
+    sex: str = ""
+    date_of_birth: str = ""
+    place_of_registration_city: str = ""
+    place_of_registration: str = ""
+    mokpp: str = ""
+    email: str = ""
+    phone_number: str = ""
+    the_need_for_a_dormitory: bool = False
+    id_source_of_funding: int = 0
+    id_entry_base: int = 0
+
+    # ---- Entrant fields ----
+    id_application_status: int = 0
+    id_entrant_group: int = 0  # 0 means "not assigned"
+    comment: str = ""
+
+    # ---- Dropdown options ----
+    source_of_funding_options: List[Dict[str, str]] = []
+    entry_base_options: List[Dict[str, str]] = []
+    application_status_options: List[Dict[str, str]] = []
+    entrant_group_options: List[Dict[str, str]] = []
+    speciality_options: List[Dict[str, str]] = []
+    identity_document_type_options: List[Dict[str, str]] = []
+    kinship_options: List[Dict[str, str]] = []
+    special_condition_options: List[Dict[str, str]] = []
+    item_zno_options: List[Dict[str, str]] = []
+
+    # ---- Child collections ----
+    identity_documents: List[IdentityDocumentModel] = []
+    documents_about_education: List[DocumentAboutEducationModel] = []
+    military_accountings: List[MilitaryAccountingModel] = []
+    medical_references: List[MedicalReferenceModel] = []
+    information_about_relatives: List[InformationAboutRelativesModel] = []
+    special_conditions_person: List[SpecialConditionPersonModel] = []
+    specialties: List[SpecialtieEntrantModel] = []
+    results_zno: List[ResultZnoModel] = []
+
+    # ---- Identity document dialog ----
+    iddoc_open: bool = False
+    iddoc_index: int = -1
+    iddoc_id_type: int = 0
+    iddoc_number: str = ""
+    iddoc_series: str = ""
+    iddoc_code: str = ""
+    iddoc_issued_by: str = ""
+    iddoc_date_of_issue: str = ""
+
+    # ---- Document about education dialog ----
+    docedu_open: bool = False
+    docedu_index: int = -1
+    docedu_title: str = ""
+    docedu_number: str = ""
+    docedu_series: str = ""
+    docedu_issued_by: str = ""
+    docedu_date_of_issue: str = ""
+
+    # ---- Military accounting dialog ----
+    mil_open: bool = False
+    mil_index: int = -1
+    mil_number: str = ""
+    mil_series: str = ""
+    mil_issued_by: str = ""
+    mil_date_of_issue: str = ""
+
+    # ---- Medical reference dialog ----
+    med_open: bool = False
+    med_index: int = -1
+    med_number: str = ""
+    med_date_of_issue: str = ""
+
+    # ---- Relatives dialog ----
+    rel_open: bool = False
+    rel_index: int = -1
+    rel_id_kinship: int = 0
+    rel_pib: str = ""
+    rel_phone_number: str = ""
+
+    # ---- Special condition dialog ----
+    scp_open: bool = False
+    scp_index: int = -1
+    scp_id_special_condition: str = ""
+    scp_title: str = ""
+    scp_number: str = ""
+    scp_description: str = ""
+    scp_date_of_issue: str = ""
+
+    # ---- Specialty (priority list) dialog ----
+    sp_open: bool = False
+    sp_index: int = -1
+    sp_combined: str = ""  # "code|id_department"
+    sp_priority: int = 1
+
+    # ---- ZNO result dialog ----
+    rz_open: bool = False
+    rz_index: int = -1
+    rz_id_items_zno: int = 0
+    rz_points: int = 0
+
+    # ============================================================
+    # On-load: shared dropdown init + branch on mode
+    # ============================================================
+
+    def _load_dropdowns(self):
+        sof = SourceOfFundingService().get_list_items()
+        self.source_of_funding_options = [{"value": str(s.id), "label": s.title} for s in sof]
+        eb = EntryBaseService().get_list_items()
+        self.entry_base_options = [{"value": str(e.id), "label": e.title} for e in eb]
+        ast = ApplicationStatusService().get_list_items()
+        self.application_status_options = [{"value": str(a.id), "label": a.title} for a in ast]
+        eg = EntrantsGroupService().get_list_items()
+        self.entrant_group_options = [{"value": str(g.id), "label": g.title} for g in eg]
+        sp = SpecialityService().get_list_items()
+        self.speciality_options = [
+            {"value": f"{s.code}|{s.id_department}", "label": f"{s.code} {s.title}"}
+            for s in sp
+        ]
+        idt = IdentityDocumentTypeService().get_list_items()
+        self.identity_document_type_options = [{"value": str(t.id), "label": t.title} for t in idt]
+        ks = KinshipService().get_list_items()
+        self.kinship_options = [{"value": str(k.id), "label": k.title} for k in ks]
+        sc = SpecialConditionService().get_list_items()
+        self.special_condition_options = [{"value": s.subcategory_code, "label": s.title} for s in sc]
+        iz = ItemZnoService().get_list_items()
+        self.item_zno_options = [{"value": str(i.id), "label": i.title} for i in iz]
+
+    def _reset_form(self):
+        self.entrant_id = -1
+        self.photo_bytes = None
+        self.photo_mime = None
+        self.edbo = ""
+        self.pib = ""
+        self.citizenship = "Україна"
+        self.sex = ""
+        self.date_of_birth = ""
+        self.place_of_registration_city = ""
+        self.place_of_registration = ""
+        self.mokpp = ""
+        self.email = ""
+        self.phone_number = ""
+        self.the_need_for_a_dormitory = False
+        self.id_source_of_funding = 0
+        self.id_entry_base = 0
+        self.id_application_status = 0
+        self.id_entrant_group = 0
+        self.comment = ""
+        self.identity_documents = []
+        self.documents_about_education = []
+        self.military_accountings = []
+        self.medical_references = []
+        self.information_about_relatives = []
+        self.special_conditions_person = []
+        self.specialties = []
+        self.results_zno = []
+
+    @rx.event
+    def on_load_add(self):
+        if not self.has_permission(Actions.ENTRANT_ADD):
+            yield rx.toast.error("У Вас немає доступу до цієї сторінки!")
+            yield rx.redirect(routes.DASHBOARD)
+            return
+
+        self.mode = "add"
+        self.in_process = True
+        try:
+            self._reset_form()
+            self._load_dropdowns()
+            self.in_process = False
+        except Exception:
+            yield rx.toast.error("Під час завантаження даних виникла помилка. Спробуйте ще раз.")
+
+    @rx.event
+    def on_load_edit(self):
+        if not self.has_permission(Actions.ENTRANT_EDIT):
+            yield rx.toast.error("У Вас немає доступу до цієї сторінки!")
+            yield rx.redirect(routes.DASHBOARD)
+            return
+
+        self.mode = "edit"
+        self.in_process = True
+        try:
+            self._reset_form()
+            self._load_dropdowns()
+
+            id_param = int(self.router.page.params.get("id", -1))
+            entrant = EntrantService().get_by_id(id_param)
+            if entrant is None or entrant.person is None:
+                yield rx.toast.warning("Запис не знайдено!")
+                yield rx.redirect(routes.ENTRANT_LIST)
+                return
+
+            person = entrant.person
+            self.entrant_id = entrant.id
+            self.photo_bytes = person.photo
+            self.photo_mime = person.photo_mime_type
+            self.edbo = person.edbo or ""
+            self.pib = person.pib or ""
+            self.citizenship = person.citizenship or "Україна"
+            self.sex = person.sex or ""
+            self.date_of_birth = person.date_of_birth or ""
+            self.place_of_registration_city = person.place_of_registration_city or ""
+            self.place_of_registration = person.place_of_registration or ""
+            self.mokpp = person.mokpp or ""
+            self.email = person.email or ""
+            self.phone_number = person.phone_number or ""
+            self.the_need_for_a_dormitory = bool(person.the_need_for_a_dormitory)
+            self.id_source_of_funding = person.id_source_of_funding or 0
+            self.id_entry_base = person.id_entry_base or 0
+            self.id_application_status = entrant.id_application_status or 0
+            self.id_entrant_group = entrant.id_entrant_group or 0
+            self.comment = entrant.comment or ""
+
+            self.identity_documents = list(person.identity_document or [])
+            self.documents_about_education = list(person.document_about_education or [])
+            self.military_accountings = list(person.military_accounting or [])
+            self.medical_references = list(person.medical_reference or [])
+            self.information_about_relatives = list(person.information_about_relatives or [])
+            self.special_conditions_person = list(person.special_conditions or [])
+            self.specialties = list(entrant.specialties or [])
+            self.results_zno = list(person.results_zno or [])
+
+            self.in_process = False
+        except Exception:
+            yield rx.toast.error("Під час завантаження даних виникла помилка. Спробуйте ще раз.")
+
+    # ============================================================
+    # Field setters for radio / select dropdowns that need str <-> int
+    # ============================================================
+
+    @rx.var
+    def id_source_of_funding_str(self) -> str:
+        return str(self.id_source_of_funding) if self.id_source_of_funding else ""
+
+    @rx.event
+    def set_id_source_of_funding(self, value: str):
+        try:
+            self.id_source_of_funding = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.id_source_of_funding = 0
+
+    @rx.var
+    def id_entry_base_str(self) -> str:
+        return str(self.id_entry_base) if self.id_entry_base else ""
+
+    @rx.event
+    def set_id_entry_base(self, value: str):
+        try:
+            self.id_entry_base = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.id_entry_base = 0
+
+    @rx.var
+    def id_application_status_str(self) -> str:
+        return str(self.id_application_status) if self.id_application_status else ""
+
+    @rx.event
+    def set_id_application_status(self, value: str):
+        try:
+            self.id_application_status = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.id_application_status = 0
+
+    @rx.var
+    def id_entrant_group_str(self) -> str:
+        return str(self.id_entrant_group) if self.id_entrant_group else ""
+
+    @rx.event
+    def set_id_entrant_group(self, value: str):
+        try:
+            self.id_entrant_group = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.id_entrant_group = 0
+
+    # ============================================================
+    # Photo upload / clear
+    # ============================================================
+
+    @rx.event
+    async def handle_photo_upload(self, files: list[rx.UploadFile]):
+        if not files:
+            return
+        f = files[0]
+        data = await f.read()
+        self.photo_bytes = data
+        self.photo_mime = f.content_type or "image/png"
+
+    @rx.event
+    def clear_photo(self):
+        self.photo_bytes = None
+        self.photo_mime = None
+
+    @rx.var
+    def photo_data_url(self) -> str:
+        return photo_to_data_url(self.photo_bytes, self.photo_mime)
+
+    @rx.var
+    def has_photo(self) -> bool:
+        return bool(self.photo_data_url)
+
+    @rx.var
+    def max_birth_date(self) -> str:
+        return date.today().isoformat()
+
+    # ============================================================
+    # Display title lookup maps (used in form sub-tables)
+    # ============================================================
+
+    @rx.var
+    def identity_document_type_titles(self) -> Dict[str, str]:
+        return {opt["value"]: opt["label"] for opt in self.identity_document_type_options}
+
+    @rx.var
+    def kinship_titles(self) -> Dict[str, str]:
+        return {opt["value"]: opt["label"] for opt in self.kinship_options}
+
+    @rx.var
+    def item_zno_titles(self) -> Dict[str, str]:
+        return {opt["value"]: opt["label"] for opt in self.item_zno_options}
+
+    @rx.var
+    def special_condition_titles(self) -> Dict[str, str]:
+        return {opt["value"]: opt["label"] for opt in self.special_condition_options}
+
+    @rx.var
+    def speciality_labels(self) -> Dict[str, str]:
+        return {opt["value"]: opt["label"] for opt in self.speciality_options}
+
+    # ============================================================
+    # Identity document dialog
+    # ============================================================
+
+    def _reset_iddoc_dialog(self):
+        self.iddoc_index = -1
+        self.iddoc_id_type = 0
+        self.iddoc_number = ""
+        self.iddoc_series = ""
+        self.iddoc_code = ""
+        self.iddoc_issued_by = ""
+        self.iddoc_date_of_issue = ""
+
+    @rx.event
+    def open_iddoc_add(self):
+        self._reset_iddoc_dialog()
+        self.iddoc_open = True
+
+    @rx.event
+    def open_iddoc_edit(self, index: int):
+        if index < 0 or index >= len(self.identity_documents):
+            return
+        item = self.identity_documents[index]
+        self.iddoc_index = index
+        self.iddoc_id_type = item.id_type or 0
+        self.iddoc_number = item.number or ""
+        self.iddoc_series = item.series or ""
+        self.iddoc_code = item.code or ""
+        self.iddoc_issued_by = item.issued_by or ""
+        self.iddoc_date_of_issue = item.date_of_issue or ""
+        self.iddoc_open = True
+
+    @rx.event
+    def close_iddoc(self):
+        self.iddoc_open = False
+        self._reset_iddoc_dialog()
+
+    @rx.var
+    def iddoc_id_type_str(self) -> str:
+        return str(self.iddoc_id_type) if self.iddoc_id_type else ""
+
+    @rx.event
+    def set_iddoc_id_type(self, value: str):
+        try:
+            self.iddoc_id_type = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.iddoc_id_type = 0
+
+    @rx.event
+    def save_iddoc(self):
+        if not self.iddoc_id_type:
+            yield rx.toast.warning("Оберіть тип документа!")
+            return
+        if not self.iddoc_number:
+            yield rx.toast.warning("Введіть номер!")
+            return
+        if not self.iddoc_issued_by:
+            yield rx.toast.warning("Введіть, ким видано!")
+            return
+        if not self.iddoc_date_of_issue:
+            yield rx.toast.warning("Введіть дату видачі!")
+            return
+
+        item = IdentityDocumentModel(
+            number=self.iddoc_number.strip(),
+            series=self.iddoc_series.strip() or None,  # type: ignore[arg-type]
+            code=self.iddoc_code.strip() or None,  # type: ignore[arg-type]
+            issued_by=self.iddoc_issued_by.strip(),
+            date_of_issue=self.iddoc_date_of_issue,
+            id_person=self.entrant_id if self.entrant_id > 0 else 0,
+            id_type=self.iddoc_id_type,
+        )
+
+        if self.iddoc_index >= 0 and self.iddoc_index < len(self.identity_documents):
+            self.identity_documents[self.iddoc_index] = item
+        else:
+            self.identity_documents.append(item)
+        self.iddoc_open = False
+        self._reset_iddoc_dialog()
+
+    @rx.event
+    def delete_iddoc(self, index: int):
+        if 0 <= index < len(self.identity_documents):
+            del self.identity_documents[index]
+
+    # ============================================================
+    # Document about education dialog
+    # ============================================================
+
+    def _reset_docedu_dialog(self):
+        self.docedu_index = -1
+        self.docedu_title = ""
+        self.docedu_number = ""
+        self.docedu_series = ""
+        self.docedu_issued_by = ""
+        self.docedu_date_of_issue = ""
+
+    @rx.event
+    def open_docedu_add(self):
+        self._reset_docedu_dialog()
+        self.docedu_open = True
+
+    @rx.event
+    def open_docedu_edit(self, index: int):
+        if index < 0 or index >= len(self.documents_about_education):
+            return
+        item = self.documents_about_education[index]
+        self.docedu_index = index
+        self.docedu_title = item.title or ""
+        self.docedu_number = item.number or ""
+        self.docedu_series = item.series or ""
+        self.docedu_issued_by = item.issued_by or ""
+        self.docedu_date_of_issue = item.date_of_issue or ""
+        self.docedu_open = True
+
+    @rx.event
+    def close_docedu(self):
+        self.docedu_open = False
+        self._reset_docedu_dialog()
+
+    @rx.event
+    def save_docedu(self):
+        if not self.docedu_title:
+            yield rx.toast.warning("Введіть назву документа!")
+            return
+        if not self.docedu_number:
+            yield rx.toast.warning("Введіть номер!")
+            return
+        if not self.docedu_date_of_issue:
+            yield rx.toast.warning("Введіть дату видачі!")
+            return
+
+        item = DocumentAboutEducationModel(
+            title=self.docedu_title.strip(),
+            number=self.docedu_number.strip(),
+            series=self.docedu_series.strip() or None,  # type: ignore[arg-type]
+            issued_by=self.docedu_issued_by.strip() or None,  # type: ignore[arg-type]
+            date_of_issue=self.docedu_date_of_issue,
+            id_person=self.entrant_id if self.entrant_id > 0 else 0,
+        )
+        if 0 <= self.docedu_index < len(self.documents_about_education):
+            self.documents_about_education[self.docedu_index] = item
+        else:
+            self.documents_about_education.append(item)
+        self.docedu_open = False
+        self._reset_docedu_dialog()
+
+    @rx.event
+    def delete_docedu(self, index: int):
+        if 0 <= index < len(self.documents_about_education):
+            del self.documents_about_education[index]
+
+    # ============================================================
+    # Military accounting dialog
+    # ============================================================
+
+    def _reset_mil_dialog(self):
+        self.mil_index = -1
+        self.mil_number = ""
+        self.mil_series = ""
+        self.mil_issued_by = ""
+        self.mil_date_of_issue = ""
+
+    @rx.event
+    def open_mil_add(self):
+        self._reset_mil_dialog()
+        self.mil_open = True
+
+    @rx.event
+    def open_mil_edit(self, index: int):
+        if index < 0 or index >= len(self.military_accountings):
+            return
+        item = self.military_accountings[index]
+        self.mil_index = index
+        self.mil_number = item.number or ""
+        self.mil_series = item.series or ""
+        self.mil_issued_by = item.issued_by or ""
+        self.mil_date_of_issue = item.date_of_issue or ""
+        self.mil_open = True
+
+    @rx.event
+    def close_mil(self):
+        self.mil_open = False
+        self._reset_mil_dialog()
+
+    @rx.event
+    def save_mil(self):
+        if not self.mil_number:
+            yield rx.toast.warning("Введіть номер!")
+            return
+        if not self.mil_series:
+            yield rx.toast.warning("Введіть серію!")
+            return
+        if not self.mil_date_of_issue:
+            yield rx.toast.warning("Введіть дату видачі!")
+            return
+
+        item = MilitaryAccountingModel(
+            number=self.mil_number.strip(),
+            series=self.mil_series.strip(),
+            issued_by=self.mil_issued_by.strip() or None,  # type: ignore[arg-type]
+            date_of_issue=self.mil_date_of_issue,
+            id_person=self.entrant_id if self.entrant_id > 0 else 0,
+        )
+        if 0 <= self.mil_index < len(self.military_accountings):
+            self.military_accountings[self.mil_index] = item
+        else:
+            self.military_accountings.append(item)
+        self.mil_open = False
+        self._reset_mil_dialog()
+
+    @rx.event
+    def delete_mil(self, index: int):
+        if 0 <= index < len(self.military_accountings):
+            del self.military_accountings[index]
+
+    # ============================================================
+    # Medical reference dialog
+    # ============================================================
+
+    def _reset_med_dialog(self):
+        self.med_index = -1
+        self.med_number = ""
+        self.med_date_of_issue = ""
+
+    @rx.event
+    def open_med_add(self):
+        self._reset_med_dialog()
+        self.med_open = True
+
+    @rx.event
+    def open_med_edit(self, index: int):
+        if index < 0 or index >= len(self.medical_references):
+            return
+        item = self.medical_references[index]
+        self.med_index = index
+        self.med_number = item.number or ""
+        self.med_date_of_issue = item.date_of_issue or ""
+        self.med_open = True
+
+    @rx.event
+    def close_med(self):
+        self.med_open = False
+        self._reset_med_dialog()
+
+    @rx.event
+    def save_med(self):
+        if not self.med_number:
+            yield rx.toast.warning("Введіть номер!")
+            return
+        if not self.med_date_of_issue:
+            yield rx.toast.warning("Введіть дату видачі!")
+            return
+
+        item = MedicalReferenceModel(
+            number=self.med_number.strip(),
+            date_of_issue=self.med_date_of_issue,
+            id_person=self.entrant_id if self.entrant_id > 0 else 0,
+        )
+        if 0 <= self.med_index < len(self.medical_references):
+            self.medical_references[self.med_index] = item
+        else:
+            self.medical_references.append(item)
+        self.med_open = False
+        self._reset_med_dialog()
+
+    @rx.event
+    def delete_med(self, index: int):
+        if 0 <= index < len(self.medical_references):
+            del self.medical_references[index]
+
+    # ============================================================
+    # Relatives dialog
+    # ============================================================
+
+    def _reset_rel_dialog(self):
+        self.rel_index = -1
+        self.rel_id_kinship = 0
+        self.rel_pib = ""
+        self.rel_phone_number = ""
+
+    @rx.event
+    def open_rel_add(self):
+        self._reset_rel_dialog()
+        self.rel_open = True
+
+    @rx.event
+    def open_rel_edit(self, index: int):
+        if index < 0 or index >= len(self.information_about_relatives):
+            return
+        item = self.information_about_relatives[index]
+        self.rel_index = index
+        self.rel_id_kinship = item.id_kinship or 0
+        self.rel_pib = item.pib or ""
+        self.rel_phone_number = item.phone_number or ""
+        self.rel_open = True
+
+    @rx.event
+    def close_rel(self):
+        self.rel_open = False
+        self._reset_rel_dialog()
+
+    @rx.var
+    def rel_id_kinship_str(self) -> str:
+        return str(self.rel_id_kinship) if self.rel_id_kinship else ""
+
+    @rx.event
+    def set_rel_id_kinship(self, value: str):
+        try:
+            self.rel_id_kinship = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.rel_id_kinship = 0
+
+    @rx.event
+    def save_rel(self):
+        if not self.rel_id_kinship:
+            yield rx.toast.warning("Оберіть тип родинного зв'язку!")
+            return
+        if not self.rel_pib:
+            yield rx.toast.warning("Введіть ПІБ родича!")
+            return
+        if not self.rel_phone_number:
+            yield rx.toast.warning("Введіть номер телефону!")
+            return
+
+        item = InformationAboutRelativesModel(
+            id_kinship=self.rel_id_kinship,
+            pib=self.rel_pib.strip(),
+            phone_number=self.rel_phone_number.strip(),
+            id_person=self.entrant_id if self.entrant_id > 0 else 0,
+        )
+        if 0 <= self.rel_index < len(self.information_about_relatives):
+            self.information_about_relatives[self.rel_index] = item
+        else:
+            self.information_about_relatives.append(item)
+        self.rel_open = False
+        self._reset_rel_dialog()
+
+    @rx.event
+    def delete_rel(self, index: int):
+        if 0 <= index < len(self.information_about_relatives):
+            del self.information_about_relatives[index]
+
+    # ============================================================
+    # Special condition (per person) dialog
+    # ============================================================
+
+    def _reset_scp_dialog(self):
+        self.scp_index = -1
+        self.scp_id_special_condition = ""
+        self.scp_title = ""
+        self.scp_number = ""
+        self.scp_description = ""
+        self.scp_date_of_issue = ""
+
+    @rx.event
+    def open_scp_add(self):
+        self._reset_scp_dialog()
+        self.scp_open = True
+
+    @rx.event
+    def open_scp_edit(self, index: int):
+        if index < 0 or index >= len(self.special_conditions_person):
+            return
+        item = self.special_conditions_person[index]
+        self.scp_index = index
+        self.scp_id_special_condition = item.id_special_condition or ""
+        self.scp_title = item.title or ""
+        self.scp_number = item.number or ""
+        self.scp_description = item.description or ""
+        self.scp_date_of_issue = item.date_of_issue or ""
+        self.scp_open = True
+
+    @rx.event
+    def close_scp(self):
+        self.scp_open = False
+        self._reset_scp_dialog()
+
+    @rx.event
+    def set_scp_id_special_condition(self, value: str):
+        self.scp_id_special_condition = value
+
+    @rx.event
+    def save_scp(self):
+        if not self.scp_id_special_condition:
+            yield rx.toast.warning("Оберіть спеціальну умову!")
+            return
+        if not self.scp_date_of_issue:
+            yield rx.toast.warning("Введіть дату видачі!")
+            return
+
+        item = SpecialConditionPersonModel(
+            id_person=self.entrant_id if self.entrant_id > 0 else 0,
+            id_special_condition=self.scp_id_special_condition,
+            title=self.scp_title.strip() or None,  # type: ignore[arg-type]
+            number=self.scp_number.strip() or None,  # type: ignore[arg-type]
+            description=self.scp_description.strip() or None,  # type: ignore[arg-type]
+            date_of_issue=self.scp_date_of_issue,
+        )
+        if 0 <= self.scp_index < len(self.special_conditions_person):
+            self.special_conditions_person[self.scp_index] = item
+        else:
+            self.special_conditions_person.append(item)
+        self.scp_open = False
+        self._reset_scp_dialog()
+
+    @rx.event
+    def delete_scp(self, index: int):
+        if 0 <= index < len(self.special_conditions_person):
+            del self.special_conditions_person[index]
+
+    # ============================================================
+    # Specialty (priority) dialog
+    # ============================================================
+
+    def _reset_sp_dialog(self):
+        self.sp_index = -1
+        self.sp_combined = ""
+        self.sp_priority = 1
+
+    @rx.event
+    def open_sp_add(self):
+        self._reset_sp_dialog()
+        next_priority = len(self.specialties) + 1
+        self.sp_priority = next_priority
+        self.sp_open = True
+
+    @rx.event
+    def open_sp_edit(self, index: int):
+        if index < 0 or index >= len(self.specialties):
+            return
+        item = self.specialties[index]
+        self.sp_index = index
+        self.sp_combined = f"{item.id_speciality_code}|{item.id_speciality_department}"
+        self.sp_priority = item.priority or 1
+        self.sp_open = True
+
+    @rx.event
+    def close_sp(self):
+        self.sp_open = False
+        self._reset_sp_dialog()
+
+    @rx.event
+    def set_sp_combined(self, value: str):
+        self.sp_combined = value
+
+    @rx.event
+    def set_sp_priority(self, value: str):
+        try:
+            self.sp_priority = int(value) if value else 1
+        except (ValueError, TypeError):
+            self.sp_priority = 1
+
+    @rx.event
+    def save_sp(self):
+        if not self.sp_combined:
+            yield rx.toast.warning("Оберіть спеціальність!")
+            return
+        try:
+            code, dept = self.sp_combined.split("|", 1)
+            id_speciality_code = code
+            id_speciality_department = int(dept)
+        except Exception:
+            yield rx.toast.warning("Некоректна спеціальність!")
+            return
+        if self.sp_priority < 1:
+            yield rx.toast.warning("Пріоритет має бути додатнім!")
+            return
+
+        item = SpecialtieEntrantModel(
+            id_entrant=self.entrant_id if self.entrant_id > 0 else 0,
+            id_speciality_code=id_speciality_code,
+            id_speciality_department=id_speciality_department,
+            priority=self.sp_priority,
+        )
+        if 0 <= self.sp_index < len(self.specialties):
+            self.specialties[self.sp_index] = item
+        else:
+            self.specialties.append(item)
+        self.sp_open = False
+        self._reset_sp_dialog()
+
+    @rx.event
+    def delete_sp(self, index: int):
+        if 0 <= index < len(self.specialties):
+            del self.specialties[index]
+
+    # ============================================================
+    # ZNO result dialog
+    # ============================================================
+
+    def _reset_rz_dialog(self):
+        self.rz_index = -1
+        self.rz_id_items_zno = 0
+        self.rz_points = 0
+
+    @rx.event
+    def open_rz_add(self):
+        self._reset_rz_dialog()
+        self.rz_open = True
+
+    @rx.event
+    def open_rz_edit(self, index: int):
+        if index < 0 or index >= len(self.results_zno):
+            return
+        item = self.results_zno[index]
+        self.rz_index = index
+        self.rz_id_items_zno = item.id_items_zno or 0
+        self.rz_points = item.points or 0
+        self.rz_open = True
+
+    @rx.event
+    def close_rz(self):
+        self.rz_open = False
+        self._reset_rz_dialog()
+
+    @rx.var
+    def rz_id_items_zno_str(self) -> str:
+        return str(self.rz_id_items_zno) if self.rz_id_items_zno else ""
+
+    @rx.event
+    def set_rz_id_items_zno(self, value: str):
+        try:
+            self.rz_id_items_zno = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.rz_id_items_zno = 0
+
+    @rx.event
+    def set_rz_points(self, value: str):
+        try:
+            self.rz_points = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.rz_points = 0
+
+    @rx.event
+    def save_rz(self):
+        if not self.rz_id_items_zno:
+            yield rx.toast.warning("Оберіть предмет ЗНО!")
+            return
+        if self.rz_points < 0 or self.rz_points > 200:
+            yield rx.toast.warning("Бали мають бути у межах 0-200!")
+            return
+
+        item = ResultZnoModel(
+            id_items_zno=self.rz_id_items_zno,
+            id_person=self.entrant_id if self.entrant_id > 0 else 0,
+            points=self.rz_points,
+        )
+        if 0 <= self.rz_index < len(self.results_zno):
+            self.results_zno[self.rz_index] = item
+        else:
+            self.results_zno.append(item)
+        self.rz_open = False
+        self._reset_rz_dialog()
+
+    @rx.event
+    def delete_rz(self, index: int):
+        if 0 <= index < len(self.results_zno):
+            del self.results_zno[index]
+
+    # ============================================================
+    # Save / Cancel
+    # ============================================================
+
+    def _validate_main(self) -> Optional[str]:
+        if not self.edbo or not self.edbo.strip():
+            return "Поле коду ЄДБО обов'язкове!"
+        if not self.pib:
+            return "Поле ПІБ обов'язкове!"
+        if not self.sex:
+            return "Оберіть стать!"
+        if not self.date_of_birth:
+            return "Введіть дату народження!"
+        if not self.place_of_registration:
+            return "Введіть адресу реєстрації!"
+        if not self.mokpp:
+            return "Введіть МОКПП!"
+        if not self.phone_number:
+            return "Введіть номер телефону!"
+        if not self.id_source_of_funding:
+            return "Оберіть джерело фінансування!"
+        if not self.id_entry_base:
+            return "Оберіть базу вступу!"
+        if not self.id_application_status:
+            return "Оберіть статус заявки!"
+        return None
+
+    def _build_person(self) -> PersonModel:
+        return PersonModel(
+            id=self.entrant_id if self.entrant_id > 0 else None,  # type: ignore[arg-type]
+            edbo=self.edbo.strip(),
+            pib=self.pib.strip(),
+            photo=self.photo_bytes,
+            photo_mime_type=self.photo_mime,
+            citizenship=self.citizenship,
+            sex=self.sex,
+            date_of_birth=self.date_of_birth,
+            place_of_registration_city=self.place_of_registration_city.strip() or None,  # type: ignore[arg-type]
+            place_of_registration=self.place_of_registration.strip(),
+            mokpp=self.mokpp.strip(),
+            email=self.email.strip() or None,  # type: ignore[arg-type]
+            phone_number=self.phone_number.strip(),
+            the_need_for_a_dormitory=self.the_need_for_a_dormitory,
+            id_source_of_funding=self.id_source_of_funding,
+            id_entry_base=self.id_entry_base,
+            is_deleted=False,
+        )
+
+    def _build_entrant(self, person_id: int) -> EntrantModel:
+        return EntrantModel(
+            id=person_id,
+            id_application_status=self.id_application_status,
+            id_entrant_group=self.id_entrant_group if self.id_entrant_group > 0 else None,
+            comment=self.comment.strip() or None,  # type: ignore[arg-type]
+            is_deleted=False,
+        )
+
+    @rx.event
+    def on_save(self):
+        err = self._validate_main()
+        if err:
+            yield rx.toast.warning(err)
+            return
+
+        service = EntrantService()
+        try:
+            person = self._build_person()
+            entrant = self._build_entrant(person_id=self.entrant_id if self.entrant_id > 0 else 0)
+
+            if self.mode == "edit":
+                if not self.has_permission(Actions.ENTRANT_EDIT):
+                    yield rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
+                    return
+                saved = service.edit_one(
+                    person=person,
+                    entrant=entrant,
+                    identity_documents=list(self.identity_documents),
+                    documents_about_education=list(self.documents_about_education),
+                    military_accountings=list(self.military_accountings),
+                    medical_references=list(self.medical_references),
+                    information_about_relatives=list(self.information_about_relatives),
+                    special_conditions=list(self.special_conditions_person),
+                    specialties=list(self.specialties),
+                    results_zno=list(self.results_zno),
+                )
+                yield rx.toast.success("Запис змінено!")
+                yield rx.redirect(routes.ENTRANT_VIEW + str(saved.id))
+            else:
+                if not self.has_permission(Actions.ENTRANT_ADD):
+                    yield rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
+                    return
+                saved = service.add_one(
+                    person=person,
+                    entrant=entrant,
+                    identity_documents=list(self.identity_documents),
+                    documents_about_education=list(self.documents_about_education),
+                    military_accountings=list(self.military_accountings),
+                    medical_references=list(self.medical_references),
+                    information_about_relatives=list(self.information_about_relatives),
+                    special_conditions=list(self.special_conditions_person),
+                    specialties=list(self.specialties),
+                    results_zno=list(self.results_zno),
+                )
+                yield rx.toast.success("Запис додано!")
+                yield rx.redirect(routes.ENTRANT_VIEW + str(saved.id))
+        except Exception:
+            yield rx.toast.error("Під час виконання запиту трапилась помилка. Спробуйте ще раз.")
+
+    @rx.event
+    def on_cancel(self):
+        if self.mode == "edit" and self.entrant_id > 0:
+            return rx.redirect(routes.ENTRANT_VIEW + str(self.entrant_id))
+        return rx.redirect(routes.ENTRANT_LIST)
