@@ -1,5 +1,5 @@
 from sqlmodel import Field, Relationship
-from sqlalchemy import ForeignKeyConstraint
+from sqlalchemy import ForeignKeyConstraint, Column, LargeBinary
 from typing import Optional, List
 from datetime import datetime
 
@@ -111,6 +111,16 @@ class SourceOfFundingModel(rx.Model, table=True):
 
 
 @rx.ModelRegistry.register
+class EntryBaseModel(rx.Model, table=True):
+    __tablename__ = "entry_base"
+
+    # Table columns
+    id: int = Field(primary_key=True)
+    title: str
+    is_deleted: bool = False
+
+
+@rx.ModelRegistry.register
 class SpecialConditionModel(rx.Model, table=True):
     __tablename__ = "special_conditions"
 
@@ -147,7 +157,8 @@ class PersonModel(rx.Model, table=True):
     id: int = Field(primary_key=True)
     edbo: str = Field(default=None, nullable=True)
     pib: str = Field(nullable=False)
-    photo: Optional[str] = Field(nullable=True)
+    photo: Optional[bytes] = Field(default=None, sa_column=Column("photo", LargeBinary, nullable=True))
+    photo_mime_type: Optional[str] = Field(default=None, nullable=True)
     citizenship: str = Field(nullable=False)
     sex: str = Field(nullable=False)
     date_of_birth: str = Field(nullable=False)
@@ -158,11 +169,12 @@ class PersonModel(rx.Model, table=True):
     phone_number: str = Field(nullable=False)
     the_need_for_a_dormitory: bool = Field(nullable=False)
     id_source_of_funding: int = Field(foreign_key="source_of_funding.id")
-    entry_base: str = Field(nullable=False)
+    id_entry_base: int = Field(foreign_key="entry_base.id")
     is_deleted: bool = False
 
     # Relationships
     source_of_funding: Optional['SourceOfFundingModel'] = Relationship()
+    entry_base: Optional['EntryBaseModel'] = Relationship()
     document_about_education: Optional[List['DocumentAboutEducationModel']] = Relationship()
     military_accounting: Optional[List['MilitaryAccountingModel']] = Relationship()
     medical_reference: Optional[List['MedicalReferenceModel']] = Relationship()
@@ -203,12 +215,14 @@ class EntrantModel(rx.Model, table=True):
     # Table columns
     id: int = Field(primary_key=True, foreign_key="persons.id")
     id_application_status: int = Field(foreign_key="application_statuses.id")
+    id_entrant_group: Optional[int] = Field(default=None, foreign_key="entrants_groups.id", nullable=True)
     comment: Optional[str] = Field(default=None, nullable=True)
     is_deleted: bool = False
 
     # Relationships
     person: 'PersonModel' = Relationship()
     application_status: ApplicationStatusModel = Relationship()
+    entrant_group: Optional['EntrantGroupModel'] = Relationship()
     specialties: Optional[List['SpecialtieEntrantModel']] = Relationship(sa_relationship_kwargs={"order_by": "SpecialtieEntrantModel.priority"})
 
 
@@ -248,6 +262,7 @@ class MedicalReferenceModel(rx.Model, table=True):
     __tablename__ = "medical_reference"
 
     # Table columns
+    id: Optional[int] = Field(default=None, primary_key=True)
     number: str
     date_of_issue: str
     id_person: int = Field(foreign_key="persons.id")
@@ -306,7 +321,7 @@ class SpecialityModel(rx.Model, table=True):
     code: str = Field(primary_key=True)
     id_department: int = Field(primary_key=True, foreign_key="departments.id")
     title: str
-    educational_and_professional_program: str = Field(default=None)
+    educational_and_professional_program: Optional[str] = Field(default=None, nullable=True)
     tag: str
     is_deleted: bool = False
 
@@ -350,6 +365,7 @@ class InformationAboutRelativesModel(rx.Model, table=True):
     __tablename__ = "information_about_relatives"
 
     # Table columns
+    id: Optional[int] = Field(default=None, primary_key=True)
     id_kinship: int = Field(foreign_key="kinship.id")
     pib: str
     phone_number: str

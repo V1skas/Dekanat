@@ -86,6 +86,7 @@ def view_page() -> rx.Component:
             "Перегляд",
             rx.cond(ViewKinshipState.get_user_actions.contains(Actions.KINSHIP_DELETE), controls.button_image_secondary(name_icon="trash_2", on_click=ViewKinshipState.on_click_delete)),
             rx.cond(ViewKinshipState.get_user_actions.contains(Actions.KINSHIP_EDIT), controls.button_image_primary(name_icon="pencil_line", on_click=ViewKinshipState.on_click_edit)),
+            left=controls.button_back(routes.KINSHIP_LIST),
             width="100%"
         ),
         rx.skeleton(view_page_content(), loading=ViewKinshipState.in_process, height="100%")

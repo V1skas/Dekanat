@@ -137,6 +137,7 @@ def view_page() -> rx.Component:
                 ViewApplicationStatusState.get_user_actions.contains(Actions.APPLICATION_STATUS_EDIT),
                 controls.button_image_primary(name_icon="pencil_line", on_click=ViewApplicationStatusState.on_click_edit),
             ),
+            left=controls.button_back(routes.APPLICATION_STATUS_LIST),
             width="100%"
         ),
         rx.skeleton(view_page_content(), loading=ViewApplicationStatusState.in_process, height="100%")

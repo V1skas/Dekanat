@@ -1,0 +1,1084 @@
+import reflex as rx
+
+from typing import Dict
+
+from Dekanat import routes
+from Dekanat.actions import Actions
+from Dekanat.states.entrant import (
+    ListEntrantState,
+    ViewEntrantState,
+    EntrantFormState,
+    CITIZENSHIP_OPTIONS,
+    SEX_OPTIONS,
+)
+from Dekanat.models import (
+    EntrantModel,
+    IdentityDocumentModel,
+    DocumentAboutEducationModel,
+    MilitaryAccountingModel,
+    MedicalReferenceModel,
+    InformationAboutRelativesModel,
+    SpecialConditionPersonModel,
+    SpecialtieEntrantModel,
+    ResultZnoModel,
+)
+
+from Dekanat.views.templates.layouts import page_wrapper, header_subpage
+from Dekanat.views.templates import controls
+from Dekanat.views.auth import require_login
+
+
+# ============================================================
+# Helpers
+# ============================================================
+
+def _select_item(opt: Dict[str, str]) -> rx.Component:
+    return rx.select.item(opt["label"], value=opt["value"])
+
+
+def _select(options, value, on_change, placeholder: str = "Оберіть зі списку", **kw) -> rx.Component:
+    return rx.select.root(
+        rx.select.trigger(placeholder=placeholder),
+        rx.select.content(
+            rx.foreach(options, _select_item),
+        ),
+        value=value,
+        on_change=on_change,
+        **kw,
+    )
+
+
+# ============================================================
+# List page
+# ============================================================
+
+def _list_table_row(item: EntrantModel) -> rx.Component:
+    return rx.table.row(
+        rx.table.row_header_cell(
+            rx.link(
+                rx.cond(item.person, item.person.pib, "—"),
+                href=f"{routes.ENTRANT_VIEW}{item.id}",
+            ),
+            align="left",
+        ),
+        rx.table.cell(rx.cond(item.person, item.person.phone_number, "—")),
+        rx.table.cell(rx.cond(item.person, rx.cond(item.person.email, item.person.email, "—"), "—")),
+        rx.table.cell(
+            rx.cond(
+                item.person,
+                rx.cond(item.person.entry_base, item.person.entry_base.title, "—"),
+                "—",
+            )
+        ),
+        rx.table.cell(
+            rx.cond(
+                item.person,
+                rx.cond(item.person.source_of_funding, item.person.source_of_funding.title, "—"),
+                "—",
+            )
+        ),
+        rx.table.cell(
+            rx.cond(
+                item.specialties,
+                rx.cond(
+                    item.specialties[0],
+                    f"{item.specialties[0].speciality.code} {item.specialties[0].speciality.title}",
+                    "—",
+                ),
+                "—",
+            )
+        ),
+        rx.table.cell(
+            rx.cond(item.application_status, item.application_status.title, "—")
+        ),
+    )
+
+
+def _list_table() -> rx.Component:
+    return rx.table.root(
+        rx.table.header(
+            rx.table.row(
+                rx.table.column_header_cell("ПІБ", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Номер телефону", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Електронна пошта", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("База вступу", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Джерело фінансування", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Спеціальність", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Статус заяви", color=rx.color("accent", 2)),
+            ),
+            background_color=rx.color("accent", 9),
+        ),
+        rx.table.body(
+            rx.foreach(ListEntrantState.items, _list_table_row),
+            height="100%",
+            width="100%",
+        ),
+        variant="surface",
+        height="100%",
+        width="100%",
+    )
+
+
+def list_page_content() -> rx.Component:
+    return rx.vstack(
+        rx.cond(
+            ListEntrantState.items.is_not_none(),
+            _list_table(),
+            rx.text("Дані відсутні"),
+        ),
+        width="100%",
+    )
+
+
+@require_login
+def list_page() -> rx.Component:
+    return page_wrapper(
+        header_subpage(
+            "Список",
+            rx.cond(
+                ListEntrantState.get_user_actions.contains(Actions.ENTRANT_ADD),
+                controls.button_image_primary(name_icon="plus", on_click=ListEntrantState.on_click_add),
+            ),
+            width="100%",
+        ),
+        rx.skeleton(list_page_content(), loading=ListEntrantState.in_progress, height="100%"),
+    )
+
+
+# ============================================================
+# View page (read-only)
+# ============================================================
+
+def _v_kv(label: str, value) -> rx.Component:
+    return rx.hstack(
+        rx.text(label + ":", weight="bold"),
+        rx.text(value),
+        spacing="2",
+        align="center",
+    )
+
+
+def _v_photo() -> rx.Component:
+    return rx.cond(
+        ViewEntrantState.has_photo,
+        rx.image(
+            src=ViewEntrantState.photo_data_url,
+            border=f"1px solid {rx.color('accent', 9)}",
+            border_radius="5%",
+            width="300px",
+            height="400px",
+            object_fit="cover",
+        ),
+        rx.box(
+            rx.text("Фото не завантажено", text_align="center"),
+            border=f"1px solid {rx.color('accent', 9)}",
+            border_radius="5%",
+            width="300px",
+            height="400px",
+            display="flex",
+            align_items="center",
+            justify_content="center",
+        ),
+    )
+
+
+def _v_iddoc_row(item: IdentityDocumentModel) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(rx.cond(item.type, item.type.title, "—")),
+        rx.table.cell(rx.cond(item.series, item.series, "—") + " " + item.number),
+        rx.table.cell(rx.cond(item.code, item.code, "—")),
+        rx.table.cell(item.issued_by),
+        rx.table.cell(item.date_of_issue),
+    )
+
+
+def _v_iddoc_table() -> rx.Component:
+    return rx.table.root(
+        rx.table.header(
+            rx.table.row(
+                rx.table.column_header_cell("Тип", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Серія та номер", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Код", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Ким видано", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+            ),
+            background_color=rx.color("accent", 9),
+        ),
+        rx.table.body(
+            rx.foreach(ViewEntrantState.item.person.identity_document, _v_iddoc_row),
+        ),
+        variant="surface",
+        width="100%",
+    )
+
+
+def _v_docedu_row(item: DocumentAboutEducationModel) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(item.title),
+        rx.table.cell(item.number),
+        rx.table.cell(rx.cond(item.series, item.series, "—")),
+        rx.table.cell(rx.cond(item.issued_by, item.issued_by, "—")),
+        rx.table.cell(item.date_of_issue),
+    )
+
+
+def _v_docedu_table() -> rx.Component:
+    return rx.table.root(
+        rx.table.header(
+            rx.table.row(
+                rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Номер", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Серія", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Ким видано", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+            ),
+            background_color=rx.color("accent", 9),
+        ),
+        rx.table.body(rx.foreach(ViewEntrantState.item.person.document_about_education, _v_docedu_row)),
+        variant="surface",
+        width="100%",
+    )
+
+
+def _v_mil_row(item: MilitaryAccountingModel) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(item.series),
+        rx.table.cell(item.number),
+        rx.table.cell(rx.cond(item.issued_by, item.issued_by, "—")),
+        rx.table.cell(item.date_of_issue),
+    )
+
+
+def _v_mil_table() -> rx.Component:
+    return rx.table.root(
+        rx.table.header(
+            rx.table.row(
+                rx.table.column_header_cell("Серія", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Номер", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Ким видано", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+            ),
+            background_color=rx.color("accent", 9),
+        ),
+        rx.table.body(rx.foreach(ViewEntrantState.item.person.military_accounting, _v_mil_row)),
+        variant="surface",
+        width="100%",
+    )
+
+
+def _v_med_row(item: MedicalReferenceModel) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(item.number),
+        rx.table.cell(item.date_of_issue),
+    )
+
+
+def _v_med_table() -> rx.Component:
+    return rx.table.root(
+        rx.table.header(
+            rx.table.row(
+                rx.table.column_header_cell("Номер", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+            ),
+            background_color=rx.color("accent", 9),
+        ),
+        rx.table.body(rx.foreach(ViewEntrantState.item.person.medical_reference, _v_med_row)),
+        variant="surface",
+        width="100%",
+    )
+
+
+def _v_rel_row(item: InformationAboutRelativesModel) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(rx.cond(item.kinship, item.kinship.title, "—")),
+        rx.table.cell(item.pib),
+        rx.table.cell(item.phone_number),
+    )
+
+
+def _v_rel_table() -> rx.Component:
+    return rx.table.root(
+        rx.table.header(
+            rx.table.row(
+                rx.table.column_header_cell("Тип", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("ПІБ", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Телефон", color=rx.color("accent", 2)),
+            ),
+            background_color=rx.color("accent", 9),
+        ),
+        rx.table.body(rx.foreach(ViewEntrantState.item.person.information_about_relatives, _v_rel_row)),
+        variant="surface",
+        width="100%",
+    )
+
+
+def _v_scp_row(item: SpecialConditionPersonModel) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(item.id_special_condition),
+        rx.table.cell(rx.cond(item.title, item.title, "—")),
+        rx.table.cell(rx.cond(item.number, item.number, "—")),
+        rx.table.cell(item.date_of_issue),
+    )
+
+
+def _v_scp_table() -> rx.Component:
+    return rx.table.root(
+        rx.table.header(
+            rx.table.row(
+                rx.table.column_header_cell("Код", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Номер документа", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+            ),
+            background_color=rx.color("accent", 9),
+        ),
+        rx.table.body(rx.foreach(ViewEntrantState.item.person.special_conditions, _v_scp_row)),
+        variant="surface",
+        width="100%",
+    )
+
+
+def _v_sp_row(item: SpecialtieEntrantModel) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(item.priority),
+        rx.table.cell(rx.cond(item.speciality, item.speciality.code, "—")),
+        rx.table.cell(rx.cond(item.speciality, item.speciality.title, "—")),
+    )
+
+
+def _v_sp_table() -> rx.Component:
+    return rx.table.root(
+        rx.table.header(
+            rx.table.row(
+                rx.table.column_header_cell("Пріоритет", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Код", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
+            ),
+            background_color=rx.color("accent", 9),
+        ),
+        rx.table.body(rx.foreach(ViewEntrantState.item.specialties, _v_sp_row)),
+        variant="surface",
+        width="100%",
+    )
+
+
+def _v_rz_row(item: ResultZnoModel) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(rx.cond(item.item_zno, item.item_zno.title, "—")),
+        rx.table.cell(item.points),
+    )
+
+
+def _v_rz_table() -> rx.Component:
+    return rx.table.root(
+        rx.table.header(
+            rx.table.row(
+                rx.table.column_header_cell("Предмет", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Бали", color=rx.color("accent", 2)),
+            ),
+            background_color=rx.color("accent", 9),
+        ),
+        rx.table.body(rx.foreach(ViewEntrantState.item.person.results_zno, _v_rz_row)),
+        variant="surface",
+        width="100%",
+    )
+
+
+def view_page_content() -> rx.Component:
+    return rx.cond(
+        ViewEntrantState.item.is_not_none(),
+        rx.tabs.root(
+            rx.tabs.list(
+                rx.tabs.trigger("Персональна інформація", value="tab1"),
+                rx.tabs.trigger("Паспортні дані", value="tab2"),
+                rx.tabs.trigger("Документи про освіту", value="tab3"),
+                rx.tabs.trigger("Спеціальні умови", value="tab4"),
+                rx.tabs.trigger("Родичі", value="tab5"),
+                rx.tabs.trigger("Медичні довідки", value="tab6"),
+                rx.tabs.trigger("Військовий облік", value="tab7"),
+                rx.tabs.trigger("Спеціальності", value="tab8"),
+                rx.tabs.trigger("Результати ЗНО", value="tab9"),
+            ),
+            rx.tabs.content(
+                rx.hstack(
+                    _v_photo(),
+                    rx.vstack(
+                        _v_kv("ПІБ", ViewEntrantState.item.person.pib),
+                        _v_kv("Код ЄДБО", rx.cond(ViewEntrantState.item.person.edbo, ViewEntrantState.item.person.edbo, "—")),
+                        _v_kv("Громадянство", ViewEntrantState.item.person.citizenship),
+                        _v_kv("Стать", ViewEntrantState.item.person.sex),
+                        _v_kv("Дата народження", ViewEntrantState.item.person.date_of_birth),
+                        _v_kv("Область, район, місто", rx.cond(ViewEntrantState.item.person.place_of_registration_city, ViewEntrantState.item.person.place_of_registration_city, "—")),
+                        _v_kv("Адреса реєстрації", ViewEntrantState.item.person.place_of_registration),
+                        _v_kv("МОКПП", ViewEntrantState.item.person.mokpp),
+                        _v_kv("Телефон", ViewEntrantState.item.person.phone_number),
+                        _v_kv("E-mail", rx.cond(ViewEntrantState.item.person.email, ViewEntrantState.item.person.email, "—")),
+                        _v_kv("Потреба в гуртожитку", rx.cond(ViewEntrantState.item.person.the_need_for_a_dormitory, "Так", "Ні")),
+                        _v_kv("Джерело фінансування", rx.cond(ViewEntrantState.item.person.source_of_funding, ViewEntrantState.item.person.source_of_funding.title, "—")),
+                        _v_kv("База вступу", rx.cond(ViewEntrantState.item.person.entry_base, ViewEntrantState.item.person.entry_base.title, "—")),
+                        _v_kv("Статус заяви", rx.cond(ViewEntrantState.item.application_status, ViewEntrantState.item.application_status.title, "—")),
+                        _v_kv("Група ЗНО", rx.cond(ViewEntrantState.item.entrant_group, ViewEntrantState.item.entrant_group.title, "—")),
+                        _v_kv("Коментар", rx.cond(ViewEntrantState.item.comment, ViewEntrantState.item.comment, "—")),
+                        spacing="2",
+                        align="stretch",
+                        width="100%",
+                    ),
+                    align="start",
+                    spacing="4",
+                    width="100%",
+                ),
+                value="tab1",
+                padding_top="1em",
+            ),
+            rx.tabs.content(_v_iddoc_table(), value="tab2", padding_top="1em"),
+            rx.tabs.content(_v_docedu_table(), value="tab3", padding_top="1em"),
+            rx.tabs.content(_v_scp_table(), value="tab4", padding_top="1em"),
+            rx.tabs.content(_v_rel_table(), value="tab5", padding_top="1em"),
+            rx.tabs.content(_v_med_table(), value="tab6", padding_top="1em"),
+            rx.tabs.content(_v_mil_table(), value="tab7", padding_top="1em"),
+            rx.tabs.content(_v_sp_table(), value="tab8", padding_top="1em"),
+            rx.tabs.content(_v_rz_table(), value="tab9", padding_top="1em"),
+            default_value="tab1",
+            width="100%",
+        ),
+        rx.text("Дані відсутні"),
+    )
+
+
+@require_login
+def view_page() -> rx.Component:
+    return page_wrapper(
+        header_subpage(
+            "Перегляд",
+            rx.cond(
+                ViewEntrantState.get_user_actions.contains(Actions.ENTRANT_DELETE),
+                controls.button_image_secondary(name_icon="trash_2", on_click=ViewEntrantState.on_click_delete),
+            ),
+            rx.cond(
+                ViewEntrantState.get_user_actions.contains(Actions.ENTRANT_EDIT),
+                controls.button_image_primary(name_icon="pencil_line", on_click=ViewEntrantState.on_click_edit),
+            ),
+            left=controls.button_back(routes.ENTRANT_LIST),
+            width="100%",
+        ),
+        rx.skeleton(view_page_content(), loading=ViewEntrantState.in_process, height="100%"),
+    )
+
+
+# ============================================================
+# Form (Add / Edit) shared content
+# ============================================================
+
+def _photo_block() -> rx.Component:
+    return rx.vstack(
+        rx.upload(
+            rx.cond(
+                EntrantFormState.has_photo,
+                rx.image(
+                    src=EntrantFormState.photo_data_url,
+                    border=f"1px solid {rx.color('accent', 9)}",
+                    border_radius="5%",
+                    width="100%",
+                    height="100%",
+                    object_fit="cover",
+                ),
+                rx.box(
+                    rx.text("Перетягніть файл сюди або натисніть для вибору", text_align="center"),
+                    border=f"1px solid {rx.color('accent', 9)}",
+                    border_radius="5%",
+                    width="100%",
+                    height="100%",
+                    display="flex",
+                    align_items="center",
+                    justify_content="center",
+                ),
+            ),
+            id="entrant_photo_upload",
+            border="None",
+            padding="0",
+            spacing="0",
+            accept={".png": ["image/png"], ".jpg": ["image/jpeg"], ".jpeg": ["image/jpeg"]},
+            max_files=1,
+            width="300px",
+            height="400px",
+            on_drop=EntrantFormState.handle_photo_upload(rx.upload_files(upload_id="entrant_photo_upload")),
+        ),
+        rx.button("Видалити фото", on_click=EntrantFormState.clear_photo, color_scheme="red", width="300px"),
+        spacing="2",
+        align="center",
+    )
+
+
+def _personal_fields() -> rx.Component:
+    return rx.vstack(
+        rx.text("Код ЄДБО:"),
+        rx.input(value=EntrantFormState.edbo, on_change=EntrantFormState.set_edbo, width="100%"),
+        rx.text("*ПІБ:"),
+        rx.input(required=True, value=EntrantFormState.pib, on_change=EntrantFormState.set_pib, width="100%"),
+        rx.text("Громадянство:"),
+        rx.radio(CITIZENSHIP_OPTIONS, value=EntrantFormState.citizenship, on_change=EntrantFormState.set_citizenship, direction="row"),
+        rx.text("*Стать:"),
+        rx.radio(SEX_OPTIONS, value=EntrantFormState.sex, on_change=EntrantFormState.set_sex, direction="row"),
+        rx.text("*Дата народження:"),
+        rx.input(type="date", required=True, value=EntrantFormState.date_of_birth, on_change=EntrantFormState.set_date_of_birth, min="1900-01-01", max=EntrantFormState.max_birth_date, width="100%"),
+        rx.text("Область, район, місто:"),
+        rx.input(value=EntrantFormState.place_of_registration_city, on_change=EntrantFormState.set_place_of_registration_city, width="100%"),
+        rx.text("*Адреса:"),
+        rx.input(required=True, value=EntrantFormState.place_of_registration, on_change=EntrantFormState.set_place_of_registration, width="100%"),
+        rx.text("*МОКПП:"),
+        rx.input(required=True, value=EntrantFormState.mokpp, on_change=EntrantFormState.set_mokpp, width="100%"),
+        rx.text("E-mail:"),
+        rx.input(type="email", value=EntrantFormState.email, on_change=EntrantFormState.set_email, width="100%"),
+        rx.text("*Номер телефону:"),
+        rx.input(required=True, value=EntrantFormState.phone_number, on_change=EntrantFormState.set_phone_number, width="100%"),
+        rx.hstack(
+            rx.text("Потреба в гуртожитку:"),
+            rx.switch(checked=EntrantFormState.the_need_for_a_dormitory, on_change=EntrantFormState.set_the_need_for_a_dormitory),
+        ),
+        rx.text("*Джерело фінансування:"),
+        _select(EntrantFormState.source_of_funding_options, EntrantFormState.id_source_of_funding_str, EntrantFormState.set_id_source_of_funding, width="100%"),
+        rx.text("*База вступу:"),
+        _select(EntrantFormState.entry_base_options, EntrantFormState.id_entry_base_str, EntrantFormState.set_id_entry_base, width="100%"),
+        rx.text("*Статус заяви:"),
+        _select(EntrantFormState.application_status_options, EntrantFormState.id_application_status_str, EntrantFormState.set_id_application_status, width="100%"),
+        rx.text("Група ЗНО:"),
+        _select(EntrantFormState.entrant_group_options, EntrantFormState.id_entrant_group_str, EntrantFormState.set_id_entrant_group, width="100%"),
+        rx.text("Коментар:"),
+        rx.text_area(value=EntrantFormState.comment, on_change=EntrantFormState.set_comment, resize="vertical", width="100%"),
+        spacing="2",
+        align="stretch",
+        width="100%",
+    )
+
+
+# --- sub-entity tables (inside form) ---
+
+def _sub_table_header(*titles: str) -> rx.Component:
+    return rx.table.header(
+        rx.table.row(*[rx.table.column_header_cell(t, color=rx.color("accent", 2)) for t in titles]),
+        background_color=rx.color("accent", 9),
+    )
+
+
+def _action_cell(on_edit, on_delete) -> rx.Component:
+    return rx.table.cell(
+        rx.hstack(
+            controls.button_image_primary(name_icon="pencil_line", on_click=on_edit),
+            controls.button_image_secondary(name_icon="trash_2", on_click=on_delete),
+            spacing="2",
+        )
+    )
+
+
+def _f_iddoc_row(item, idx: int) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(EntrantFormState.identity_document_type_titles[item.id_type.to_string()]),
+        rx.table.cell(rx.cond(item.series, item.series, "—") + " " + item.number),
+        rx.table.cell(rx.cond(item.code, item.code, "—")),
+        rx.table.cell(item.issued_by),
+        rx.table.cell(item.date_of_issue),
+        _action_cell(
+            EntrantFormState.open_iddoc_edit(idx),
+            EntrantFormState.delete_iddoc(idx),
+        ),
+    )
+
+
+def _f_iddoc_section() -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.heading("Документи підтвердження особи", size="3"),
+            rx.spacer(),
+            controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_iddoc_add),
+            width="100%",
+        ),
+        rx.table.root(
+            _sub_table_header("Тип", "Серія/номер", "Код", "Ким видано", "Дата видачі", "Дії"),
+            rx.table.body(
+                rx.foreach(EntrantFormState.identity_documents, _f_iddoc_row),
+            ),
+            variant="surface",
+            width="100%",
+        ),
+        width="100%",
+    )
+
+
+def _f_docedu_row(item, idx: int) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(item.title),
+        rx.table.cell(item.number),
+        rx.table.cell(rx.cond(item.series, item.series, "—")),
+        rx.table.cell(rx.cond(item.issued_by, item.issued_by, "—")),
+        rx.table.cell(item.date_of_issue),
+        _action_cell(
+            EntrantFormState.open_docedu_edit(idx),
+            EntrantFormState.delete_docedu(idx),
+        ),
+    )
+
+
+def _f_docedu_section() -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.heading("Документи про освіту", size="3"),
+            rx.spacer(),
+            controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_docedu_add),
+            width="100%",
+        ),
+        rx.table.root(
+            _sub_table_header("Назва", "Номер", "Серія", "Ким видано", "Дата видачі", "Дії"),
+            rx.table.body(
+                rx.foreach(EntrantFormState.documents_about_education, _f_docedu_row),
+            ),
+            variant="surface",
+            width="100%",
+        ),
+        width="100%",
+    )
+
+
+def _f_mil_row(item, idx: int) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(item.series),
+        rx.table.cell(item.number),
+        rx.table.cell(rx.cond(item.issued_by, item.issued_by, "—")),
+        rx.table.cell(item.date_of_issue),
+        _action_cell(
+            EntrantFormState.open_mil_edit(idx),
+            EntrantFormState.delete_mil(idx),
+        ),
+    )
+
+
+def _f_mil_section() -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.heading("Військовий облік", size="3"),
+            rx.spacer(),
+            controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_mil_add),
+            width="100%",
+        ),
+        rx.table.root(
+            _sub_table_header("Серія", "Номер", "Ким видано", "Дата видачі", "Дії"),
+            rx.table.body(rx.foreach(EntrantFormState.military_accountings, _f_mil_row)),
+            variant="surface",
+            width="100%",
+        ),
+        width="100%",
+    )
+
+
+def _f_med_row(item, idx: int) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(item.number),
+        rx.table.cell(item.date_of_issue),
+        _action_cell(
+            EntrantFormState.open_med_edit(idx),
+            EntrantFormState.delete_med(idx),
+        ),
+    )
+
+
+def _f_med_section() -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.heading("Медичні довідки", size="3"),
+            rx.spacer(),
+            controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_med_add),
+            width="100%",
+        ),
+        rx.table.root(
+            _sub_table_header("Номер", "Дата видачі", "Дії"),
+            rx.table.body(rx.foreach(EntrantFormState.medical_references, _f_med_row)),
+            variant="surface",
+            width="100%",
+        ),
+        width="100%",
+    )
+
+
+def _f_rel_row(item, idx: int) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(EntrantFormState.kinship_titles[item.id_kinship.to_string()]),
+        rx.table.cell(item.pib),
+        rx.table.cell(item.phone_number),
+        _action_cell(
+            EntrantFormState.open_rel_edit(idx),
+            EntrantFormState.delete_rel(idx),
+        ),
+    )
+
+
+def _f_rel_section() -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.heading("Родичі", size="3"),
+            rx.spacer(),
+            controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_rel_add),
+            width="100%",
+        ),
+        rx.table.root(
+            _sub_table_header("Тип", "ПІБ", "Телефон", "Дії"),
+            rx.table.body(rx.foreach(EntrantFormState.information_about_relatives, _f_rel_row)),
+            variant="surface",
+            width="100%",
+        ),
+        width="100%",
+    )
+
+
+def _f_scp_row(item, idx: int) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(EntrantFormState.special_condition_titles[item.id_special_condition]),
+        rx.table.cell(rx.cond(item.title, item.title, "—")),
+        rx.table.cell(rx.cond(item.number, item.number, "—")),
+        rx.table.cell(item.date_of_issue),
+        _action_cell(
+            EntrantFormState.open_scp_edit(idx),
+            EntrantFormState.delete_scp(idx),
+        ),
+    )
+
+
+def _f_scp_section() -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.heading("Спеціальні умови", size="3"),
+            rx.spacer(),
+            controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_scp_add),
+            width="100%",
+        ),
+        rx.table.root(
+            _sub_table_header("Умова", "Назва", "Номер", "Дата видачі", "Дії"),
+            rx.table.body(rx.foreach(EntrantFormState.special_conditions_person, _f_scp_row)),
+            variant="surface",
+            width="100%",
+        ),
+        width="100%",
+    )
+
+
+def _f_sp_row(item, idx: int) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(item.priority),
+        rx.table.cell(EntrantFormState.speciality_labels[item.id_speciality_code + "|" + item.id_speciality_department.to_string()]),
+        _action_cell(
+            EntrantFormState.open_sp_edit(idx),
+            EntrantFormState.delete_sp(idx),
+        ),
+    )
+
+
+def _f_sp_section() -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.heading("Спеціальності (пріоритетний список)", size="3"),
+            rx.spacer(),
+            controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_sp_add),
+            width="100%",
+        ),
+        rx.table.root(
+            _sub_table_header("Пріоритет", "Спеціальність", "Дії"),
+            rx.table.body(rx.foreach(EntrantFormState.specialties, _f_sp_row)),
+            variant="surface",
+            width="100%",
+        ),
+        width="100%",
+    )
+
+
+def _f_rz_row(item, idx: int) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(EntrantFormState.item_zno_titles[item.id_items_zno.to_string()]),
+        rx.table.cell(item.points),
+        _action_cell(
+            EntrantFormState.open_rz_edit(idx),
+            EntrantFormState.delete_rz(idx),
+        ),
+    )
+
+
+def _f_rz_section() -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.heading("Результати ЗНО", size="3"),
+            rx.spacer(),
+            controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_rz_add),
+            width="100%",
+        ),
+        rx.table.root(
+            _sub_table_header("Предмет", "Бали", "Дії"),
+            rx.table.body(rx.foreach(EntrantFormState.results_zno, _f_rz_row)),
+            variant="surface",
+            width="100%",
+        ),
+        width="100%",
+    )
+
+
+# --- dialogs ---
+
+def _dialog_buttons(on_save, on_cancel) -> rx.Component:
+    return rx.hstack(
+        rx.dialog.close(controls.button_secondary("Скасувати", on_click=on_cancel)),
+        controls.button_primary("Зберегти", on_click=on_save),
+        justify="end",
+        spacing="2",
+        width="100%",
+    )
+
+
+def _dlg_iddoc() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Документ підтвердження особи"),
+            rx.vstack(
+                rx.text("*Тип документа:"),
+                _select(EntrantFormState.identity_document_type_options, EntrantFormState.iddoc_id_type_str, EntrantFormState.set_iddoc_id_type, width="100%"),
+                rx.text("*Номер:"),
+                rx.input(value=EntrantFormState.iddoc_number, on_change=EntrantFormState.set_iddoc_number, width="100%"),
+                rx.text("Серія:"),
+                rx.input(value=EntrantFormState.iddoc_series, on_change=EntrantFormState.set_iddoc_series, width="100%"),
+                rx.text("Код:"),
+                rx.input(value=EntrantFormState.iddoc_code, on_change=EntrantFormState.set_iddoc_code, width="100%"),
+                rx.text("*Ким видано:"),
+                rx.input(value=EntrantFormState.iddoc_issued_by, on_change=EntrantFormState.set_iddoc_issued_by, width="100%"),
+                rx.text("*Дата видачі:"),
+                rx.input(type="date", value=EntrantFormState.iddoc_date_of_issue, on_change=EntrantFormState.set_iddoc_date_of_issue, width="100%"),
+                _dialog_buttons(EntrantFormState.save_iddoc, EntrantFormState.close_iddoc),
+                spacing="2",
+                align="stretch",
+            ),
+        ),
+        open=EntrantFormState.iddoc_open,
+        on_open_change=EntrantFormState.set_iddoc_open,
+    )
+
+
+def _dlg_docedu() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Документ про освіту"),
+            rx.vstack(
+                rx.text("*Назва:"),
+                rx.input(value=EntrantFormState.docedu_title, on_change=EntrantFormState.set_docedu_title, width="100%"),
+                rx.text("*Номер:"),
+                rx.input(value=EntrantFormState.docedu_number, on_change=EntrantFormState.set_docedu_number, width="100%"),
+                rx.text("Серія:"),
+                rx.input(value=EntrantFormState.docedu_series, on_change=EntrantFormState.set_docedu_series, width="100%"),
+                rx.text("Ким видано:"),
+                rx.input(value=EntrantFormState.docedu_issued_by, on_change=EntrantFormState.set_docedu_issued_by, width="100%"),
+                rx.text("*Дата видачі:"),
+                rx.input(type="date", value=EntrantFormState.docedu_date_of_issue, on_change=EntrantFormState.set_docedu_date_of_issue, width="100%"),
+                _dialog_buttons(EntrantFormState.save_docedu, EntrantFormState.close_docedu),
+                spacing="2",
+                align="stretch",
+            ),
+        ),
+        open=EntrantFormState.docedu_open,
+        on_open_change=EntrantFormState.set_docedu_open,
+    )
+
+
+def _dlg_mil() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Військовий облік"),
+            rx.vstack(
+                rx.text("*Серія:"),
+                rx.input(value=EntrantFormState.mil_series, on_change=EntrantFormState.set_mil_series, width="100%"),
+                rx.text("*Номер:"),
+                rx.input(value=EntrantFormState.mil_number, on_change=EntrantFormState.set_mil_number, width="100%"),
+                rx.text("Ким видано:"),
+                rx.input(value=EntrantFormState.mil_issued_by, on_change=EntrantFormState.set_mil_issued_by, width="100%"),
+                rx.text("*Дата видачі:"),
+                rx.input(type="date", value=EntrantFormState.mil_date_of_issue, on_change=EntrantFormState.set_mil_date_of_issue, width="100%"),
+                _dialog_buttons(EntrantFormState.save_mil, EntrantFormState.close_mil),
+                spacing="2",
+                align="stretch",
+            ),
+        ),
+        open=EntrantFormState.mil_open,
+        on_open_change=EntrantFormState.set_mil_open,
+    )
+
+
+def _dlg_med() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Медична довідка"),
+            rx.vstack(
+                rx.text("*Номер:"),
+                rx.input(value=EntrantFormState.med_number, on_change=EntrantFormState.set_med_number, width="100%"),
+                rx.text("*Дата видачі:"),
+                rx.input(type="date", value=EntrantFormState.med_date_of_issue, on_change=EntrantFormState.set_med_date_of_issue, width="100%"),
+                _dialog_buttons(EntrantFormState.save_med, EntrantFormState.close_med),
+                spacing="2",
+                align="stretch",
+            ),
+        ),
+        open=EntrantFormState.med_open,
+        on_open_change=EntrantFormState.set_med_open,
+    )
+
+
+def _dlg_rel() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Родич"),
+            rx.vstack(
+                rx.text("*Тип родинного зв'язку:"),
+                _select(EntrantFormState.kinship_options, EntrantFormState.rel_id_kinship_str, EntrantFormState.set_rel_id_kinship, width="100%"),
+                rx.text("*ПІБ:"),
+                rx.input(value=EntrantFormState.rel_pib, on_change=EntrantFormState.set_rel_pib, width="100%"),
+                rx.text("*Телефон:"),
+                rx.input(value=EntrantFormState.rel_phone_number, on_change=EntrantFormState.set_rel_phone_number, width="100%"),
+                _dialog_buttons(EntrantFormState.save_rel, EntrantFormState.close_rel),
+                spacing="2",
+                align="stretch",
+            ),
+        ),
+        open=EntrantFormState.rel_open,
+        on_open_change=EntrantFormState.set_rel_open,
+    )
+
+
+def _dlg_scp() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Спеціальна умова"),
+            rx.vstack(
+                rx.text("*Спеціальна умова:"),
+                _select(EntrantFormState.special_condition_options, EntrantFormState.scp_id_special_condition, EntrantFormState.set_scp_id_special_condition, width="100%"),
+                rx.text("Назва документа:"),
+                rx.input(value=EntrantFormState.scp_title, on_change=EntrantFormState.set_scp_title, width="100%"),
+                rx.text("Номер документа:"),
+                rx.input(value=EntrantFormState.scp_number, on_change=EntrantFormState.set_scp_number, width="100%"),
+                rx.text("Опис:"),
+                rx.text_area(value=EntrantFormState.scp_description, on_change=EntrantFormState.set_scp_description, width="100%"),
+                rx.text("*Дата видачі:"),
+                rx.input(type="date", value=EntrantFormState.scp_date_of_issue, on_change=EntrantFormState.set_scp_date_of_issue, width="100%"),
+                _dialog_buttons(EntrantFormState.save_scp, EntrantFormState.close_scp),
+                spacing="2",
+                align="stretch",
+            ),
+        ),
+        open=EntrantFormState.scp_open,
+        on_open_change=EntrantFormState.set_scp_open,
+    )
+
+
+def _dlg_sp() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Спеціальність (пріоритет)"),
+            rx.vstack(
+                rx.text("*Спеціальність:"),
+                _select(EntrantFormState.speciality_options, EntrantFormState.sp_combined, EntrantFormState.set_sp_combined, width="100%"),
+                rx.text("*Пріоритет:"),
+                rx.input(type="number", value=EntrantFormState.sp_priority.to_string(), on_change=EntrantFormState.set_sp_priority, width="100%"),
+                _dialog_buttons(EntrantFormState.save_sp, EntrantFormState.close_sp),
+                spacing="2",
+                align="stretch",
+            ),
+        ),
+        open=EntrantFormState.sp_open,
+        on_open_change=EntrantFormState.set_sp_open,
+    )
+
+
+def _dlg_rz() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Результат ЗНО"),
+            rx.vstack(
+                rx.text("*Предмет:"),
+                _select(EntrantFormState.item_zno_options, EntrantFormState.rz_id_items_zno_str, EntrantFormState.set_rz_id_items_zno, width="100%"),
+                rx.text("*Бали:"),
+                rx.input(type="number", value=EntrantFormState.rz_points.to_string(), on_change=EntrantFormState.set_rz_points, width="100%"),
+                _dialog_buttons(EntrantFormState.save_rz, EntrantFormState.close_rz),
+                spacing="2",
+                align="stretch",
+            ),
+        ),
+        open=EntrantFormState.rz_open,
+        on_open_change=EntrantFormState.set_rz_open,
+    )
+
+
+def _form_content() -> rx.Component:
+    return rx.tabs.root(
+        rx.tabs.list(
+            rx.tabs.trigger("Персональна інформація", value="tab1"),
+            rx.tabs.trigger("Паспортні дані", value="tab2"),
+            rx.tabs.trigger("Документи про освіту", value="tab3"),
+            rx.tabs.trigger("Спеціальні умови", value="tab4"),
+            rx.tabs.trigger("Родичі", value="tab5"),
+            rx.tabs.trigger("Медичні довідки", value="tab6"),
+            rx.tabs.trigger("Військовий облік", value="tab7"),
+            rx.tabs.trigger("Спеціальності", value="tab8"),
+            rx.tabs.trigger("Результати ЗНО", value="tab9"),
+        ),
+        rx.tabs.content(
+            rx.hstack(_photo_block(), _personal_fields(), align="start", spacing="4", width="100%"),
+            value="tab1",
+            padding_top="1em",
+        ),
+        rx.tabs.content(_f_iddoc_section(), value="tab2", padding_top="1em"),
+        rx.tabs.content(_f_docedu_section(), value="tab3", padding_top="1em"),
+        rx.tabs.content(_f_scp_section(), value="tab4", padding_top="1em"),
+        rx.tabs.content(_f_rel_section(), value="tab5", padding_top="1em"),
+        rx.tabs.content(_f_med_section(), value="tab6", padding_top="1em"),
+        rx.tabs.content(_f_mil_section(), value="tab7", padding_top="1em"),
+        rx.tabs.content(_f_sp_section(), value="tab8", padding_top="1em"),
+        rx.tabs.content(_f_rz_section(), value="tab9", padding_top="1em"),
+        default_value="tab1",
+        width="100%",
+    )
+
+
+def _form_page() -> rx.Component:
+    return rx.vstack(
+        _form_content(),
+        _dlg_iddoc(),
+        _dlg_docedu(),
+        _dlg_mil(),
+        _dlg_med(),
+        _dlg_rel(),
+        _dlg_scp(),
+        _dlg_sp(),
+        _dlg_rz(),
+        width="100%",
+        spacing="3",
+    )
+
+
+# ============================================================
+# Add / Edit pages
+# ============================================================
+
+@require_login
+def add_page() -> rx.Component:
+    return page_wrapper(
+        header_subpage(
+            "Додавання",
+            controls.button_image_secondary(name_icon="circle_x", on_click=EntrantFormState.on_cancel),
+            controls.button_image_primary(name_icon="save", on_click=EntrantFormState.on_save),
+            width="100%",
+        ),
+        rx.skeleton(_form_page(), loading=EntrantFormState.in_process, height="100%"),
+    )
+
+
+@require_login
+def edit_page() -> rx.Component:
+    return page_wrapper(
+        header_subpage(
+            "Редагування",
+            controls.button_image_secondary(name_icon="circle_x", on_click=EntrantFormState.on_cancel),
+            controls.button_image_primary(name_icon="save", on_click=EntrantFormState.on_save),
+            width="100%",
+        ),
+        rx.skeleton(_form_page(), loading=EntrantFormState.in_process, height="100%"),
+    )

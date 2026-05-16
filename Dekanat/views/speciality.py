@@ -193,6 +193,7 @@ def view_page() -> rx.Component:
                 ViewSpecialityState.get_user_actions.contains(Actions.SPECIALITY_EDIT),
                 controls.button_image_primary(name_icon="pencil_line", on_click=ViewSpecialityState.on_click_edit),
             ),
+            left=controls.button_back(routes.SPECIALITY_LIST),
             width="100%"
         ),
         rx.skeleton(view_page_content(), loading=ViewSpecialityState.in_process, height="100%")

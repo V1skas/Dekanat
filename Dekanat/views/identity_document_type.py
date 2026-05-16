@@ -96,6 +96,7 @@ def view_page() -> rx.Component:
             "Перегляд",
             rx.cond(ViewIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_DELETE), controls.button_image_secondary(name_icon="trash_2", on_click=ViewIdentityDocumentTypeState.on_click_delete)),
             rx.cond(ViewIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_EDIT), controls.button_image_primary(name_icon="pencil_line", on_click=ViewIdentityDocumentTypeState.on_click_edit)),
+            left=controls.button_back(routes.IDENTITY_DOCUMENT_TYPE_LIST),
             width="100%"
         ),
         rx.skeleton(view_page_content(), loading=ViewIdentityDocumentTypeState.in_process, height="100%")

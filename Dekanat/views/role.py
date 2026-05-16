@@ -197,6 +197,7 @@ def view_page() -> rx.Component:
             "Перегляд",
             rx.cond(ViewRoleState.get_user_actions.contains(Actions.ROLE_DELETE), controls.button_image_secondary(name_icon="trash_2", on_click=ViewRoleState.on_click_delete)),
             rx.cond(ViewRoleState.get_user_actions.contains(Actions.ROLE_EDIT), controls.button_image_primary(name_icon="pencil_line", on_click=ViewRoleState.on_click_edit)),
+            left=controls.button_back(routes.ROLES_LIST),
             width="100%"
         ),
         rx.skeleton(view_page_content(), loading=ViewRoleState.in_process, height="100%")

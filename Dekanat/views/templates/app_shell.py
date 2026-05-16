@@ -22,6 +22,8 @@ def app_shell_wrap(_stateful: bool) -> rx.Component:
             grid_area="sidebar",
             width="100%",
             height="100%",
+            min_height="0",
+            overflow="hidden",
         ),
         # Третий ребёнок (content_area_wrap) добавляется автоматически через app_wraps chain.
 

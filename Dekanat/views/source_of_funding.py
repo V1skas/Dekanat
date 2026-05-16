@@ -118,6 +118,7 @@ def view_page() -> rx.Component:
                 ViewSourceOfFundingState.get_user_actions.contains(Actions.SOURCE_OF_FUNDING_EDIT),
                 controls.button_image_primary(name_icon="pencil_line", on_click=ViewSourceOfFundingState.on_click_edit),
             ),
+            left=controls.button_back(routes.SOURCE_OF_FUNDING_LIST),
             width="100%"
         ),
         rx.skeleton(view_page_content(), loading=ViewSourceOfFundingState.in_process, height="100%")

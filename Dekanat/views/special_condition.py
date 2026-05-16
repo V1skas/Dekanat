@@ -170,6 +170,7 @@ def view_page() -> rx.Component:
                 ViewSpecialConditionState.get_user_actions.contains(Actions.SPECIAL_CONDITION_EDIT),
                 controls.button_image_primary(name_icon="pencil_line", on_click=ViewSpecialConditionState.on_click_edit),
             ),
+            left=controls.button_back(routes.SPECIAL_CONDITION_LIST),
             width="100%"
         ),
         rx.skeleton(view_page_content(), loading=ViewSpecialConditionState.in_process, height="100%")

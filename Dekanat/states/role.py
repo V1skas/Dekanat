@@ -67,11 +67,11 @@ class AddRoleState(AppState):
 
     @rx.event
     def set_title(self, value: str):
-        self.title = value.strip()
+        self.title = value
 
     @rx.event
     def set_description(self, value: str):
-        self.description = value.strip()
+        self.description = value
 
     @rx.event
     def toggle_action(self, action_id: int):
@@ -149,11 +149,11 @@ class EditRoleState(AppState):
 
     @rx.event
     def set_title(self, value: str):
-        self.title = value.strip()
+        self.title = value
 
     @rx.event
     def set_description(self, value: str):
-        self.description = value.strip()
+        self.description = value
 
     @rx.event
     def toggle_action(self, action_id: int):

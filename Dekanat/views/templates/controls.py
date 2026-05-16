@@ -1,5 +1,15 @@
 import reflex as rx
 
+
+def button_back(href: str, **prop):
+    """Кнопка повернення на сторінку списку (іконка стрілки вліво, secondary стиль)."""
+    return button_image_secondary(
+        name_icon="arrow_left",
+        on_click=rx.redirect(href),
+        **prop,
+    )
+
+
 def button_primary(*args, **prop):
     return rx.button(
         *args,

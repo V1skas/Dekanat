@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import reflex as rx
 
@@ -76,6 +76,23 @@ def header() -> rx.Component:
             underline="none",
         ),
 
+        rx.box(
+            rx.heading(
+                AppState.section_title,
+                size="6",
+                weight="bold",
+                color="white",
+                white_space="nowrap",
+                overflow="hidden",
+                text_overflow="ellipsis",
+            ),
+            flex="1",
+            text_align="center",
+            padding_left="1rem",
+            padding_right="1rem",
+            min_width="0",
+        ),
+
         _user_popover(),
 
         width="100%",
@@ -83,7 +100,6 @@ def header() -> rx.Component:
         padding_left="1.2rem",
         padding_right="1.2rem",
         align="center",
-        justify="between",
 
         background_image=_ACCENT_GRADIENT,
         border_radius="1.2rem",
@@ -195,6 +211,7 @@ def sidebar(menu: List[MenuItem]) -> rx.Component:
             padding_y="0.7rem",
             padding_x="0.7rem",
             width="100%",
+            flex_shrink="0",
             on_click=AppState.toggle_sidebar
         ),
 
@@ -202,7 +219,27 @@ def sidebar(menu: List[MenuItem]) -> rx.Component:
             *[render_menu_item(item) for item in menu],
             spacing="0",
             width="100%",
-            height="100%"
+            flex="1",
+            min_height="0",
+            overflow_y="auto",
+            overflow_x="hidden",
+            style={
+                "scrollbar_width": "thin",
+                "scrollbar_color": "rgba(255, 255, 255, 0.35) transparent",
+                "&::-webkit-scrollbar": {
+                    "width": "6px",
+                },
+                "&::-webkit-scrollbar-track": {
+                    "background": "transparent",
+                },
+                "&::-webkit-scrollbar-thumb": {
+                    "background_color": "rgba(255, 255, 255, 0.35)",
+                    "border_radius": "3px",
+                },
+                "&::-webkit-scrollbar-thumb:hover": {
+                    "background_color": "rgba(255, 255, 255, 0.6)",
+                },
+            },
         ),
 
         spacing="3",
@@ -217,8 +254,8 @@ def sidebar(menu: List[MenuItem]) -> rx.Component:
         padding_right="8px",
         height="100%",
         width="100%",
-        overflow_x="hidden",
-        overflow_y="auto",
+        min_height="0",
+        overflow="hidden",
     )
 
 def page_wrapper(page_header: rx.Component, page_content: rx.Component) -> rx.Component:
@@ -240,16 +277,30 @@ def page_wrapper(page_header: rx.Component, page_content: rx.Component) -> rx.Co
         spacing="3",
     )
 
-def header_subpage(title: str, *args, **prop) -> rx.Component:
-    return rx.hstack(
-        rx.heading(title, size="8", weight="bold", background_image=f"linear-gradient(135deg, {rx.color('accent', 11)} 20%, {rx.color('accent', 9)} 65%)", background_clip="text", color="transparent"),
-        rx.spacer(),
-        *args,
-        **prop,
+def header_subpage(title: str, *args, left: Optional[rx.Component] = None, **prop) -> rx.Component:
+    """Шапка підсторінки. `left=` додає елемент ліворуч від заголовку (наприклад, кнопку «назад»)."""
+    heading = rx.heading(
+        title,
+        size="8",
+        weight="bold",
+        background_image=_ACCENT_GRADIENT,
+        background_clip="text",
+        color="transparent",
+        white_space="nowrap",
+    )
 
+    children: List[rx.Component] = []
+    if left is not None:
+        children.append(left)
+    children.append(heading)
+    children.append(rx.spacer())
+    children.extend(args)
+
+    return rx.hstack(
+        *children,
+        align="center",
         position="relative",
         padding_bottom="0.5rem",
-
         style={
             "&::after": {
                 "content": '""',
@@ -258,8 +309,9 @@ def header_subpage(title: str, *args, **prop) -> rx.Component:
                 "bottom": "0",
                 "width": "100%",
                 "height": "0.2rem",
-                "background": f"linear-gradient(135deg, {rx.color('accent', 11)} 20%, {rx.color('accent', 9)} 65%)",
+                "background": _ACCENT_GRADIENT,
                 "border_radius": "2px",
             }
         },
+        **prop,
     )

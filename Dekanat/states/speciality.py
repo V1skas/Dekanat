@@ -78,7 +78,7 @@ class AddSpecialityState(AppState):
 
     @rx.event
     def set_code(self, value: str):
-        self.item.code = value.strip()
+        self.item.code = value
 
     @rx.var
     def id_department_str(self) -> str:
@@ -99,7 +99,7 @@ class AddSpecialityState(AppState):
 
     @rx.event
     def set_title(self, value: str):
-        self.item.title = value.strip()
+        self.item.title = value
 
     @rx.var
     def tag(self) -> str:
@@ -107,7 +107,7 @@ class AddSpecialityState(AppState):
 
     @rx.event
     def set_tag(self, value: str):
-        self.item.tag = value.strip()
+        self.item.tag = value
 
     @rx.var
     def program(self) -> str:
@@ -115,7 +115,7 @@ class AddSpecialityState(AppState):
 
     @rx.event
     def set_program(self, value: str):
-        self.item.educational_and_professional_program = value.strip() if value.strip() != "" else None  # type: ignore
+        self.item.educational_and_professional_program = value if value != "" else None  # type: ignore
 
     @rx.event
     def on_save(self):
@@ -202,7 +202,7 @@ class EditSpecialityState(AppState):
 
     @rx.event
     def set_title(self, value: str):
-        self.item.title = value.strip()
+        self.item.title = value
 
     @rx.var
     def tag(self) -> str:
@@ -210,7 +210,7 @@ class EditSpecialityState(AppState):
 
     @rx.event
     def set_tag(self, value: str):
-        self.item.tag = value.strip()
+        self.item.tag = value
 
     @rx.var
     def program(self) -> str:
@@ -218,7 +218,7 @@ class EditSpecialityState(AppState):
 
     @rx.event
     def set_program(self, value: str):
-        self.item.educational_and_professional_program = value.strip() if value.strip() != "" else None  # type: ignore
+        self.item.educational_and_professional_program = value if value != "" else None  # type: ignore
 
     @rx.event
     def on_save(self):

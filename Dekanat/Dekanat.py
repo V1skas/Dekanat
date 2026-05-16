@@ -8,7 +8,11 @@ from Dekanat.views.templates.app_shell import app_shell_wrap, content_area_wrap
 from Dekanat.views import application_status
 from Dekanat.views import dashboard
 from Dekanat.views import department
+from Dekanat.views import entrant
+from Dekanat.views import entrants_group
+from Dekanat.views import entry_base
 from Dekanat.views import identity_document_type
+from Dekanat.views import item_zno
 from Dekanat.views import kinship
 from Dekanat.views import role
 from Dekanat.views import source_of_funding
@@ -19,7 +23,11 @@ from Dekanat.views import worker
 from Dekanat.states.auth import AuthState
 from Dekanat.states import application_status as application_status_states
 from Dekanat.states import department as department_states
+from Dekanat.states import entrant as entrant_states
+from Dekanat.states import entrants_group as entrants_group_states
+from Dekanat.states import entry_base as entry_base_states
 from Dekanat.states import identity_document_type as identity_document_type_states
+from Dekanat.states import item_zno as item_zno_states
 from Dekanat.states import kinship as kinship_states
 from Dekanat.states import role as role_states
 from Dekanat.states import source_of_funding as source_of_funding_states
@@ -87,3 +95,23 @@ app.add_page(worker.list_page, route=routes.WORKERS_LIST, on_load=worker_states.
 app.add_page(worker.add_page, route=routes.WORKERS_ADD, on_load=worker_states.AddWorkerState.on_load)
 app.add_page(worker.edit_page, route=routes.WORKERS_EDIT+"[id]", on_load=worker_states.EditWorkerState.on_load)
 app.add_page(worker.view_page, route=routes.WORKERS_VIEW+"[id]", on_load=worker_states.ViewWorkerState.on_load)
+
+app.add_page(item_zno.list_page, route=routes.ITEM_ZNO_LIST, on_load=item_zno_states.ListItemZnoState.on_load)
+app.add_page(item_zno.add_page, route=routes.ITEM_ZNO_ADD, on_load=item_zno_states.AddItemZnoState.on_load)
+app.add_page(item_zno.edit_page, route=routes.ITEM_ZNO_EDIT+"[id]", on_load=item_zno_states.EditItemZnoState.on_load)
+app.add_page(item_zno.view_page, route=routes.ITEM_ZNO_VIEW+"[id]", on_load=item_zno_states.ViewItemZnoState.on_load)
+
+app.add_page(entry_base.list_page, route=routes.ENTRY_BASE_LIST, on_load=entry_base_states.ListEntryBaseState.on_load)
+app.add_page(entry_base.add_page, route=routes.ENTRY_BASE_ADD, on_load=entry_base_states.AddEntryBaseState.on_load)
+app.add_page(entry_base.edit_page, route=routes.ENTRY_BASE_EDIT+"[id]", on_load=entry_base_states.EditEntryBaseState.on_load)
+app.add_page(entry_base.view_page, route=routes.ENTRY_BASE_VIEW+"[id]", on_load=entry_base_states.ViewEntryBaseState.on_load)
+
+app.add_page(entrants_group.list_page, route=routes.ENTRANTS_GROUP_LIST, on_load=entrants_group_states.ListEntrantsGroupState.on_load)
+app.add_page(entrants_group.add_page, route=routes.ENTRANTS_GROUP_ADD, on_load=entrants_group_states.AddEntrantsGroupState.on_load)
+app.add_page(entrants_group.edit_page, route=routes.ENTRANTS_GROUP_EDIT+"[id]", on_load=entrants_group_states.EditEntrantsGroupState.on_load)
+app.add_page(entrants_group.view_page, route=routes.ENTRANTS_GROUP_VIEW+"[id]", on_load=entrants_group_states.ViewEntrantsGroupState.on_load)
+
+app.add_page(entrant.list_page, route=routes.ENTRANT_LIST, on_load=entrant_states.ListEntrantState.on_load)
+app.add_page(entrant.add_page, route=routes.ENTRANT_ADD, on_load=entrant_states.EntrantFormState.on_load_add)
+app.add_page(entrant.edit_page, route=routes.ENTRANT_EDIT+"[id]", on_load=entrant_states.EntrantFormState.on_load_edit)
+app.add_page(entrant.view_page, route=routes.ENTRANT_VIEW+"[id]", on_load=entrant_states.ViewEntrantState.on_load)

@@ -61,7 +61,7 @@ class AddSpecialConditionState(AppState):
 
     @rx.event
     def set_subcategory_code(self, value: str):
-        self.item.subcategory_code = value.strip()
+        self.item.subcategory_code = value
 
     @rx.var
     def title(self) -> str:
@@ -69,7 +69,7 @@ class AddSpecialConditionState(AppState):
 
     @rx.event
     def set_title(self, value: str):
-        self.item.title = value.strip()
+        self.item.title = value
 
     @rx.var
     def description(self) -> str:
@@ -77,7 +77,7 @@ class AddSpecialConditionState(AppState):
 
     @rx.event
     def set_description(self, value: str):
-        self.item.description = value.strip() if value.strip() != "" else None
+        self.item.description = value if value != "" else None
 
     @rx.var
     def is_kvota(self) -> bool:
@@ -153,7 +153,7 @@ class EditSpecialConditionState(AppState):
 
     @rx.event
     def set_title(self, value: str):
-        self.item.title = value.strip()
+        self.item.title = value
 
     @rx.var
     def description(self) -> str:
@@ -161,7 +161,7 @@ class EditSpecialConditionState(AppState):
 
     @rx.event
     def set_description(self, value: str):
-        self.item.description = value.strip() if value.strip() != "" else None
+        self.item.description = value if value != "" else None
 
     @rx.var
     def is_kvota(self) -> bool:

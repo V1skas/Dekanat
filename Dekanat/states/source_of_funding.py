@@ -62,7 +62,7 @@ class AddSourceOfFundingState(AppState):
 
     @rx.event
     def set_title(self, value: str):
-        self.item.title = value.strip()
+        self.item.title = value
 
     @rx.event
     def on_save(self):
@@ -122,7 +122,7 @@ class EditSourceOfFundingState(AppState):
 
     @rx.event
     def set_title(self, value: str):
-        self.item.title = value.strip()
+        self.item.title = value
 
     @rx.event
     def on_save(self):

@@ -62,7 +62,7 @@ class AddIdentityDocumentTypeState(AppState):
 
     @rx.event
     def set_title(self, value: str):
-        self.item.title = value.strip()
+        self.item.title = value
 
     @rx.var
     def description(self) -> str:
@@ -70,7 +70,7 @@ class AddIdentityDocumentTypeState(AppState):
 
     @rx.event
     def set_description(self, value: str):
-        self.item.description = value.strip() if value.strip() != "" else None
+        self.item.description = value if value != "" else None
 
     @rx.event
     def on_save(self):
@@ -127,7 +127,7 @@ class EditIdentityDocumentTypeState(AppState):
 
     @rx.event
     def set_title(self, value: str):
-        self.item.title = value.strip()
+        self.item.title = value
 
     @rx.var
     def description(self) -> str:
@@ -135,7 +135,7 @@ class EditIdentityDocumentTypeState(AppState):
 
     @rx.event
     def set_description(self, value: str):
-        self.item.description = value.strip() if value.strip() != "" else None
+        self.item.description = value if value != "" else None
 
     @rx.event
     def on_save(self):

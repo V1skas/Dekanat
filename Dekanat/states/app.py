@@ -7,6 +7,7 @@ from Dekanat import routes
 from Dekanat.services.auth import AuthService, WorkerModel, AuthTokenModel
 from Dekanat.services.worker import WorkerService
 from Dekanat.actions import Actions
+from Dekanat.declared.submenu import SECTION_TITLES
 
 
 class AppState(rx.State):
@@ -91,6 +92,17 @@ class AppState(rx.State):
     @rx.var
     def get_user_actions(self) -> List[str]:
         return self.actions_worker
+
+    @rx.var
+    def section_title(self) -> str:
+        path = self.router.page.path or ""
+        best_base = ""
+        best_title = ""
+        for base, title in SECTION_TITLES.items():
+            if path.startswith(base) and len(base) > len(best_base):
+                best_base = base
+                best_title = title
+        return best_title
 
     @rx.event
     def logout(self):

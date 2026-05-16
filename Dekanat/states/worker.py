@@ -82,11 +82,11 @@ class AddWorkerState(AppState):
 
     @rx.event
     def set_pib(self, value: str):
-        self.pib = value.strip()
+        self.pib = value
 
     @rx.event
     def set_login(self, value: str):
-        self.login = value.strip()
+        self.login = value
 
     @rx.event
     def set_password(self, value: str):
@@ -94,15 +94,15 @@ class AddWorkerState(AppState):
 
     @rx.event
     def set_phone_number(self, value: str):
-        self.phone_number = value.strip()
+        self.phone_number = value
 
     @rx.event
     def set_email(self, value: str):
-        self.email = value.strip()
+        self.email = value
 
     @rx.event
     def set_photo(self, value: str):
-        self.photo = value.strip()
+        self.photo = value
 
     @rx.event
     def toggle_role(self, role_id: int):
@@ -217,11 +217,11 @@ class EditWorkerState(AppState):
 
     @rx.event
     def set_pib(self, value: str):
-        self.pib = value.strip()
+        self.pib = value
 
     @rx.event
     def set_login(self, value: str):
-        self.login = value.strip()
+        self.login = value
 
     @rx.event
     def set_password(self, value: str):
@@ -229,15 +229,15 @@ class EditWorkerState(AppState):
 
     @rx.event
     def set_phone_number(self, value: str):
-        self.phone_number = value.strip()
+        self.phone_number = value
 
     @rx.event
     def set_email(self, value: str):
-        self.email = value.strip()
+        self.email = value
 
     @rx.event
     def set_photo(self, value: str):
-        self.photo = value.strip()
+        self.photo = value
 
     @rx.event
     def toggle_role(self, role_id: int):
