@@ -49,9 +49,9 @@ def _list_table() -> rx.Component:
 
 def list_page_content() -> rx.Component:
     return rx.vstack(
-        rx.cond(ListEntrantsGroupState.items.is_not_none(),
+        rx.cond((ListEntrantsGroupState.items.is_not_none() & (ListEntrantsGroupState.items.length() > 0)),
                 _list_table(),
-                rx.text("Дані відсутні")),
+                controls.empty_placeholder()),
     )
 
 
@@ -66,28 +66,35 @@ def _entrants_form_row_factory(remove_event):
             rx.table.cell(rx.cond(item.person, item.person.phone_number, "—")),
             rx.table.cell(rx.cond(item.person, rx.cond(item.person.email, item.person.email, "—"), "—")),
             rx.table.cell(
-                controls.button_image_secondary(name_icon="trash_2", on_click=remove_event(idx)),
+                controls.delete_with_confirm(
+                    on_confirm=remove_event(idx),
+                    description="Прибрати цього абітурієнта зі складу групи?",
+                ),
             ),
         )
     return _row
 
 
 def _entrants_form_table(items, remove_event) -> rx.Component:
-    return rx.table.root(
-        rx.table.header(
-            rx.table.row(
-                rx.table.column_header_cell("ПІБ", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Телефон", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("E-mail", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Дії", color=rx.color("accent", 2)),
+    return rx.cond(
+        items.length() > 0,
+        rx.table.root(
+            rx.table.header(
+                rx.table.row(
+                    rx.table.column_header_cell("ПІБ", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Телефон", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("E-mail", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Дії", color=rx.color("accent", 2)),
+                ),
+                background_color=rx.color("accent", 9),
             ),
-            background_color=rx.color("accent", 9),
+            rx.table.body(
+                rx.foreach(items, _entrants_form_row_factory(remove_event)),
+            ),
+            variant="surface",
+            width="100%",
         ),
-        rx.table.body(
-            rx.foreach(items, _entrants_form_row_factory(remove_event)),
-        ),
-        variant="surface",
-        width="100%",
+        controls.empty_placeholder("До групи ще не додано жодного абітурієнта"),
     )
 
 
@@ -119,7 +126,7 @@ def _add_entrant_dialog(rows_var, search_value, set_search, pick_entrant, on_clo
                     width="100%",
                 ),
                 rx.cond(
-                    rows_var,
+                    rows_var.length() > 0,
                     rx.vstack(
                         rx.foreach(rows_var, _row),
                         spacing="1",
@@ -204,16 +211,16 @@ def view_page_content() -> rx.Component:
 
         rx.heading("Абітурієнти у групі", size="4"),
         rx.cond(
-            ViewEntrantsGroupState.entrants_in_group,
+            ViewEntrantsGroupState.entrants_in_group.length() > 0,
             _view_entrants_table(),
-            rx.text("До групи ще не додано жодного абітурієнта."),
+            controls.empty_placeholder("До групи ще не додано жодного абітурієнта"),
         ),
 
         rx.heading("Розклад іспитів", size="4"),
         rx.cond(
-            ViewEntrantsGroupState.exams,
+            ViewEntrantsGroupState.exams.length() > 0,
             _view_exams_table(),
-            rx.text("Іспити для цієї групи ще не призначені."),
+            controls.empty_placeholder("Іспити для цієї групи ще не призначені"),
         ),
 
         spacing="4",
@@ -334,7 +341,7 @@ def view_page() -> rx.Component:
         header_subpage(
             "Перегляд",
             rx.cond(ViewEntrantsGroupState.get_user_actions.contains(Actions.ENTRANTS_GROUP_DELETE),
-                    controls.button_image_secondary(name_icon="trash_2", on_click=ViewEntrantsGroupState.on_click_delete)),
+                    controls.delete_with_confirm(on_confirm=ViewEntrantsGroupState.on_click_delete)),
             rx.cond(ViewEntrantsGroupState.get_user_actions.contains(Actions.ENTRANTS_GROUP_EDIT),
                     controls.button_image_primary(name_icon="pencil_line", on_click=ViewEntrantsGroupState.on_click_edit)),
             left=controls.button_back(routes.ENTRANTS_GROUP_LIST),

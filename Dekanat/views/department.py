@@ -46,9 +46,9 @@ def table() -> rx.Component:
 
 def list_page_content() -> rx.Component:
     return rx.vstack(
-        rx.cond(ListDepartmentState.items.is_not_none(),
+        rx.cond((ListDepartmentState.items.is_not_none() & (ListDepartmentState.items.length() > 0)),
                 table(),
-                rx.text("Дані відсутні")
+                controls.empty_placeholder()
                 ),
     )
 
@@ -112,7 +112,7 @@ def view_page() -> rx.Component:
             "Перегляд",
             rx.cond(
                 ViewDepartmentState.get_user_actions.contains(Actions.DEPARTMENT_DELETE),
-                controls.button_image_secondary(name_icon="trash_2", on_click=ViewDepartmentState.on_click_delete),
+                controls.delete_with_confirm(on_confirm=ViewDepartmentState.on_click_delete),
             ),
             rx.cond(
                 ViewDepartmentState.get_user_actions.contains(Actions.DEPARTMENT_EDIT),

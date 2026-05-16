@@ -41,9 +41,9 @@ def table() -> rx.Component:
 
 def list_page_content() -> rx.Component:
     return rx.vstack(
-        rx.cond(ListKinshipState.items.is_not_none(),
+        rx.cond((ListKinshipState.items.is_not_none() & (ListKinshipState.items.length() > 0)),
                 table(),
-                rx.text("Дані відсутні")
+                controls.empty_placeholder()
                 ),
     )
 
@@ -84,7 +84,7 @@ def view_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Перегляд",
-            rx.cond(ViewKinshipState.get_user_actions.contains(Actions.KINSHIP_DELETE), controls.button_image_secondary(name_icon="trash_2", on_click=ViewKinshipState.on_click_delete)),
+            rx.cond(ViewKinshipState.get_user_actions.contains(Actions.KINSHIP_DELETE), controls.delete_with_confirm(on_confirm=ViewKinshipState.on_click_delete)),
             rx.cond(ViewKinshipState.get_user_actions.contains(Actions.KINSHIP_EDIT), controls.button_image_primary(name_icon="pencil_line", on_click=ViewKinshipState.on_click_edit)),
             left=controls.button_back(routes.KINSHIP_LIST),
             width="100%"

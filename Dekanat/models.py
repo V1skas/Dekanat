@@ -155,7 +155,7 @@ class PersonModel(rx.Model, table=True):
 
     # Table columns
     id: int = Field(primary_key=True)
-    edbo: str = Field(default=None, nullable=True)
+    edbo: str = Field(nullable=False)
     pib: str = Field(nullable=False)
     photo: Optional[bytes] = Field(default=None, sa_column=Column("photo", LargeBinary, nullable=True))
     photo_mime_type: Optional[str] = Field(default=None, nullable=True)

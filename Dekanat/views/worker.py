@@ -49,7 +49,7 @@ def list_page_content() -> rx.Component:
     return rx.vstack(
         rx.cond(ListWorkerState.items,
                 table(),
-                rx.text("Дані відсутні")
+                controls.empty_placeholder()
                 ),
     )
 
@@ -299,7 +299,7 @@ def view_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Перегляд",
-            rx.cond(ViewWorkerState.get_user_actions.contains(Actions.WORKER_DELETE), controls.button_image_secondary(name_icon="trash_2", on_click=ViewWorkerState.on_click_delete)),
+            rx.cond(ViewWorkerState.get_user_actions.contains(Actions.WORKER_DELETE), controls.delete_with_confirm(on_confirm=ViewWorkerState.on_click_delete)),
             rx.cond(ViewWorkerState.get_user_actions.contains(Actions.WORKER_EDIT), controls.button_image_primary(name_icon="pencil_line", on_click=ViewWorkerState.on_click_edit)),
             left=controls.button_back(routes.WORKERS_LIST),
             width="100%"

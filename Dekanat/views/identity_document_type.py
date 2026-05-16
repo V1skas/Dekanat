@@ -41,9 +41,9 @@ def table() -> rx.Component:
 
 def list_page_content() -> rx.Component:
     return rx.vstack(
-        rx.cond(ListIdentityDocumentTypeState.items.is_not_none(), #type: ignore
+        rx.cond((ListIdentityDocumentTypeState.items.is_not_none() & (ListIdentityDocumentTypeState.items.length() > 0)), #type: ignore
             table(),
-            rx.text("Дані відсутні")
+            controls.empty_placeholder()
         ),
     )
 
@@ -94,7 +94,7 @@ def view_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Перегляд",
-            rx.cond(ViewIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_DELETE), controls.button_image_secondary(name_icon="trash_2", on_click=ViewIdentityDocumentTypeState.on_click_delete)),
+            rx.cond(ViewIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_DELETE), controls.delete_with_confirm(on_confirm=ViewIdentityDocumentTypeState.on_click_delete)),
             rx.cond(ViewIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_EDIT), controls.button_image_primary(name_icon="pencil_line", on_click=ViewIdentityDocumentTypeState.on_click_edit)),
             left=controls.button_back(routes.IDENTITY_DOCUMENT_TYPE_LIST),
             width="100%"

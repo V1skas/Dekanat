@@ -122,9 +122,9 @@ def _list_table() -> rx.Component:
 def list_page_content() -> rx.Component:
     return rx.vstack(
         rx.cond(
-            ListEntrantState.items.is_not_none(),
+            (ListEntrantState.items.is_not_none() & (ListEntrantState.items.length() > 0)),
             _list_table(),
-            rx.text("Дані відсутні"),
+            controls.empty_placeholder(),
         ),
         width="100%",
     )
@@ -161,13 +161,19 @@ def _v_kv(label: str, value) -> rx.Component:
 def _v_photo() -> rx.Component:
     return rx.cond(
         ViewEntrantState.has_photo,
-        rx.image(
-            src=ViewEntrantState.photo_data_url,
-            border=f"1px solid {rx.color('accent', 9)}",
-            border_radius="5%",
-            width="300px",
-            height="400px",
-            object_fit="cover",
+        rx.el.a(
+            rx.image(
+                src=ViewEntrantState.photo_data_url,
+                border=f"1px solid {rx.color('accent', 9)}",
+                border_radius="5%",
+                width="300px",
+                height="400px",
+                object_fit="cover",
+            ),
+            href=ViewEntrantState.photo_data_url,
+            download=ViewEntrantState.photo_download_name,
+            title="Завантажити фото",
+            style={"cursor": "pointer", "display": "block"},
         ),
         rx.box(
             rx.text("Фото не завантажено", text_align="center"),
@@ -193,22 +199,26 @@ def _v_iddoc_row(item: IdentityDocumentModel) -> rx.Component:
 
 
 def _v_iddoc_table() -> rx.Component:
-    return rx.table.root(
-        rx.table.header(
-            rx.table.row(
-                rx.table.column_header_cell("Тип", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Серія та номер", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Код", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Ким видано", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+    return rx.cond(
+        ViewEntrantState.item.person.identity_document.length() > 0,
+        rx.table.root(
+            rx.table.header(
+                rx.table.row(
+                    rx.table.column_header_cell("Тип", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Серія та номер", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Код", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Ким видано", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+                ),
+                background_color=rx.color("accent", 9),
             ),
-            background_color=rx.color("accent", 9),
-        ),
-        rx.table.body(
-            rx.foreach(ViewEntrantState.item.person.identity_document, _v_iddoc_row),
-        ),
-        variant="surface",
-        width="100%",
+            rx.table.body(
+                rx.foreach(ViewEntrantState.item.person.identity_document, _v_iddoc_row),
+            ),
+            variant="surface",
+            width="100%",
+            ),
+        controls.empty_placeholder(),
     )
 
 
@@ -223,20 +233,24 @@ def _v_docedu_row(item: DocumentAboutEducationModel) -> rx.Component:
 
 
 def _v_docedu_table() -> rx.Component:
-    return rx.table.root(
-        rx.table.header(
-            rx.table.row(
-                rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Номер", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Серія", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Ким видано", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+    return rx.cond(
+        ViewEntrantState.item.person.document_about_education.length() > 0,
+        rx.table.root(
+            rx.table.header(
+                rx.table.row(
+                    rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Номер", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Серія", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Ким видано", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+                ),
+                background_color=rx.color("accent", 9),
             ),
-            background_color=rx.color("accent", 9),
-        ),
-        rx.table.body(rx.foreach(ViewEntrantState.item.person.document_about_education, _v_docedu_row)),
-        variant="surface",
-        width="100%",
+            rx.table.body(rx.foreach(ViewEntrantState.item.person.document_about_education, _v_docedu_row)),
+            variant="surface",
+            width="100%",
+            ),
+        controls.empty_placeholder(),
     )
 
 
@@ -250,19 +264,23 @@ def _v_mil_row(item: MilitaryAccountingModel) -> rx.Component:
 
 
 def _v_mil_table() -> rx.Component:
-    return rx.table.root(
-        rx.table.header(
-            rx.table.row(
-                rx.table.column_header_cell("Серія", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Номер", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Ким видано", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+    return rx.cond(
+        ViewEntrantState.item.person.military_accounting.length() > 0,
+        rx.table.root(
+            rx.table.header(
+                rx.table.row(
+                    rx.table.column_header_cell("Серія", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Номер", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Ким видано", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+                ),
+                background_color=rx.color("accent", 9),
             ),
-            background_color=rx.color("accent", 9),
-        ),
-        rx.table.body(rx.foreach(ViewEntrantState.item.person.military_accounting, _v_mil_row)),
-        variant="surface",
-        width="100%",
+            rx.table.body(rx.foreach(ViewEntrantState.item.person.military_accounting, _v_mil_row)),
+            variant="surface",
+            width="100%",
+            ),
+        controls.empty_placeholder(),
     )
 
 
@@ -274,17 +292,21 @@ def _v_med_row(item: MedicalReferenceModel) -> rx.Component:
 
 
 def _v_med_table() -> rx.Component:
-    return rx.table.root(
-        rx.table.header(
-            rx.table.row(
-                rx.table.column_header_cell("Номер", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+    return rx.cond(
+        ViewEntrantState.item.person.medical_reference.length() > 0,
+        rx.table.root(
+            rx.table.header(
+                rx.table.row(
+                    rx.table.column_header_cell("Номер", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+                ),
+                background_color=rx.color("accent", 9),
             ),
-            background_color=rx.color("accent", 9),
-        ),
-        rx.table.body(rx.foreach(ViewEntrantState.item.person.medical_reference, _v_med_row)),
-        variant="surface",
-        width="100%",
+            rx.table.body(rx.foreach(ViewEntrantState.item.person.medical_reference, _v_med_row)),
+            variant="surface",
+            width="100%",
+            ),
+        controls.empty_placeholder(),
     )
 
 
@@ -297,18 +319,22 @@ def _v_rel_row(item: InformationAboutRelativesModel) -> rx.Component:
 
 
 def _v_rel_table() -> rx.Component:
-    return rx.table.root(
-        rx.table.header(
-            rx.table.row(
-                rx.table.column_header_cell("Тип", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("ПІБ", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Телефон", color=rx.color("accent", 2)),
+    return rx.cond(
+        ViewEntrantState.item.person.information_about_relatives.length() > 0,
+        rx.table.root(
+            rx.table.header(
+                rx.table.row(
+                    rx.table.column_header_cell("Тип", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("ПІБ", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Телефон", color=rx.color("accent", 2)),
+                ),
+                background_color=rx.color("accent", 9),
             ),
-            background_color=rx.color("accent", 9),
-        ),
-        rx.table.body(rx.foreach(ViewEntrantState.item.person.information_about_relatives, _v_rel_row)),
-        variant="surface",
-        width="100%",
+            rx.table.body(rx.foreach(ViewEntrantState.item.person.information_about_relatives, _v_rel_row)),
+            variant="surface",
+            width="100%",
+            ),
+        controls.empty_placeholder(),
     )
 
 
@@ -322,19 +348,23 @@ def _v_scp_row(item: SpecialConditionPersonModel) -> rx.Component:
 
 
 def _v_scp_table() -> rx.Component:
-    return rx.table.root(
-        rx.table.header(
-            rx.table.row(
-                rx.table.column_header_cell("Код", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Номер документа", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+    return rx.cond(
+        ViewEntrantState.item.person.special_conditions.length() > 0,
+        rx.table.root(
+            rx.table.header(
+                rx.table.row(
+                    rx.table.column_header_cell("Код", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Номер документа", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+                ),
+                background_color=rx.color("accent", 9),
             ),
-            background_color=rx.color("accent", 9),
-        ),
-        rx.table.body(rx.foreach(ViewEntrantState.item.person.special_conditions, _v_scp_row)),
-        variant="surface",
-        width="100%",
+            rx.table.body(rx.foreach(ViewEntrantState.item.person.special_conditions, _v_scp_row)),
+            variant="surface",
+            width="100%",
+            ),
+        controls.empty_placeholder(),
     )
 
 
@@ -347,18 +377,22 @@ def _v_sp_row(item: SpecialtieEntrantModel) -> rx.Component:
 
 
 def _v_sp_table() -> rx.Component:
-    return rx.table.root(
-        rx.table.header(
-            rx.table.row(
-                rx.table.column_header_cell("Пріоритет", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Код", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
+    return rx.cond(
+        ViewEntrantState.item.specialties.length() > 0,
+        rx.table.root(
+            rx.table.header(
+                rx.table.row(
+                    rx.table.column_header_cell("Пріоритет", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Код", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
+                ),
+                background_color=rx.color("accent", 9),
             ),
-            background_color=rx.color("accent", 9),
-        ),
-        rx.table.body(rx.foreach(ViewEntrantState.item.specialties, _v_sp_row)),
-        variant="surface",
-        width="100%",
+            rx.table.body(rx.foreach(ViewEntrantState.item.specialties, _v_sp_row)),
+            variant="surface",
+            width="100%",
+            ),
+        controls.empty_placeholder(),
     )
 
 
@@ -370,17 +404,21 @@ def _v_rz_row(item: ResultZnoModel) -> rx.Component:
 
 
 def _v_rz_table() -> rx.Component:
-    return rx.table.root(
-        rx.table.header(
-            rx.table.row(
-                rx.table.column_header_cell("Предмет", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Бали", color=rx.color("accent", 2)),
+    return rx.cond(
+        ViewEntrantState.item.person.results_zno.length() > 0,
+        rx.table.root(
+            rx.table.header(
+                rx.table.row(
+                    rx.table.column_header_cell("Предмет", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Бали", color=rx.color("accent", 2)),
+                ),
+                background_color=rx.color("accent", 9),
             ),
-            background_color=rx.color("accent", 9),
-        ),
-        rx.table.body(rx.foreach(ViewEntrantState.item.person.results_zno, _v_rz_row)),
-        variant="surface",
-        width="100%",
+            rx.table.body(rx.foreach(ViewEntrantState.item.person.results_zno, _v_rz_row)),
+            variant="surface",
+            width="100%",
+            ),
+        controls.empty_placeholder(),
     )
 
 
@@ -441,7 +479,7 @@ def view_page_content() -> rx.Component:
             default_value="tab1",
             width="100%",
         ),
-        rx.text("Дані відсутні"),
+        controls.empty_placeholder(),
     )
 
 
@@ -452,7 +490,7 @@ def view_page() -> rx.Component:
             "Перегляд",
             rx.cond(
                 ViewEntrantState.get_user_actions.contains(Actions.ENTRANT_DELETE),
-                controls.button_image_secondary(name_icon="trash_2", on_click=ViewEntrantState.on_click_delete),
+                controls.delete_with_confirm(on_confirm=ViewEntrantState.on_click_delete),
             ),
             rx.cond(
                 ViewEntrantState.get_user_actions.contains(Actions.ENTRANT_EDIT),
@@ -511,8 +549,8 @@ def _photo_block() -> rx.Component:
 
 def _personal_fields() -> rx.Component:
     return rx.vstack(
-        rx.text("Код ЄДБО:"),
-        rx.input(value=EntrantFormState.edbo, on_change=EntrantFormState.set_edbo, width="100%"),
+        rx.text("*Код ЄДБО:"),
+        rx.input(required=True, value=EntrantFormState.edbo, on_change=EntrantFormState.set_edbo, width="100%"),
         rx.text("*ПІБ:"),
         rx.input(required=True, value=EntrantFormState.pib, on_change=EntrantFormState.set_pib, width="100%"),
         rx.text("Громадянство:"),
@@ -564,7 +602,10 @@ def _action_cell(on_edit, on_delete) -> rx.Component:
     return rx.table.cell(
         rx.hstack(
             controls.button_image_primary(name_icon="pencil_line", on_click=on_edit),
-            controls.button_image_secondary(name_icon="trash_2", on_click=on_delete),
+            controls.delete_with_confirm(
+                on_confirm=on_delete,
+                description="Видалити цей запис зі списку?",
+            ),
             spacing="2",
         )
     )
@@ -592,13 +633,17 @@ def _f_iddoc_section() -> rx.Component:
             controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_iddoc_add),
             width="100%",
         ),
-        rx.table.root(
-            _sub_table_header("Тип", "Серія/номер", "Код", "Ким видано", "Дата видачі", "Дії"),
-            rx.table.body(
-                rx.foreach(EntrantFormState.identity_documents, _f_iddoc_row),
+        rx.cond(
+            EntrantFormState.identity_documents.length() > 0,
+            rx.table.root(
+                _sub_table_header("Тип", "Серія/номер", "Код", "Ким видано", "Дата видачі", "Дії"),
+                rx.table.body(
+                    rx.foreach(EntrantFormState.identity_documents, _f_iddoc_row),
+                ),
+                variant="surface",
+                width="100%",
             ),
-            variant="surface",
-            width="100%",
+            controls.empty_placeholder(),
         ),
         width="100%",
     )
@@ -626,13 +671,17 @@ def _f_docedu_section() -> rx.Component:
             controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_docedu_add),
             width="100%",
         ),
-        rx.table.root(
-            _sub_table_header("Назва", "Номер", "Серія", "Ким видано", "Дата видачі", "Дії"),
-            rx.table.body(
-                rx.foreach(EntrantFormState.documents_about_education, _f_docedu_row),
+        rx.cond(
+            EntrantFormState.documents_about_education.length() > 0,
+            rx.table.root(
+                _sub_table_header("Назва", "Номер", "Серія", "Ким видано", "Дата видачі", "Дії"),
+                rx.table.body(
+                    rx.foreach(EntrantFormState.documents_about_education, _f_docedu_row),
+                ),
+                variant="surface",
+                width="100%",
             ),
-            variant="surface",
-            width="100%",
+            controls.empty_placeholder(),
         ),
         width="100%",
     )
@@ -659,11 +708,15 @@ def _f_mil_section() -> rx.Component:
             controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_mil_add),
             width="100%",
         ),
-        rx.table.root(
-            _sub_table_header("Серія", "Номер", "Ким видано", "Дата видачі", "Дії"),
-            rx.table.body(rx.foreach(EntrantFormState.military_accountings, _f_mil_row)),
-            variant="surface",
-            width="100%",
+        rx.cond(
+            EntrantFormState.military_accountings.length() > 0,
+            rx.table.root(
+                _sub_table_header("Серія", "Номер", "Ким видано", "Дата видачі", "Дії"),
+                rx.table.body(rx.foreach(EntrantFormState.military_accountings, _f_mil_row)),
+                variant="surface",
+                width="100%",
+            ),
+            controls.empty_placeholder(),
         ),
         width="100%",
     )
@@ -688,11 +741,15 @@ def _f_med_section() -> rx.Component:
             controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_med_add),
             width="100%",
         ),
-        rx.table.root(
-            _sub_table_header("Номер", "Дата видачі", "Дії"),
-            rx.table.body(rx.foreach(EntrantFormState.medical_references, _f_med_row)),
-            variant="surface",
-            width="100%",
+        rx.cond(
+            EntrantFormState.medical_references.length() > 0,
+            rx.table.root(
+                _sub_table_header("Номер", "Дата видачі", "Дії"),
+                rx.table.body(rx.foreach(EntrantFormState.medical_references, _f_med_row)),
+                variant="surface",
+                width="100%",
+            ),
+            controls.empty_placeholder(),
         ),
         width="100%",
     )
@@ -718,11 +775,15 @@ def _f_rel_section() -> rx.Component:
             controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_rel_add),
             width="100%",
         ),
-        rx.table.root(
-            _sub_table_header("Тип", "ПІБ", "Телефон", "Дії"),
-            rx.table.body(rx.foreach(EntrantFormState.information_about_relatives, _f_rel_row)),
-            variant="surface",
-            width="100%",
+        rx.cond(
+            EntrantFormState.information_about_relatives.length() > 0,
+            rx.table.root(
+                _sub_table_header("Тип", "ПІБ", "Телефон", "Дії"),
+                rx.table.body(rx.foreach(EntrantFormState.information_about_relatives, _f_rel_row)),
+                variant="surface",
+                width="100%",
+            ),
+            controls.empty_placeholder(),
         ),
         width="100%",
     )
@@ -749,11 +810,15 @@ def _f_scp_section() -> rx.Component:
             controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_scp_add),
             width="100%",
         ),
-        rx.table.root(
-            _sub_table_header("Умова", "Назва", "Номер", "Дата видачі", "Дії"),
-            rx.table.body(rx.foreach(EntrantFormState.special_conditions_person, _f_scp_row)),
-            variant="surface",
-            width="100%",
+        rx.cond(
+            EntrantFormState.special_conditions_person.length() > 0,
+            rx.table.root(
+                _sub_table_header("Умова", "Назва", "Номер", "Дата видачі", "Дії"),
+                rx.table.body(rx.foreach(EntrantFormState.special_conditions_person, _f_scp_row)),
+                variant="surface",
+                width="100%",
+            ),
+            controls.empty_placeholder(),
         ),
         width="100%",
     )
@@ -778,11 +843,15 @@ def _f_sp_section() -> rx.Component:
             controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_sp_add),
             width="100%",
         ),
-        rx.table.root(
-            _sub_table_header("Пріоритет", "Спеціальність", "Дії"),
-            rx.table.body(rx.foreach(EntrantFormState.specialties, _f_sp_row)),
-            variant="surface",
-            width="100%",
+        rx.cond(
+            EntrantFormState.specialties.length() > 0,
+            rx.table.root(
+                _sub_table_header("Пріоритет", "Спеціальність", "Дії"),
+                rx.table.body(rx.foreach(EntrantFormState.specialties, _f_sp_row)),
+                variant="surface",
+                width="100%",
+            ),
+            controls.empty_placeholder(),
         ),
         width="100%",
     )
@@ -807,11 +876,15 @@ def _f_rz_section() -> rx.Component:
             controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_rz_add),
             width="100%",
         ),
-        rx.table.root(
-            _sub_table_header("Предмет", "Бали", "Дії"),
-            rx.table.body(rx.foreach(EntrantFormState.results_zno, _f_rz_row)),
-            variant="surface",
-            width="100%",
+        rx.cond(
+            EntrantFormState.results_zno.length() > 0,
+            rx.table.root(
+                _sub_table_header("Предмет", "Бали", "Дії"),
+                rx.table.body(rx.foreach(EntrantFormState.results_zno, _f_rz_row)),
+                variant="surface",
+                width="100%",
+            ),
+            controls.empty_placeholder(),
         ),
         width="100%",
     )

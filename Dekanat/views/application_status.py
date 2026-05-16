@@ -51,9 +51,9 @@ def table() -> rx.Component:
 
 def list_page_content() -> rx.Component:
     return rx.vstack(
-        rx.cond(ListApplicationStatusState.items.is_not_none(),
+        rx.cond((ListApplicationStatusState.items.is_not_none() & (ListApplicationStatusState.items.length() > 0)),
                 table(),
-                rx.text("Дані відсутні")
+                controls.empty_placeholder()
                 ),
     )
 
@@ -131,7 +131,7 @@ def view_page() -> rx.Component:
             "Перегляд",
             rx.cond(
                 ViewApplicationStatusState.get_user_actions.contains(Actions.APPLICATION_STATUS_DELETE),
-                controls.button_image_secondary(name_icon="trash_2", on_click=ViewApplicationStatusState.on_click_delete),
+                controls.delete_with_confirm(on_confirm=ViewApplicationStatusState.on_click_delete),
             ),
             rx.cond(
                 ViewApplicationStatusState.get_user_actions.contains(Actions.APPLICATION_STATUS_EDIT),

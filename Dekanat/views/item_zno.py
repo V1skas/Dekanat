@@ -38,9 +38,9 @@ def table() -> rx.Component:
 
 def list_page_content() -> rx.Component:
     return rx.vstack(
-        rx.cond(ListItemZnoState.items.is_not_none(),
+        rx.cond((ListItemZnoState.items.is_not_none() & (ListItemZnoState.items.length() > 0)),
                 table(),
-                rx.text("Дані відсутні")),
+                controls.empty_placeholder()),
     )
 
 def view_page_content() -> rx.Component:
@@ -86,7 +86,7 @@ def view_page() -> rx.Component:
         header_subpage(
             "Перегляд",
             rx.cond(ViewItemZnoState.get_user_actions.contains(Actions.ITEM_ZNO_DELETE),
-                    controls.button_image_secondary(name_icon="trash_2", on_click=ViewItemZnoState.on_click_delete)),
+                    controls.delete_with_confirm(on_confirm=ViewItemZnoState.on_click_delete)),
             rx.cond(ViewItemZnoState.get_user_actions.contains(Actions.ITEM_ZNO_EDIT),
                     controls.button_image_primary(name_icon="pencil_line", on_click=ViewItemZnoState.on_click_edit)),
             left=controls.button_back(routes.ITEM_ZNO_LIST),

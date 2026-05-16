@@ -1,6 +1,6 @@
 from typing import Sequence, Optional
 from sqlmodel import Session, select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, make_transient
 
 from Dekanat.models import (
     EntrantModel,
@@ -71,12 +71,18 @@ class EntrantDao:
 
     # --- child collection sync helpers ---
 
+    # Note on `make_transient`: items приходять із попередньої (вже закритої) сесії і
+    # SQLAlchemy зберігає для них identity-key. На session.add() це породжує UPDATE,
+    # який не знаходить рядка (бо ми тільки що видалили оригінали). make_transient
+    # знімає identity, і add() робить чистий INSERT.
+
     @staticmethod
     def replace_identity_documents(person_id: int, items: list[IdentityDocumentModel], session: Session) -> None:
         for old in session.exec(select(IdentityDocumentModel).where(IdentityDocumentModel.id_person == person_id)).all():
             session.delete(old)
         session.flush()
         for item in items:
+            make_transient(item)
             item.id_person = person_id
             session.add(item)
 
@@ -86,6 +92,7 @@ class EntrantDao:
             session.delete(old)
         session.flush()
         for item in items:
+            make_transient(item)
             item.id_person = person_id
             session.add(item)
 
@@ -95,6 +102,7 @@ class EntrantDao:
             session.delete(old)
         session.flush()
         for item in items:
+            make_transient(item)
             item.id_person = person_id
             session.add(item)
 
@@ -104,6 +112,7 @@ class EntrantDao:
             session.delete(old)
         session.flush()
         for item in items:
+            make_transient(item)
             item.id = None
             item.id_person = person_id
             session.add(item)
@@ -114,6 +123,7 @@ class EntrantDao:
             session.delete(old)
         session.flush()
         for item in items:
+            make_transient(item)
             item.id = None
             item.id_person = person_id
             session.add(item)
@@ -124,6 +134,7 @@ class EntrantDao:
             session.delete(old)
         session.flush()
         for item in items:
+            make_transient(item)
             item.id_person = person_id
             session.add(item)
 
@@ -133,6 +144,7 @@ class EntrantDao:
             session.delete(old)
         session.flush()
         for item in items:
+            make_transient(item)
             item.id = None
             item.id_person = person_id
             session.add(item)
@@ -143,5 +155,6 @@ class EntrantDao:
             session.delete(old)
         session.flush()
         for item in items:
+            make_transient(item)
             item.id_entrant = entrant_id
             session.add(item)

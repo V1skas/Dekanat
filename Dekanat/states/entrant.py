@@ -118,6 +118,21 @@ class ViewEntrantState(AppState):
     def has_photo(self) -> bool:
         return bool(self.photo_data_url)
 
+    @rx.var
+    def photo_download_name(self) -> str:
+        """Назва файлу для завантаження фото: ПІБ із підкресленнями + розширення з mime."""
+        if self.item is None or self.item.person is None or not self.item.person.pib:
+            return "photo"
+        name = "_".join(self.item.person.pib.strip().split())
+        mime = (self.item.person.photo_mime_type or "").lower()
+        if "png" in mime:
+            ext = "png"
+        elif "webp" in mime:
+            ext = "webp"
+        else:
+            ext = "jpg"
+        return f"{name}.{ext}"
+
 
 # ---------- Add / Edit (shared form state) ----------
 
@@ -1032,6 +1047,8 @@ class EntrantFormState(AppState):
     # ============================================================
 
     def _validate_main(self) -> Optional[str]:
+        if not self.edbo or not self.edbo.strip():
+            return "Поле коду ЄДБО обов'язкове!"
         if not self.pib:
             return "Поле ПІБ обов'язкове!"
         if not self.sex:
@@ -1055,7 +1072,7 @@ class EntrantFormState(AppState):
     def _build_person(self) -> PersonModel:
         return PersonModel(
             id=self.entrant_id if self.entrant_id > 0 else None,  # type: ignore[arg-type]
-            edbo=self.edbo.strip() or None,  # type: ignore[arg-type]
+            edbo=self.edbo.strip(),
             pib=self.pib.strip(),
             photo=self.photo_bytes,
             photo_mime_type=self.photo_mime,

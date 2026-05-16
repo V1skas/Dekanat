@@ -2,7 +2,7 @@ from typing import Sequence, Optional
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
 
-from Dekanat.models import RoleModel
+from Dekanat.models import RoleModel, RolesActionsModel, WorkersRolesModel
 
 
 class RoleDao:
@@ -30,3 +30,17 @@ class RoleDao:
     def edit_one(item: RoleModel, session: Session):
         item = session.merge(item)
         session.add(item)
+
+    @staticmethod
+    def hard_delete(role: RoleModel, session: Session) -> None:
+        """Перманентне видалення ролі: знімає її з усіх працівників і чистить призначені дії."""
+        for link in session.exec(
+            select(WorkersRolesModel).where(WorkersRolesModel.id_role == role.id)
+        ).all():
+            session.delete(link)
+        for link in session.exec(
+            select(RolesActionsModel).where(RolesActionsModel.id_role == role.id)
+        ).all():
+            session.delete(link)
+        session.flush()
+        session.delete(role)

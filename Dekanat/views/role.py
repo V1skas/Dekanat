@@ -48,7 +48,7 @@ def list_page_content() -> rx.Component:
     return rx.vstack(
         rx.cond(ListRoleState.items,
                 table(),
-                rx.text("Дані відсутні")
+                controls.empty_placeholder()
                 ),
     )
 
@@ -195,7 +195,7 @@ def view_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Перегляд",
-            rx.cond(ViewRoleState.get_user_actions.contains(Actions.ROLE_DELETE), controls.button_image_secondary(name_icon="trash_2", on_click=ViewRoleState.on_click_delete)),
+            rx.cond(ViewRoleState.get_user_actions.contains(Actions.ROLE_DELETE), controls.delete_with_confirm(on_confirm=ViewRoleState.on_click_delete)),
             rx.cond(ViewRoleState.get_user_actions.contains(Actions.ROLE_EDIT), controls.button_image_primary(name_icon="pencil_line", on_click=ViewRoleState.on_click_edit)),
             left=controls.button_back(routes.ROLES_LIST),
             width="100%"

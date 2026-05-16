@@ -54,13 +54,13 @@ class RoleService:
             raise
 
     def delete_one(self, item: RoleModel) -> bool:
+        """Видаляє роль перманентно — разом з її призначеннями працівникам та діями."""
         try:
             with rx.session() as session:
                 role = RoleDao.get_by_id(item.id, session)
                 if role is None:
                     return False
-                role.is_deleted = True
-                session.add(role)
+                RoleDao.hard_delete(role, session)
                 session.commit()
             return True
         except Exception as e:

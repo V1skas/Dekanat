@@ -46,9 +46,9 @@ def table() -> rx.Component:
 
 def list_page_content() -> rx.Component:
     return rx.vstack(
-        rx.cond(ListSourceOfFundingState.items.is_not_none(),
+        rx.cond((ListSourceOfFundingState.items.is_not_none() & (ListSourceOfFundingState.items.length() > 0)),
                 table(),
-                rx.text("Дані відсутні")
+                controls.empty_placeholder()
                 ),
     )
 
@@ -112,7 +112,7 @@ def view_page() -> rx.Component:
             "Перегляд",
             rx.cond(
                 ViewSourceOfFundingState.get_user_actions.contains(Actions.SOURCE_OF_FUNDING_DELETE),
-                controls.button_image_secondary(name_icon="trash_2", on_click=ViewSourceOfFundingState.on_click_delete),
+                controls.delete_with_confirm(on_confirm=ViewSourceOfFundingState.on_click_delete),
             ),
             rx.cond(
                 ViewSourceOfFundingState.get_user_actions.contains(Actions.SOURCE_OF_FUNDING_EDIT),
