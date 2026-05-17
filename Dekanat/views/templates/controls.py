@@ -10,6 +10,50 @@ def button_back(href: str, **prop):
     )
 
 
+def button_filter_toggle(is_open, on_click, **prop):
+    """Кнопка-перемикач панелі фільтрів. Підсвічується (primary) коли панель відкрита."""
+    return rx.cond(
+        is_open,
+        button_image_primary(name_icon="funnel", on_click=on_click, **prop),
+        button_image_secondary(name_icon="funnel", on_click=on_click, **prop),
+    )
+
+
+def filter_panel(is_open, *fields, on_clear=None) -> rx.Component:
+    """Контейнер панелі фільтрів. Завжди присутній у DOM, видимість анімується через
+    `max-height` та `opacity` від `is_open` (Var[bool])."""
+    actions = rx.fragment()
+    if on_clear is not None:
+        actions = rx.hstack(
+            rx.spacer(),
+            button_secondary("Очистити", on_click=on_clear),
+            width="100%",
+        )
+    return rx.box(
+        rx.box(
+            rx.vstack(
+                *fields,
+                actions,
+                spacing="3",
+                align="stretch",
+                width="100%",
+            ),
+            padding="1rem",
+            border_radius="0.6rem",
+            background_color=rx.color("gray", 2),
+            border=f"1px solid {rx.color('gray', 5)}",
+            width="100%",
+        ),
+        # max-height як проксі для анімації висоти: 0 → велике значення.
+        max_height=rx.cond(is_open, "60rem", "0"),
+        opacity=rx.cond(is_open, "1", "0"),
+        margin_top=rx.cond(is_open, "0", "-0.75rem"),
+        overflow="hidden",
+        transition="max-height 0.3s ease, opacity 0.25s ease, margin-top 0.3s ease",
+        width="100%",
+    )
+
+
 def empty_placeholder(message: str = "Записи відсутні") -> rx.Component:
     """Заглушка для порожньої таблиці/списку. Стилізована під картку з пунктирною межею."""
     return rx.box(

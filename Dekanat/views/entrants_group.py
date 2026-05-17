@@ -49,9 +49,46 @@ def _list_table() -> rx.Component:
 
 def list_page_content() -> rx.Component:
     return rx.vstack(
-        rx.cond((ListEntrantsGroupState.items.is_not_none() & (ListEntrantsGroupState.items.length() > 0)),
+        rx.cond(ListEntrantsGroupState.items.is_not_none() & (ListEntrantsGroupState.items.length() > 0),
                 _list_table(),
                 controls.empty_placeholder()),
+    )
+
+
+def _list_filter_panel() -> rx.Component:
+    return controls.filter_panel(
+        ListEntrantsGroupState.filter_open,
+        rx.vstack(
+            rx.text("Вступна кампанія:", weight="medium"),
+            rx.select.root(
+                rx.select.trigger(placeholder="— Без фільтра —"),
+                rx.select.content(
+                    rx.foreach(
+                        ListEntrantsGroupState.campaign_options,
+                        lambda opt: rx.select.item(opt["label"], value=opt["value"]),
+                    ),
+                ),
+                value=ListEntrantsGroupState.filter_campaign_id_str,
+                on_change=ListEntrantsGroupState.set_filter_campaign_id,
+                width="100%",
+            ),
+            spacing="1",
+            align="stretch",
+            width="100%",
+        ),
+        rx.vstack(
+            rx.text("Назва містить:", weight="medium"),
+            rx.input(
+                value=ListEntrantsGroupState.filter_title,
+                on_change=ListEntrantsGroupState.set_filter_title,
+                placeholder="Пошук по назві…",
+                width="100%",
+            ),
+            spacing="1",
+            align="stretch",
+            width="100%",
+        ),
+        on_clear=ListEntrantsGroupState.clear_filters,
     )
 
 
@@ -328,11 +365,13 @@ def list_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Список",
+            controls.button_filter_toggle(ListEntrantsGroupState.filter_open, on_click=ListEntrantsGroupState.toggle_filter),
             rx.cond(ListEntrantsGroupState.get_user_actions.contains(Actions.ENTRANTS_GROUP_ADD),
                     controls.button_image_primary(name_icon="plus", on_click=ListEntrantsGroupState.on_click_add)),
             width="100%"
         ),
-        rx.skeleton(list_page_content(), loading=ListEntrantsGroupState.in_progress, height="100%")
+        rx.skeleton(list_page_content(), loading=ListEntrantsGroupState.in_progress, height="100%"),
+        filter_panel=_list_filter_panel(),
     )
 
 @require_login

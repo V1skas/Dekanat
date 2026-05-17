@@ -1,7 +1,8 @@
 import reflex as rx
 import base64
 
-from typing import Optional, Sequence
+from datetime import datetime
+from typing import Optional, Sequence, Tuple
 
 from Dekanat.dao.entrant import EntrantDao
 from Dekanat.models import (
@@ -28,10 +29,23 @@ def photo_to_data_url(photo_bytes: Optional[bytes], mime: Optional[str]) -> str:
 
 
 class EntrantService:
-    def get_list_items(self) -> Sequence[EntrantModel]:
+    def get_list_items(
+        self,
+        pib: Optional[str] = None,
+        status_id: Optional[int] = None,
+        entry_base_id: Optional[int] = None,
+        created_between: Optional[Tuple[datetime, datetime]] = None,
+    ) -> Sequence[EntrantModel]:
+        """Повертає абітурієнтів із серверною фільтрацією по переданих параметрах."""
         try:
             with rx.session() as session:
-                return EntrantDao.get_all(session)
+                return EntrantDao.get_all(
+                    session,
+                    pib_substring=pib,
+                    application_status_id=status_id,
+                    entry_base_id=entry_base_id,
+                    created_between=created_between,
+                )
         except Exception as e:
             print(f"[EntrantService][get_list_items][ERROR] {e}")
             raise
@@ -97,6 +111,18 @@ class EntrantService:
     ) -> EntrantModel:
         try:
             with rx.session() as session:
+                # Preserve timestamps from existing rows and bump status_changed_at only if status really changed.
+                existing_person = session.get(PersonModel, person.id)
+                if existing_person is not None:
+                    person.created_at = existing_person.created_at
+                existing_entrant = session.get(EntrantModel, entrant.id)
+                if existing_entrant is not None:
+                    entrant.created_at = existing_entrant.created_at
+                    if existing_entrant.id_application_status != entrant.id_application_status:
+                        entrant.application_status_changed_at = datetime.now()
+                    else:
+                        entrant.application_status_changed_at = existing_entrant.application_status_changed_at
+
                 EntrantDao.edit_person(person, session)
                 merged_entrant = EntrantDao.edit_entrant(entrant, session)
                 session.flush()

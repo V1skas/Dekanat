@@ -1,7 +1,7 @@
 import reflex as rx
 
 from typing import Sequence, Optional, List, Dict
-from datetime import date
+from datetime import date, datetime
 
 from Dekanat.actions import Actions
 from Dekanat import routes
@@ -29,6 +29,8 @@ from Dekanat.services.identity_document_type import IdentityDocumentTypeService
 from Dekanat.services.kinship import KinshipService
 from Dekanat.services.special_condition import SpecialConditionService
 from Dekanat.services.item_zno import ItemZnoService
+from Dekanat.services.admission_campaign import AdmissionCampaignService
+from Dekanat.models import AdmissionCampaignModel
 
 
 # ---------- List page ----------
@@ -36,6 +38,38 @@ from Dekanat.services.item_zno import ItemZnoService
 class ListEntrantState(AppState):
     items: Optional[Sequence[EntrantModel]] = None
     in_progress: bool = True
+
+    # Стан панелі фільтрів
+    filter_open: bool = False
+    filter_pib: str = ""
+    filter_status_id: int = 0
+    filter_entry_base_id: int = 0
+    filter_campaign_id: int = 0  # 0 — без фільтра по кампанії
+    application_status_options: List[Dict[str, str]] = []
+    entry_base_options: List[Dict[str, str]] = []
+    campaigns: List[AdmissionCampaignModel] = []
+
+    def _campaign_range(self):
+        if not self.filter_campaign_id:
+            return None
+        campaign = next((c for c in self.campaigns if c.id == self.filter_campaign_id), None)
+        if campaign is None:
+            return None
+        try:
+            start_dt = datetime.strptime(campaign.start_date, "%Y-%m-%d")
+            end_dt = datetime.strptime(campaign.end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            return (start_dt, end_dt)
+        except (ValueError, TypeError):
+            return None
+
+    def _reload_items(self):
+        service = EntrantService()
+        self.items = service.get_list_items(
+            pib=self.filter_pib.strip() or None,
+            status_id=self.filter_status_id or None,
+            entry_base_id=self.filter_entry_base_id or None,
+            created_between=self._campaign_range(),
+        )
 
     @rx.event
     def on_load(self):
@@ -46,8 +80,19 @@ class ListEntrantState(AppState):
 
         try:
             self.in_progress = True
-            service = EntrantService()
-            self.items = service.get_list_items()
+            self.application_status_options = [
+                {"value": str(s.id), "label": s.title}
+                for s in ApplicationStatusService().get_list_items()
+            ]
+            self.entry_base_options = [
+                {"value": str(b.id), "label": b.title}
+                for b in EntryBaseService().get_list_items()
+            ]
+            campaign_service = AdmissionCampaignService()
+            self.campaigns = list(campaign_service.get_list_items())
+            active = campaign_service.get_active_campaign()
+            self.filter_campaign_id = active.id if active is not None else 0
+            self._reload_items()
             self.in_progress = False
             return
         except Exception:
@@ -57,6 +102,92 @@ class ListEntrantState(AppState):
     @rx.event
     def on_click_add(self):
         return rx.redirect(routes.ENTRANT_ADD)
+
+    # --- filter panel ---
+
+    @rx.event
+    def toggle_filter(self):
+        self.filter_open = not self.filter_open
+
+    @rx.event
+    def set_filter_pib(self, value: str):
+        self.filter_pib = value
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.var
+    def filter_status_id_str(self) -> str:
+        return str(self.filter_status_id) if self.filter_status_id else ""
+
+    @rx.event
+    def set_filter_status_id(self, value: str):
+        try:
+            self.filter_status_id = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.filter_status_id = 0
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.var
+    def filter_entry_base_id_str(self) -> str:
+        return str(self.filter_entry_base_id) if self.filter_entry_base_id else ""
+
+    @rx.event
+    def set_filter_entry_base_id(self, value: str):
+        try:
+            self.filter_entry_base_id = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.filter_entry_base_id = 0
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.var
+    def campaign_options(self) -> List[Dict[str, str]]:
+        opts: List[Dict[str, str]] = [{"value": "0", "label": "— Без фільтра —"}]
+        opts.extend({"value": str(c.id), "label": c.title} for c in self.campaigns)
+        return opts
+
+    @rx.var
+    def filter_campaign_id_str(self) -> str:
+        return str(self.filter_campaign_id) if self.filter_campaign_id else "0"
+
+    @rx.event
+    def set_filter_campaign_id(self, value: str):
+        try:
+            self.filter_campaign_id = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.filter_campaign_id = 0
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def clear_filters(self):
+        self.filter_pib = ""
+        self.filter_status_id = 0
+        self.filter_entry_base_id = 0
+        self.filter_campaign_id = 0
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
 
 
 # ---------- View page ----------
@@ -132,6 +263,33 @@ class ViewEntrantState(AppState):
         else:
             ext = "jpg"
         return f"{name}.{ext}"
+
+    @staticmethod
+    def _fmt_dt(value) -> str:
+        if value is None:
+            return "—"
+        try:
+            return value.strftime("%Y-%m-%d %H:%M")
+        except AttributeError:
+            return str(value)
+
+    @rx.var
+    def person_created_at_display(self) -> str:
+        if self.item is None or self.item.person is None:
+            return "—"
+        return self._fmt_dt(self.item.person.created_at)
+
+    @rx.var
+    def entrant_created_at_display(self) -> str:
+        if self.item is None:
+            return "—"
+        return self._fmt_dt(self.item.created_at)
+
+    @rx.var
+    def status_changed_at_display(self) -> str:
+        if self.item is None:
+            return "—"
+        return self._fmt_dt(self.item.application_status_changed_at)
 
 
 # ---------- Add / Edit (shared form state) ----------

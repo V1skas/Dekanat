@@ -1,5 +1,5 @@
 from sqlmodel import Field, Relationship
-from sqlalchemy import ForeignKeyConstraint, Column, LargeBinary
+from sqlalchemy import ForeignKeyConstraint, Column, LargeBinary, DateTime, func
 from typing import Optional, List
 from datetime import datetime
 
@@ -121,6 +121,18 @@ class EntryBaseModel(rx.Model, table=True):
 
 
 @rx.ModelRegistry.register
+class AdmissionCampaignModel(rx.Model, table=True):
+    __tablename__ = "admission_campaigns"
+
+    # Table columns
+    id: int = Field(primary_key=True)
+    title: str = Field(nullable=False)
+    start_date: str = Field(nullable=False)  # ISO date YYYY-MM-DD
+    end_date: str = Field(nullable=False)    # ISO date YYYY-MM-DD
+    is_deleted: bool = False
+
+
+@rx.ModelRegistry.register
 class SpecialConditionModel(rx.Model, table=True):
     __tablename__ = "special_conditions"
 
@@ -170,6 +182,10 @@ class PersonModel(rx.Model, table=True):
     the_need_for_a_dormitory: bool = Field(nullable=False)
     id_source_of_funding: int = Field(foreign_key="source_of_funding.id")
     id_entry_base: int = Field(foreign_key="entry_base.id")
+    created_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column=Column("created_at", DateTime, nullable=False, server_default=func.current_timestamp()),
+    )
     is_deleted: bool = False
 
     # Relationships
@@ -191,6 +207,10 @@ class EntrantGroupModel(rx.Model, table=True):
     # Table columns
     id: int = Field(primary_key=True)
     title: str
+    created_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column=Column("created_at", DateTime, nullable=False, server_default=func.current_timestamp()),
+    )
     is_deleted: bool = False
 
     # Relationships
@@ -217,6 +237,14 @@ class EntrantModel(rx.Model, table=True):
     id_application_status: int = Field(foreign_key="application_statuses.id")
     id_entrant_group: Optional[int] = Field(default=None, foreign_key="entrants_groups.id", nullable=True)
     comment: Optional[str] = Field(default=None, nullable=True)
+    created_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column=Column("created_at", DateTime, nullable=False, server_default=func.current_timestamp()),
+    )
+    application_status_changed_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column=Column("application_status_changed_at", DateTime, nullable=False, server_default=func.current_timestamp()),
+    )
     is_deleted: bool = False
 
     # Relationships

@@ -1,13 +1,15 @@
 import reflex as rx
 
+from datetime import datetime
 from typing import Sequence, Optional, List, Dict
 
 from Dekanat.actions import Actions
 from Dekanat import routes
 from Dekanat.states.app import AppState
 
-from Dekanat.models import EntrantGroupModel, EntrantModel, EntrantExamModel
+from Dekanat.models import EntrantGroupModel, EntrantModel, EntrantExamModel, AdmissionCampaignModel
 from Dekanat.services.entrants_group import EntrantsGroupService
+from Dekanat.services.admission_campaign import AdmissionCampaignService
 
 
 # ---------- List page ----------
@@ -15,6 +17,32 @@ from Dekanat.services.entrants_group import EntrantsGroupService
 class ListEntrantsGroupState(AppState):
     items: Optional[Sequence[EntrantGroupModel]] = None
     in_progress: bool = True
+
+    # Стан панелі фільтрів
+    filter_open: bool = False
+    filter_title: str = ""
+    filter_campaign_id: int = 0  # 0 — без фільтра по кампанії
+    campaigns: List[AdmissionCampaignModel] = []
+
+    def _campaign_range(self):
+        if not self.filter_campaign_id:
+            return None
+        campaign = next((c for c in self.campaigns if c.id == self.filter_campaign_id), None)
+        if campaign is None:
+            return None
+        try:
+            start_dt = datetime.strptime(campaign.start_date, "%Y-%m-%d")
+            end_dt = datetime.strptime(campaign.end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            return (start_dt, end_dt)
+        except (ValueError, TypeError):
+            return None
+
+    def _reload_items(self):
+        service = EntrantsGroupService()
+        self.items = service.get_list_items(
+            title=self.filter_title.strip() or None,
+            created_between=self._campaign_range(),
+        )
 
     @rx.event
     def on_load(self):
@@ -25,8 +53,11 @@ class ListEntrantsGroupState(AppState):
 
         try:
             self.in_progress = True
-            service = EntrantsGroupService()
-            self.items = service.get_list_items()
+            campaign_service = AdmissionCampaignService()
+            self.campaigns = list(campaign_service.get_list_items())
+            active = campaign_service.get_active_campaign()
+            self.filter_campaign_id = active.id if active is not None else 0
+            self._reload_items()
             self.in_progress = False
             return
         except Exception:
@@ -36,6 +67,56 @@ class ListEntrantsGroupState(AppState):
     @rx.event
     def on_click_add(self):
         return rx.redirect(routes.ENTRANTS_GROUP_ADD)
+
+    # --- filter panel ---
+
+    @rx.event
+    def toggle_filter(self):
+        self.filter_open = not self.filter_open
+
+    @rx.event
+    def set_filter_title(self, value: str):
+        self.filter_title = value
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.var
+    def campaign_options(self) -> List[Dict[str, str]]:
+        opts: List[Dict[str, str]] = [{"value": "0", "label": "— Без фільтра —"}]
+        opts.extend({"value": str(c.id), "label": c.title} for c in self.campaigns)
+        return opts
+
+    @rx.var
+    def filter_campaign_id_str(self) -> str:
+        return str(self.filter_campaign_id) if self.filter_campaign_id else "0"
+
+    @rx.event
+    def set_filter_campaign_id(self, value: str):
+        try:
+            self.filter_campaign_id = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.filter_campaign_id = 0
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def clear_filters(self):
+        self.filter_title = ""
+        self.filter_campaign_id = 0
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
 
 
 # ---------- Form state helpers ----------

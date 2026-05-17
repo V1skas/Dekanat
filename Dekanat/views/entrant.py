@@ -122,11 +122,69 @@ def _list_table() -> rx.Component:
 def list_page_content() -> rx.Component:
     return rx.vstack(
         rx.cond(
-            (ListEntrantState.items.is_not_none() & (ListEntrantState.items.length() > 0)),
+            ListEntrantState.items.is_not_none() & (ListEntrantState.items.length() > 0),
             _list_table(),
             controls.empty_placeholder(),
         ),
         width="100%",
+    )
+
+
+def _list_filter_panel() -> rx.Component:
+    return controls.filter_panel(
+        ListEntrantState.filter_open,
+        rx.vstack(
+            rx.text("Вступна кампанія:", weight="medium"),
+            _select(
+                ListEntrantState.campaign_options,
+                ListEntrantState.filter_campaign_id_str,
+                ListEntrantState.set_filter_campaign_id,
+                placeholder="— Без фільтра —",
+                width="100%",
+            ),
+            spacing="1",
+            align="stretch",
+            width="100%",
+        ),
+        rx.vstack(
+            rx.text("ПІБ містить:", weight="medium"),
+            rx.input(
+                value=ListEntrantState.filter_pib,
+                on_change=ListEntrantState.set_filter_pib,
+                placeholder="Пошук по ПІБ…",
+                width="100%",
+            ),
+            spacing="1",
+            align="stretch",
+            width="100%",
+        ),
+        rx.vstack(
+            rx.text("Статус заяви:", weight="medium"),
+            _select(
+                ListEntrantState.application_status_options,
+                ListEntrantState.filter_status_id_str,
+                ListEntrantState.set_filter_status_id,
+                placeholder="Будь-який",
+                width="100%",
+            ),
+            spacing="1",
+            align="stretch",
+            width="100%",
+        ),
+        rx.vstack(
+            rx.text("База вступу:", weight="medium"),
+            _select(
+                ListEntrantState.entry_base_options,
+                ListEntrantState.filter_entry_base_id_str,
+                ListEntrantState.set_filter_entry_base_id,
+                placeholder="Будь-яка",
+                width="100%",
+            ),
+            spacing="1",
+            align="stretch",
+            width="100%",
+        ),
+        on_clear=ListEntrantState.clear_filters,
     )
 
 
@@ -135,6 +193,7 @@ def list_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Список",
+            controls.button_filter_toggle(ListEntrantState.filter_open, on_click=ListEntrantState.toggle_filter),
             rx.cond(
                 ListEntrantState.get_user_actions.contains(Actions.ENTRANT_ADD),
                 controls.button_image_primary(name_icon="plus", on_click=ListEntrantState.on_click_add),
@@ -142,6 +201,7 @@ def list_page() -> rx.Component:
             width="100%",
         ),
         rx.skeleton(list_page_content(), loading=ListEntrantState.in_progress, height="100%"),
+        filter_panel=_list_filter_panel(),
     )
 
 
@@ -457,6 +517,9 @@ def view_page_content() -> rx.Component:
                         _v_kv("Статус заяви", rx.cond(ViewEntrantState.item.application_status, ViewEntrantState.item.application_status.title, "—")),
                         _v_kv("Група ЗНО", rx.cond(ViewEntrantState.item.entrant_group, ViewEntrantState.item.entrant_group.title, "—")),
                         _v_kv("Коментар", rx.cond(ViewEntrantState.item.comment, ViewEntrantState.item.comment, "—")),
+                        _v_kv("Дата створення особи", ViewEntrantState.person_created_at_display),
+                        _v_kv("Дата додавання абітурієнта", ViewEntrantState.entrant_created_at_display),
+                        _v_kv("Остання зміна статусу заяви", ViewEntrantState.status_changed_at_display),
                         spacing="2",
                         align="stretch",
                         width="100%",

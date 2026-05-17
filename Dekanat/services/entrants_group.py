@@ -1,16 +1,26 @@
 import reflex as rx
 
-from typing import Optional, Sequence
+from datetime import datetime
+from typing import Optional, Sequence, Tuple
 
 from Dekanat.dao.entrants_group import EntrantsGroupDao
 from Dekanat.models import EntrantGroupModel, EntrantModel, EntrantExamModel
 
 
 class EntrantsGroupService:
-    def get_list_items(self) -> Sequence[EntrantGroupModel]:
+    def get_list_items(
+        self,
+        title: Optional[str] = None,
+        created_between: Optional[Tuple[datetime, datetime]] = None,
+    ) -> Sequence[EntrantGroupModel]:
+        """Повертає групи із серверною фільтрацією по переданих параметрах."""
         try:
             with rx.session() as session:
-                return EntrantsGroupDao.get_all(session)
+                return EntrantsGroupDao.get_all(
+                    session,
+                    title_substring=title,
+                    created_between=created_between,
+                )
         except Exception as e:
             print(f"[EntrantsGroupService][get_list_items][ERROR] {e}")
             raise

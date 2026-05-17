@@ -1,5 +1,7 @@
-from typing import Sequence, Optional
+from datetime import datetime
+from typing import Sequence, Optional, Tuple
 from sqlmodel import Session, select
+from sqlalchemy import func
 from sqlalchemy.orm import selectinload, make_transient
 
 from Dekanat.models import (
@@ -36,10 +38,30 @@ def _entrant_loaders():
 
 class EntrantDao:
     @staticmethod
-    def get_all(session: Session, with_del: bool = False) -> Sequence[EntrantModel]:
+    def get_all(
+        session: Session,
+        with_del: bool = False,
+        created_between: Optional[Tuple[datetime, datetime]] = None,
+        pib_substring: Optional[str] = None,
+        application_status_id: Optional[int] = None,
+        entry_base_id: Optional[int] = None,
+    ) -> Sequence[EntrantModel]:
         statement = select(EntrantModel).options(*_entrant_loaders())
+        # JOIN на persons потрібен, лише якщо фільтруємо за полем особи.
+        if pib_substring or entry_base_id:
+            statement = statement.join(PersonModel, EntrantModel.id == PersonModel.id)
         if not with_del:
             statement = statement.where(EntrantModel.is_deleted == False)
+        if pib_substring:
+            q = pib_substring.lower()
+            statement = statement.where(func.lower(PersonModel.pib).like(f"%{q}%"))
+        if entry_base_id:
+            statement = statement.where(PersonModel.id_entry_base == entry_base_id)
+        if application_status_id:
+            statement = statement.where(EntrantModel.id_application_status == application_status_id)
+        if created_between is not None:
+            start_dt, end_dt = created_between
+            statement = statement.where(EntrantModel.created_at >= start_dt).where(EntrantModel.created_at <= end_dt)
         return session.exec(statement).all()
 
     @staticmethod

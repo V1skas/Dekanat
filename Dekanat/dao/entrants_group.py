@@ -1,5 +1,7 @@
-from typing import Sequence, Optional
+from datetime import datetime
+from typing import Sequence, Optional, Tuple
 from sqlmodel import Session, select
+from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
 from Dekanat.models import (
@@ -11,10 +13,21 @@ from Dekanat.models import (
 
 class EntrantsGroupDao:
     @staticmethod
-    def get_all(session: Session, with_del: bool = False) -> Sequence[EntrantGroupModel]:
+    def get_all(
+        session: Session,
+        with_del: bool = False,
+        created_between: Optional[Tuple[datetime, datetime]] = None,
+        title_substring: Optional[str] = None,
+    ) -> Sequence[EntrantGroupModel]:
         statement = select(EntrantGroupModel)
         if not with_del:
             statement = statement.where(EntrantGroupModel.is_deleted == False)
+        if title_substring:
+            q = title_substring.lower()
+            statement = statement.where(func.lower(EntrantGroupModel.title).like(f"%{q}%"))
+        if created_between is not None:
+            start_dt, end_dt = created_between
+            statement = statement.where(EntrantGroupModel.created_at >= start_dt).where(EntrantGroupModel.created_at <= end_dt)
         return session.exec(statement).all()
 
     @staticmethod

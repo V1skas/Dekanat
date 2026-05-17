@@ -279,19 +279,31 @@ def sidebar(menu: List[MenuItem]) -> rx.Component:
         overflow="hidden",
     )
 
-def page_wrapper(page_header: rx.Component, page_content: rx.Component) -> rx.Component:
-    """Каркас отдельной страницы. Внешний chrome (шапка/сайдбар) приходит из app_wraps и не пересоздаётся при навигации."""
-    return rx.vstack(
-        page_header,
+def page_wrapper(
+    page_header: rx.Component,
+    page_content: rx.Component,
+    filter_panel: Optional[rx.Component] = None,
+) -> rx.Component:
+    """Каркас отдельной страницы.
+
+    Внешний chrome (шапка/сайдбар) приходит из app_wraps и не пересоздаётся при навигации.
+    Если передан `filter_panel`, он рендерится между шапкой и контентом — собственную видимость
+    (`rx.cond` на state.<filter_open>`) панель должна обеспечить сама.
+    """
+    children: List[rx.Component] = [page_header]
+    if filter_panel is not None:
+        children.append(filter_panel)
+    children.append(
         rx.box(
             page_content,
-
             flex="1",
             height="100%",
             width="100%",
             overflow_y="auto",
-        ),
-
+        )
+    )
+    return rx.vstack(
+        *children,
         flex="1",
         width="100%",
         height="100%",

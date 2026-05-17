@@ -1,0 +1,232 @@
+import reflex as rx
+
+from typing import Sequence, Optional
+
+from Dekanat.actions import Actions
+from Dekanat import routes
+from Dekanat.states.app import AppState
+
+from Dekanat.models import AdmissionCampaignModel
+from Dekanat.services.admission_campaign import AdmissionCampaignService
+
+
+class ListAdmissionCampaignState(AppState):
+    items: Optional[Sequence[AdmissionCampaignModel]] = None
+    in_progress: bool = True
+
+    @rx.event
+    def on_load(self):
+        if not self.has_permission(Actions.ADMISSION_CAMPAIGN_LIST):
+            yield rx.toast.error("У Вас немає дозволу на перегляд цієї сторінки!")
+            yield rx.redirect(routes.DASHBOARD)
+            return
+
+        try:
+            self.in_progress = True
+            service = AdmissionCampaignService()
+            self.items = service.get_list_items()
+            self.in_progress = False
+            return
+        except Exception:
+            yield rx.toast.error("Під час виконання запиту сталася помилка :( Спробуйте знову.")
+            return
+
+    @rx.event
+    def on_click_add(self):
+        return rx.redirect(routes.ADMISSION_CAMPAIGN_ADD)
+
+
+class _CampaignFormBase(AppState):
+    """Спільний код для додавання/редагування: текстові поля та валідація."""
+
+    item: AdmissionCampaignModel = AdmissionCampaignModel()
+    in_process: bool = False
+
+    @rx.var
+    def title(self) -> str:
+        return self.item.title if self.item is not None and self.item.title is not None else ""
+
+    @rx.event
+    def set_title(self, value: str):
+        self.item.title = value
+
+    @rx.var
+    def start_date(self) -> str:
+        return self.item.start_date if self.item is not None and self.item.start_date is not None else ""
+
+    @rx.event
+    def set_start_date(self, value: str):
+        self.item.start_date = value
+
+    @rx.var
+    def end_date(self) -> str:
+        return self.item.end_date if self.item is not None and self.item.end_date is not None else ""
+
+    @rx.event
+    def set_end_date(self, value: str):
+        self.item.end_date = value
+
+    def _validate(self) -> Optional[str]:
+        if not self.item.title or not self.item.title.strip():
+            return "Поле назви обов'язкове!"
+        if not self.item.start_date:
+            return "Вкажіть дату початку!"
+        if not self.item.end_date:
+            return "Вкажіть дату закінчення!"
+        if self.item.end_date < self.item.start_date:
+            return "Дата закінчення не може бути раніше дати початку!"
+        return None
+
+
+class AddAdmissionCampaignState(_CampaignFormBase):
+    def _reload_item(self):
+        self.item = AdmissionCampaignModel()
+
+    @rx.event
+    def on_load(self):
+        if not self.has_permission(Actions.ADMISSION_CAMPAIGN_ADD):
+            yield rx.toast.error("У Вас немає доступу до цієї сторінки!")
+            yield rx.redirect(routes.DASHBOARD)
+            return
+
+        self.in_process = True
+        self._reload_item()
+        self.in_process = False
+        return
+
+    @rx.event
+    def on_save(self):
+        if not self.has_permission(Actions.ADMISSION_CAMPAIGN_ADD):
+            yield rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
+            return
+
+        err = self._validate()
+        if err:
+            yield rx.toast.warning(err)
+            return
+
+        service = AdmissionCampaignService()
+        try:
+            self.item = service.add_one(self.item)
+            yield rx.toast.success("Запис додано!")
+            yield rx.redirect(routes.ADMISSION_CAMPAIGN_VIEW + str(self.item.id))
+        except Exception:
+            yield rx.toast.error("Під час виконання запиту трапилась помилка. Спробуйте ще раз.")
+
+    @rx.event
+    def on_cancel(self):
+        return rx.redirect(routes.ADMISSION_CAMPAIGN_LIST)
+
+
+class EditAdmissionCampaignState(_CampaignFormBase):
+    in_process: bool = True
+
+    def _reload_item(self):
+        service = AdmissionCampaignService()
+        loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        if loaded is not None:
+            self.item = loaded
+
+    @rx.event
+    def on_load(self):
+        if not self.has_permission(Actions.ADMISSION_CAMPAIGN_EDIT):
+            yield rx.toast.error("У Вас немає доступу до цієї сторінки!")
+            yield rx.redirect(routes.DASHBOARD)
+            return
+
+        self.in_process = True
+        try:
+            self._reload_item()
+            if self.item is None:
+                yield rx.toast.warning("Запис не знайдено!")
+                yield rx.redirect(routes.ADMISSION_CAMPAIGN_LIST)
+                return
+            self.in_process = False
+        except Exception:
+            yield rx.toast.error("Під час завантаження даних виникла помилка. Спробуйте ще раз.")
+        return
+
+    @rx.event
+    def on_save(self):
+        if not self.has_permission(Actions.ADMISSION_CAMPAIGN_EDIT):
+            yield rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
+            return
+
+        err = self._validate()
+        if err:
+            yield rx.toast.warning(err)
+            return
+
+        service = AdmissionCampaignService()
+        try:
+            self.item = service.edit_one(self.item)
+            yield rx.toast.success("Запис змінено!")
+            yield rx.redirect(routes.ADMISSION_CAMPAIGN_VIEW + str(self.item.id))
+        except Exception:
+            yield rx.toast.error("Під час виконання запиту трапилась помилка. Спробуйте ще раз.")
+
+    @rx.event
+    def on_cancel(self):
+        return rx.redirect(routes.ADMISSION_CAMPAIGN_VIEW + str(self.item.id))
+
+
+class ViewAdmissionCampaignState(AppState):
+    item: AdmissionCampaignModel = AdmissionCampaignModel()
+    in_process: bool = True
+
+    def _reload_item(self):
+        service = AdmissionCampaignService()
+        loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        if loaded is not None:
+            self.item = loaded
+
+    @rx.event
+    def on_load(self):
+        if not self.has_permission(Actions.ADMISSION_CAMPAIGN_VIEW):
+            yield rx.toast.error("У Вас немає доступу до цієї сторінки!")
+            yield rx.redirect(routes.DASHBOARD)
+            return
+
+        self.in_process = True
+        try:
+            self._reload_item()
+            if self.item is None:
+                yield rx.toast.warning("Запис не знайдено!")
+                yield rx.redirect(routes.DASHBOARD)
+            else:
+                self.in_process = False
+        except Exception:
+            yield rx.toast.error("Під час завантаження даних виникла помилка. Спробуйте ще раз.")
+        return
+
+    @rx.event
+    def on_click_edit(self):
+        if not self.has_permission(Actions.ADMISSION_CAMPAIGN_EDIT):
+            return rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
+        return rx.redirect(routes.ADMISSION_CAMPAIGN_EDIT + str(self.item.id))
+
+    @rx.event
+    def on_click_delete(self):
+        if not self.has_permission(Actions.ADMISSION_CAMPAIGN_DELETE):
+            yield rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
+            return
+
+        service = AdmissionCampaignService()
+        if service.delete_one(self.item):
+            yield rx.redirect(routes.ADMISSION_CAMPAIGN_LIST)
+            yield rx.toast.success("Видалено!")
+        else:
+            yield rx.toast.error("Не вдалось видалити. Спробуйте ще раз.")
+        return
+
+    @rx.var
+    def title(self) -> str:
+        return self.item.title if self.item is not None and self.item.title is not None else ""
+
+    @rx.var
+    def start_date(self) -> str:
+        return self.item.start_date if self.item is not None and self.item.start_date is not None else ""
+
+    @rx.var
+    def end_date(self) -> str:
+        return self.item.end_date if self.item is not None and self.item.end_date is not None else ""
