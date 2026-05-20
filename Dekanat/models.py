@@ -131,6 +131,30 @@ class AdmissionCampaignModel(rx.Model, table=True):
     end_date: str = Field(nullable=False)    # ISO date YYYY-MM-DD
     is_deleted: bool = False
 
+    # Relationships
+    quotas: Optional[List['AdmissionCampaignSpecialityModel']] = Relationship()
+
+
+@rx.ModelRegistry.register
+class AdmissionCampaignSpecialityModel(rx.Model, table=True):
+    __tablename__ = "admission_campaigns_specialties"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["id_speciality_code", "id_speciality_department"],
+            ["specialties.code", "specialties.id_department"],
+        ),
+    )
+
+    # Table columns
+    id_admission_campaign: int = Field(primary_key=True, foreign_key="admission_campaigns.id")
+    id_speciality_code: str = Field(primary_key=True)
+    id_speciality_department: int = Field(primary_key=True)
+    budget_places: int = Field(default=0)
+    contract_places: int = Field(default=0)
+
+    # Relationships
+    speciality: Optional['SpecialityModel'] = Relationship()
+
 
 @rx.ModelRegistry.register
 class SpecialConditionModel(rx.Model, table=True):

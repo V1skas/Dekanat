@@ -30,6 +30,7 @@ from Dekanat.services.kinship import KinshipService
 from Dekanat.services.special_condition import SpecialConditionService
 from Dekanat.services.item_zno import ItemZnoService
 from Dekanat.services.admission_campaign import AdmissionCampaignService
+from Dekanat.services.admission_campaign_speciality import AdmissionCampaignSpecialityService
 from Dekanat.models import AdmissionCampaignModel
 
 
@@ -335,7 +336,13 @@ class EntrantFormState(AppState):
     entry_base_options: List[Dict[str, str]] = []
     application_status_options: List[Dict[str, str]] = []
     entrant_group_options: List[Dict[str, str]] = []
+    # speciality_options — лише ті спеціальності, що входять до квот активної кампанії
+    # (для select'а у діалозі додавання пріоритету).
     speciality_options: List[Dict[str, str]] = []
+    # all_speciality_options — повний довідник спеціальностей; використовується для
+    # відображення назв у таблиці вже збережених пріоритетів абітурієнта (у т.ч. тих,
+    # що могли бути додані в минулих кампаніях і вже не входять до активної).
+    all_speciality_options: List[Dict[str, str]] = []
     identity_document_type_options: List[Dict[str, str]] = []
     kinship_options: List[Dict[str, str]] = []
     special_condition_options: List[Dict[str, str]] = []
@@ -426,10 +433,26 @@ class EntrantFormState(AppState):
         eg = EntrantsGroupService().get_list_items()
         self.entrant_group_options = [{"value": str(g.id), "label": g.title} for g in eg]
         sp = SpecialityService().get_list_items()
-        self.speciality_options = [
-            {"value": f"{s.code}|{s.id_department}", "label": f"{s.code} {s.title}"}
-            for s in sp
+        sp_by_key: Dict[str, str] = {
+            f"{s.code}|{s.id_department}": f"{s.code} {s.title}" for s in sp
+        }
+        self.all_speciality_options = [
+            {"value": k, "label": v} for k, v in sp_by_key.items()
         ]
+        # Фільтр спеціальностей у діалозі — лише ті, що входять до квот активної кампанії.
+        active_campaign = AdmissionCampaignService().get_active_campaign()
+        if active_campaign is not None and active_campaign.id is not None:
+            quotas = AdmissionCampaignSpecialityService().get_by_campaign(active_campaign.id)
+            allowed_keys = [
+                f"{q.id_speciality_code}|{q.id_speciality_department}" for q in quotas
+            ]
+            self.speciality_options = [
+                {"value": k, "label": sp_by_key[k]}
+                for k in allowed_keys
+                if k in sp_by_key
+            ]
+        else:
+            self.speciality_options = []
         idt = IdentityDocumentTypeService().get_list_items()
         self.identity_document_type_options = [{"value": str(t.id), "label": t.title} for t in idt]
         ks = KinshipService().get_list_items()
@@ -638,7 +661,9 @@ class EntrantFormState(AppState):
 
     @rx.var
     def speciality_labels(self) -> Dict[str, str]:
-        return {opt["value"]: opt["label"] for opt in self.speciality_options}
+        # Завжди повний довідник — щоб уже збережені пріоритети відображались навіть якщо
+        # відповідна спеціальність більше не входить до квот поточної кампанії.
+        return {opt["value"]: opt["label"] for opt in self.all_speciality_options}
 
     # ============================================================
     # Identity document dialog

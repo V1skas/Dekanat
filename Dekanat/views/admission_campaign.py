@@ -1,5 +1,7 @@
 import reflex as rx
 
+from typing import Dict
+
 from Dekanat import routes
 from Dekanat.actions import Actions
 from Dekanat.states.admission_campaign import (
@@ -8,7 +10,7 @@ from Dekanat.states.admission_campaign import (
     EditAdmissionCampaignState,
     ViewAdmissionCampaignState,
 )
-from Dekanat.models import AdmissionCampaignModel
+from Dekanat.models import AdmissionCampaignModel, AdmissionCampaignSpecialityModel
 
 from Dekanat.views.templates.layouts import page_wrapper, header_subpage
 from Dekanat.views.templates import controls
@@ -57,6 +59,58 @@ def list_page_content() -> rx.Component:
     )
 
 
+# ============================================================
+# Helpers for quotas table
+# ============================================================
+
+def _quotas_header(*titles: str) -> rx.Component:
+    return rx.table.header(
+        rx.table.row(*[rx.table.column_header_cell(t, color=rx.color("accent", 2)) for t in titles]),
+        background_color=rx.color("accent", 9),
+    )
+
+
+def _select_item(opt: Dict[str, str]) -> rx.Component:
+    return rx.select.item(opt["label"], value=opt["value"])
+
+
+# ---------- View page ----------
+
+def _view_quota_row(item: AdmissionCampaignSpecialityModel) -> rx.Component:
+    return rx.table.row(
+        rx.table.row_header_cell(
+            rx.cond(
+                item.speciality,
+                item.speciality.code + " " + item.speciality.title,
+                "—",
+            ),
+            align="left",
+        ),
+        rx.table.cell(item.budget_places),
+        rx.table.cell(item.contract_places),
+        rx.table.cell(item.budget_places + item.contract_places),
+    )
+
+
+def _view_quotas_section() -> rx.Component:
+    return rx.vstack(
+        rx.heading("Спеціальності та квоти", size="3"),
+        rx.cond(
+            ViewAdmissionCampaignState.quotas.length() > 0,
+            rx.table.root(
+                _quotas_header("Спеціальність", "Бюджет", "Контракт", "Всього"),
+                rx.table.body(rx.foreach(ViewAdmissionCampaignState.quotas, _view_quota_row)),
+                variant="surface",
+                width="100%",
+            ),
+            controls.empty_placeholder(),
+        ),
+        spacing="2",
+        align="stretch",
+        width="100%",
+    )
+
+
 def view_page_content() -> rx.Component:
     return rx.vstack(
         rx.heading(ViewAdmissionCampaignState.title, size="6"),
@@ -72,12 +126,130 @@ def view_page_content() -> rx.Component:
             spacing="2",
             align="center",
         ),
+        _view_quotas_section(),
         spacing="3",
         align="stretch",
         height="100%",
         width="100%",
     )
 
+
+# ---------- Add / Edit form helpers ----------
+
+def _form_quota_row_factory(form_state):
+    def _row(item: AdmissionCampaignSpecialityModel, idx: int) -> rx.Component:
+        return rx.table.row(
+            rx.table.row_header_cell(
+                form_state.speciality_labels[
+                    item.id_speciality_code + "|" + item.id_speciality_department.to_string()
+                ],
+                align="left",
+            ),
+            rx.table.cell(item.budget_places),
+            rx.table.cell(item.contract_places),
+            rx.table.cell(item.budget_places + item.contract_places),
+            rx.table.cell(
+                rx.hstack(
+                    controls.button_image_primary(
+                        name_icon="pencil_line",
+                        on_click=form_state.open_q_edit(idx),
+                    ),
+                    controls.delete_with_confirm(
+                        on_confirm=form_state.delete_q(idx),
+                        description="Видалити цю спеціальність з кампанії?",
+                    ),
+                    spacing="2",
+                )
+            ),
+        )
+
+    return _row
+
+
+def _form_quotas_section(form_state) -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.heading("Спеціальності та квоти", size="3"),
+            rx.spacer(),
+            controls.button_image_primary(name_icon="plus", on_click=form_state.open_q_add),
+            width="100%",
+        ),
+        rx.cond(
+            form_state.quotas.length() > 0,
+            rx.table.root(
+                _quotas_header("Спеціальність", "Бюджет", "Контракт", "Всього", "Дії"),
+                rx.table.body(rx.foreach(form_state.quotas, _form_quota_row_factory(form_state))),
+                variant="surface",
+                width="100%",
+            ),
+            controls.empty_placeholder(),
+        ),
+        spacing="2",
+        align="stretch",
+        width="100%",
+    )
+
+
+def _quota_dialog(form_state) -> rx.Component:
+    # Поле спеціальності неактивне лише при редагуванні існуючої квоти (q_index >= 0).
+    # При додаванні нової квоти (в т.ч. на сторінці редагування кампанії) — звичайний select.
+    speciality_field = rx.cond(
+        form_state.q_index >= 0,
+        rx.input(
+            value=form_state.speciality_labels[form_state.q_speciality_combined],
+            disabled=True,
+            width="100%",
+        ),
+        rx.select.root(
+            rx.select.trigger(placeholder="Оберіть спеціальність"),
+            rx.select.content(
+                rx.foreach(form_state.speciality_options, _select_item),
+            ),
+            value=form_state.q_speciality_combined,
+            on_change=form_state.set_q_speciality_combined,
+            width="100%",
+        ),
+    )
+
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Спеціальність та квоти"),
+            rx.vstack(
+                rx.text("*Спеціальність:"),
+                speciality_field,
+                rx.text("*Бюджетних місць:"),
+                rx.input(
+                    type="number",
+                    value=form_state.q_budget_places.to_string(),
+                    on_change=form_state.set_q_budget_places,
+                    width="100%",
+                ),
+                rx.text("*Контрактних місць:"),
+                rx.input(
+                    type="number",
+                    value=form_state.q_contract_places.to_string(),
+                    on_change=form_state.set_q_contract_places,
+                    width="100%",
+                ),
+                rx.hstack(
+                    rx.dialog.close(
+                        controls.button_secondary("Скасувати", on_click=form_state.close_q),
+                    ),
+                    controls.button_primary("Зберегти", on_click=form_state.save_q),
+                    justify="end",
+                    spacing="2",
+                    width="100%",
+                ),
+                spacing="2",
+                align="stretch",
+            ),
+        ),
+        open=form_state.q_open,
+        on_open_change=form_state.set_q_open,
+    )
+
+
+# ---------- Add page ----------
 
 def add_page_content() -> rx.Component:
     return rx.vstack(
@@ -104,6 +276,8 @@ def add_page_content() -> rx.Component:
             on_change=AddAdmissionCampaignState.set_end_date,
             width="100%",
         ),
+        _form_quotas_section(AddAdmissionCampaignState),
+        _quota_dialog(AddAdmissionCampaignState),
         align="stretch",
         spacing="3",
         width="100%",
@@ -135,6 +309,8 @@ def edit_page_content() -> rx.Component:
             on_change=EditAdmissionCampaignState.set_end_date,
             width="100%",
         ),
+        _form_quotas_section(EditAdmissionCampaignState),
+        _quota_dialog(EditAdmissionCampaignState),
         align="stretch",
         spacing="3",
         width="100%",

@@ -68,11 +68,14 @@ class AppState(rx.State):
 
         if self.auth_token is None:
             self.auth_token = self._auth_service.get_auth_token(self.token)
+            if self.auth_token is None:
+                return self.logout()
+
             service = WorkerService()
             self.worker = service.get_by_id(self.auth_token.id_worker)
-            if self.auth_token is None or self.worker is None:
+            if self.worker is None:
                 return self.logout()
- 
+
             self.actions_worker = self._auth_service.get_list_worker_actions(self.worker.id)
 
     @rx.var

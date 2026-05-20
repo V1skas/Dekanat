@@ -76,6 +76,15 @@ uv run python update.py # синхронизация enum Actions в БД пос
 - **Свежесозданная `Model()` без аргументов оставляет required-поля как None.** Все `@rx.var def x -> str` должны защищаться: `return self.item.x if self.item is not None and self.item.x is not None else ""`. Иначе в логах появится `Computed var ... must return value of type str, got None`.
 - **FK-поля редактируются через `rx.select`** (см. `views/speciality.py`). В state хранится computed var-обёртка `..._str: str` для значения select и event `set_*`, парсящий int. Список опций готовится в `on_load` через сервис связанной сущности (например, `DepartmentService.get_list_items()`).
 
+### Дочерние коллекции — диалоги + "replace_all" при сохранении
+
+Для сущностей, у которых есть набор дочерних записей, редактируемых не отдельной CRUD-страницей, а прямо на форме родителя (Entrant, AdmissionCampaign), сложилась устойчивая связка:
+
+1. **State.** Каждая коллекция — `List[ChildModel] = []` в state. На каждую — отдельный набор полей диалога: `<x>_open: bool`, `<x>_index: int = -1` (≥0 — редактирование существующего элемента), плюс зеркальные поля диалога (например, `q_budget_places: int`). Обработчики: `open_<x>_add` / `open_<x>_edit(idx)` / `close_<x>` / `set_<x>_open(value)` / `save_<x>` / `delete_<x>(idx)`. См. `EntrantFormState` (`states/entrant.py`) и `_CampaignFormBase` (`states/admission_campaign.py`).
+2. **View.** Диалог — `rx.dialog.root` с `open=...<x>_open` и `on_open_change=...set_<x>_open`. Таблица собственных записей — `rx.foreach(form_state.<collection>, _row_factory(form_state))`. Кнопка «+» рядом с заголовком таблицы; в строке — кнопки edit и `controls.delete_with_confirm`. Поля FK, доступные только при добавлении, оборачивайте в `rx.cond(form_state.<x>_index >= 0, _disabled_input, _select)` — иначе при редактировании юзер сможет случайно перевыбрать ключ.
+3. **Подписи в строках через словарь.** Поскольку добавленные в памяти модели не имеют подгруженного relationship, имя FK-сущности рендерится через computed-var-словарь (`speciality_labels`, `item_zno_titles` и т.п.), построенный из dropdown-опций. Доступ — `<labels>[item.fk_a + "|" + item.fk_b.to_string()]`.
+4. **Persistence.** Дочерние коллекции сохраняются вместе с родителем единым транзакционным «replace_all»: сервис очищает все старые записи по `id_parent` и вставляет переданный список заново. Эталоны — `EntrantService.edit_one(..., specialties=, results_zno=, ...)` и `AdmissionCampaignSpecialityService.replace_all_for_campaign(id, items)`. Не пытайтесь делать diff — это лишняя сложность; полный список из state всегда канонический.
+
 ## Доменна структура
 
 Система веде облік **абітурієнтів** та **студентів** ВНЗ, навчального процесу і документообігу.
@@ -93,23 +102,26 @@ uv run python update.py # синхронизация enum Actions в БД пос
 | Kinship | `KinshipModel` | `/base/kinship` | Типи родинних зв'язків |
 | Special condition | `SpecialConditionModel` | `/base/special_condition` | Спеціальні умови вступу |
 | Source of funding | `SourceOfFundingModel` | `/base/source_of_funding` | Джерела фінансування |
+| Entry base | `EntryBaseModel` | `/base/entry_base` | Бази вступу |
 | Department | `DepartmentModel` | `/base/department` | Відділення |
-| Speciality | `SpecialityModel` | `/base/speciality` | Спеціальності (FK на department) |
+| Speciality | `SpecialityModel` | `/base/speciality` | Спеціальності (composite PK `(code, id_department)`) |
 | Application status | `ApplicationStatusModel` | `/base/application_status` | Статуси заявок |
+| Item ZNO | `ItemZnoModel` | `/base/item_zno` | Предмети ЗНО |
+| Entrants group | `EntrantGroupModel` | `/admission_commission/entrants_group` | Групи абітурієнтів на ЗНО (+ `EntrantExamModel` як підсутність у формі) |
+| Admission campaign | `AdmissionCampaignModel` | `/admission_commission/campaign` | Вступна кампанія: назва, період + квоти по спеціальностям (`AdmissionCampaignSpecialityModel`) |
+| Entrant | `EntrantModel` | `/contingent/entrants` | Абітурієнт = `PersonModel` + статус заявки + комент + усі дочірні сутності особи, керовані діалогами на одній формі |
 
-#### Існують як SQLModel-моделі — UI ще немає
+#### Підсутності, що редагуються діалогами всередині батьківської форми
 
-- **`PersonModel`** — центральна сутність "Особа"
-- **`EntrantModel`** — Абітурієнт (Person + `id_application_status` + `comment`)
-- **`SpecialtieEntrantModel`** — Пріоритет спеціальностей абітурієнта
-- **`EntrantGroupModel`** + **`EntrantExamModel`** — Групи на ЗНО і розклад іспитів
-- **`ItemZnoModel`** + **`ResultZnoModel`** — Предмети ЗНО і результати
-- **`DocumentAboutEducationModel`** — Документи про освіту особи
-- **`MilitaryAccountingModel`** — Військовий облік
-- **`MedicalReferenceModel`** — Медичні довідки
-- **`IdentityDocumentModel`** — Паспорти (інстанс типу з `IdentityDocumentTypeModel`)
-- **`InformationAboutRelativesModel`** — Інформація про родичів
-- **`SpecialConditionPersonModel`** — Спеціальні умови, прив'язані до особи
+Не мають окремих сторінок — створюються/змінюються в модальних вікнах на формі батька і зберігаються разом із ним:
+
+- На формі **Entrant** (`views/entrant.py`, `states/entrant.py:EntrantFormState`):
+  `IdentityDocumentModel`, `DocumentAboutEducationModel`, `MilitaryAccountingModel`,
+  `MedicalReferenceModel`, `InformationAboutRelativesModel`, `SpecialConditionPersonModel`,
+  `SpecialtieEntrantModel` (пріоритетний список), `ResultZnoModel`.
+- На формі **Admission campaign** (`views/admission_campaign.py`,
+  `states/admission_campaign.py:_CampaignFormBase`): `AdmissionCampaignSpecialityModel`
+  (квоти бюджет/контракт по спеціальностям).
 
 #### За ER-схемою заплановані, моделей ще немає
 
@@ -125,14 +137,27 @@ uv run python update.py # синхронизация enum Actions в БД пос
 ### Логічні блоки і ключові зв'язки
 
 1. **Особа і її документи**: `person ← identity_document, document_about_education, military_accounting, medical_reference, information_about_relatives, special_conditions_person, results_zno`
-2. **Абітурієнти**: `entrants (id_person → person) → specialties_entrant (priority list)`; `entrants_groups → entrants_exams (date_time, item_zno)`
-3. **Студенти і навчання**: `students (id_person → person, id_group) → groups (id_specialties, id_curator) → specialties`
-4. **Викладання**: `subjects (id_specialties) ↔ workers (через subjects_workers)`; `schedule (group, period) → lessons (subject, worker, schedule)`
-5. **Документообіг**: `orders (id_type → type_orders, id_worker → workers)`
+2. **Абітурієнти**: `entrants (id_person → person, id_entrant_group?) → specialties_entrant (priority list)`; `entrants_groups → entrants_exams (date_time, item_zno)`
+3. **Вступна кампанія**: `admission_campaigns ← admission_campaigns_specialties (speciality, budget_places, contract_places)` — задає перелік спеціальностей, доступних абітурієнту при подачі пріоритетів у межах поточної кампанії.
+4. **Студенти і навчання**: `students (id_person → person, id_group) → groups (id_specialties, id_curator) → specialties`
+5. **Викладання**: `subjects (id_specialties) ↔ workers (через subjects_workers)`; `schedule (group, period) → lessons (subject, worker, schedule)`
+6. **Документообіг**: `orders (id_type → type_orders, id_worker → workers)`
 
 ### Угода: FK на `SpecialityModel` — завжди composite
 
-`SpecialityModel` має composite PK `(code, id_department)`. Будь-яка таблиця, що посилається на спеціальність, повинна мати **два FK-стовпці** (`id_speciality_code`, `id_speciality_department`) і `ForeignKeyConstraint` через `__table_args__` — single FK на `code` логічно зламаний. Приклад — `SpecialtieEntrantModel` (`models.py`). Для майбутніх `groups`, `subjects` тощо діє те саме правило.
+`SpecialityModel` має composite PK `(code, id_department)`. Будь-яка таблиця, що посилається на спеціальність, повинна мати **два FK-стовпці** (`id_speciality_code`, `id_speciality_department`) і `ForeignKeyConstraint` через `__table_args__` — single FK на `code` логічно зламаний. Приклади — `SpecialtieEntrantModel`, `AdmissionCampaignSpecialityModel` (`models.py`). Для майбутніх `groups`, `subjects` тощо діє те саме правило.
+
+### Активна вступна кампанія
+
+`AdmissionCampaignService` надає два хелпери для бізнес-логіки, що мусить обмежуватись поточною кампанією:
+
+- `get_active_campaign()` — повертає не видалену кампанію, чий діапазон `[start_date, end_date]` містить сьогоднішню дату (якщо їх декілька — найновіша за `start_date`).
+- `get_active_range()` — та сама кампанія у вигляді пари `datetime` (00:00 початку та 23:59:59 кінця) — зручно для фільтрації за `created_at`.
+
+Використовується, зокрема:
+
+- У фільтрі списку абітурієнтів (`ListEntrantState`) — за замовчуванням показує лише абітурієнтів, створених у межах активної кампанії.
+- У формі абітурієнта (`EntrantFormState._load_dropdowns`) — список спеціальностей у діалозі пріоритету обмежується тими, що входять до квот активної кампанії. Повний довідник зберігається у `all_speciality_options` і використовується в `speciality_labels`, щоб уже збережені пріоритети завжди мали підпис.
 
 ## Локализация UI
 
@@ -159,11 +184,15 @@ uv run python update.py # синхронизация enum Actions в БД пос
 - Тело страницы оборачивается в `page_wrapper(page_header, page_content)` из `Dekanat/views/templates/layouts.py`.
 - Заголовок подстраницы — `header_subpage("Назва", *action_buttons)`. Это `hstack` с градиентным текстом и градиентным подчёркиванием снизу.
 
-### Кнопки (`Dekanat/views/templates/controls.py`)
+### Кнопки и контролы (`Dekanat/views/templates/controls.py`)
 - `controls.button_primary(...)` — заполненная градиентом, белый текст.
 - `controls.button_secondary(...)` — `variant="outline"`.
 - `controls.button_image_primary(name_icon=..., on_click=...)` — иконочная primary 2×2rem.
 - `controls.button_image_secondary(name_icon=..., on_click=...)` — иконочная secondary.
+- `controls.button_back(href)` — secondary-иконка `arrow_left`, делает `rx.redirect(href)`.
+- `controls.delete_with_confirm(on_confirm=..., title=..., description=..., trigger=...)` — `rx.alert_dialog` с trigger-иконкой `trash_2`; `on_confirm` вызывается только после подтверждения. Используйте для всех необратимых действий.
+- `controls.empty_placeholder(message="Записи відсутні")` — пунктирная карточка-заглушка для пустых таблиц/списков.
+- `controls.button_filter_toggle(is_open, on_click)` + `controls.filter_panel(is_open, *fields, on_clear=...)` — пара для анимированной панели фильтров над таблицей списка (пример — `views/entrant.py`).
 
 ### Стандартные иконки действий
 - Добавить: `plus`
