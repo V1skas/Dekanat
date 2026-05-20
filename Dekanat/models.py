@@ -454,14 +454,29 @@ class ResultZnoModel(rx.Model, table=True):
 
 
 @rx.ModelRegistry.register
+class EntrantExamWorkerModel(rx.Model, table=True):
+    __tablename__ = "entrants_exams_workers"
+
+    # Table columns
+    id_exam: int = Field(primary_key=True, foreign_key="entrants_exams.id")
+    id_worker: int = Field(primary_key=True, foreign_key="workers.id")
+
+
+@rx.ModelRegistry.register
 class EntrantExamModel(rx.Model, table=True):
     __tablename__ = "entrants_exams"
 
     # Table columns
-    id_group: int = Field(primary_key=True, foreign_key="entrants_groups.id")
-    id_item_zno: int = Field(primary_key=True, foreign_key="item_zno.id")
-    date_time: datetime
+    id: int = Field(primary_key=True)
+    id_group: int = Field(foreign_key="entrants_groups.id")
+    id_item_zno: int = Field(foreign_key="item_zno.id")
+    date: str = Field(nullable=False)        # ISO date YYYY-MM-DD
+    time_start: str = Field(nullable=False)  # HH:MM
+    time_end: str = Field(nullable=False)    # HH:MM
+    description: Optional[str] = Field(default=None, nullable=True)
+    is_deleted: bool = False
 
     # Relationships
     group: Optional['EntrantGroupModel'] = Relationship(back_populates="exams")
     item_zno: Optional['ItemZnoModel'] = Relationship()
+    responsible_workers: Optional[List['WorkerModel']] = Relationship(link_model=EntrantExamWorkerModel)

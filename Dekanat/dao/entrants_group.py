@@ -111,6 +111,7 @@ class EntrantsGroupDao:
             select(EntrantExamModel)
             .options(selectinload(EntrantExamModel.item_zno))
             .where(EntrantExamModel.id_group == group_id)
-            .order_by(EntrantExamModel.date_time)
+            .where(EntrantExamModel.is_deleted == False)
+            .order_by(EntrantExamModel.date, EntrantExamModel.time_start)
         )
         return session.exec(statement).all()

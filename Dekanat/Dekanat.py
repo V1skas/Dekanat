@@ -10,6 +10,7 @@ from Dekanat.views import application_status
 from Dekanat.views import dashboard
 from Dekanat.views import department
 from Dekanat.views import entrant
+from Dekanat.views import entrant_exam
 from Dekanat.views import entrants_group
 from Dekanat.views import entry_base
 from Dekanat.views import identity_document_type
@@ -26,6 +27,7 @@ from Dekanat.states import admission_campaign as admission_campaign_states
 from Dekanat.states import application_status as application_status_states
 from Dekanat.states import department as department_states
 from Dekanat.states import entrant as entrant_states
+from Dekanat.states import entrant_exam as entrant_exam_states
 from Dekanat.states import entrants_group as entrants_group_states
 from Dekanat.states import entry_base as entry_base_states
 from Dekanat.states import identity_document_type as identity_document_type_states
@@ -107,6 +109,12 @@ app.add_page(entry_base.list_page, route=routes.ENTRY_BASE_LIST, on_load=entry_b
 app.add_page(entry_base.add_page, route=routes.ENTRY_BASE_ADD, on_load=entry_base_states.AddEntryBaseState.on_load)
 app.add_page(entry_base.edit_page, route=routes.ENTRY_BASE_EDIT+"[id]", on_load=entry_base_states.EditEntryBaseState.on_load)
 app.add_page(entry_base.view_page, route=routes.ENTRY_BASE_VIEW+"[id]", on_load=entry_base_states.ViewEntryBaseState.on_load)
+
+app.add_page(entrant_exam.list_page, route=routes.ENTRANT_EXAM_LIST, on_load=entrant_exam_states.ListEntrantExamState.on_load)
+app.add_page(entrant_exam.add_page, route=routes.ENTRANT_EXAM_ADD, on_load=entrant_exam_states.AddEntrantExamState.on_load)
+app.add_page(entrant_exam.edit_page, route=routes.ENTRANT_EXAM_EDIT+"[id]", on_load=entrant_exam_states.EditEntrantExamState.on_load)
+app.add_page(entrant_exam.view_page, route=routes.ENTRANT_EXAM_VIEW+"[id]", on_load=entrant_exam_states.ViewEntrantExamState.on_load)
+app.add_page(entrant_exam.print_page, route=routes.ENTRANT_EXAM_PRINT, on_load=entrant_exam_states.PrintEntrantExamState.on_load)
 
 app.add_page(entrants_group.list_page, route=routes.ENTRANTS_GROUP_LIST, on_load=entrants_group_states.ListEntrantsGroupState.on_load)
 app.add_page(entrants_group.add_page, route=routes.ENTRANTS_GROUP_ADD, on_load=entrants_group_states.AddEntrantsGroupState.on_load)

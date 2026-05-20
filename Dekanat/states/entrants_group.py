@@ -396,7 +396,7 @@ class ViewEntrantsGroupState(AppState):
             self.exams_display = [
                 {
                     "subject": (e.item_zno.title if e.item_zno is not None else "—"),
-                    "date_time": e.date_time.strftime("%Y-%m-%d %H:%M") if e.date_time is not None else "—",
+                    "date_time": f"{e.date} {e.time_start}—{e.time_end}" if e.date else "—",
                 }
                 for e in self.exams
             ]
