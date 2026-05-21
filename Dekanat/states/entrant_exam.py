@@ -18,6 +18,7 @@ from Dekanat.services.entrants_group import EntrantsGroupService
 from Dekanat.services.item_zno import ItemZnoService
 from Dekanat.services.worker import WorkerService
 from Dekanat.services.admission_campaign import AdmissionCampaignService
+from Dekanat.services.result_zno import ResultZnoService
 
 
 # ============================================================
@@ -511,6 +512,32 @@ class ViewEntrantExamState(AppState):
 
     responsible_workers_display: List[Dict[str, str]] = []
 
+    # ---- Grading section ----
+    grading_open: bool = False
+    # Список абітурієнтів групи, для якої проводиться іспит (передзібрані рядки таблиці).
+    grading_rows: List[Dict[str, str]] = []
+    # Мапа поточних оцінок: id_entrant -> grade (str). Не присутній ключ = немає оцінки.
+    grades_by_entrant: Dict[str, str] = {}
+    # Сирий список абітурієнтів (id + pib) — використовується лише на бекенді для
+    # пересборки `grading_rows` після зміни оцінок (leading underscore — backend-only).
+    _raw_entrants: List[Dict[str, str]] = []
+
+    # ---- Grading dialog ----
+    g_open: bool = False
+    g_index: int = 0
+    g_grade_input: str = ""
+    g_grade_original: str = ""
+
+    def _reload_grading_rows(self):
+        self.grading_rows = [
+            {
+                "id": str(row["id"]),
+                "pib": row["pib"],
+                "grade": self.grades_by_entrant.get(str(row["id"]), ""),
+            }
+            for row in self._raw_entrants
+        ]
+
     def _reload_item(self):
         service = EntrantExamService()
         loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
@@ -520,6 +547,23 @@ class ViewEntrantExamState(AppState):
                 {"pib": w.pib, "email": w.email or "—", "phone": w.phone_number or "—"}
                 for w in (loaded.responsible_workers or [])
             ]
+            # Завантажуємо склад групи + існуючі оцінки (з results_zno за поточним предметом).
+            entrants = list(EntrantsGroupService().get_entrants(loaded.id_group))
+            self._raw_entrants = [
+                {
+                    "id": str(e.id),
+                    "pib": e.person.pib if e.person is not None else f"Абітурієнт #{e.id}",
+                }
+                for e in entrants
+            ]
+            person_ids = [int(r["id"]) for r in self._raw_entrants]
+            results = ResultZnoService().get_by_subject_and_persons(
+                loaded.id_item_zno, person_ids
+            )
+            self.grades_by_entrant = {
+                str(r.id_person): str(r.points) for r in results
+            }
+            self._reload_grading_rows()
 
     @rx.event
     def on_load(self):
@@ -530,6 +574,14 @@ class ViewEntrantExamState(AppState):
 
         self.in_process = True
         try:
+            self._raw_entrants = []
+            self.grades_by_entrant = {}
+            self.grading_rows = []
+            self.grading_open = False
+            self.g_open = False
+            self.g_index = 0
+            self.g_grade_input = ""
+            self.g_grade_original = ""
             self._reload_item()
             if self.item is None or self.item.id is None:
                 yield rx.toast.warning("Запис не знайдено!")
@@ -587,6 +639,127 @@ class ViewEntrantExamState(AppState):
     @rx.var
     def description(self) -> str:
         return self.item.description if self.item is not None and self.item.description is not None else ""
+
+    # ============================================================
+    # Grading section + dialog
+    # ============================================================
+
+    @rx.event
+    def toggle_grading_open(self):
+        self.grading_open = not self.grading_open
+
+    @rx.var
+    def grading_total(self) -> int:
+        return len(self.grading_rows)
+
+    @rx.var
+    def current_entrant_pib(self) -> str:
+        if 0 <= self.g_index < len(self.grading_rows):
+            return self.grading_rows[self.g_index]["pib"]
+        return "—"
+
+    @rx.var
+    def grading_indicator(self) -> str:
+        if not self.grading_rows:
+            return "0 / 0"
+        return f"{self.g_index + 1} / {len(self.grading_rows)}"
+
+    @rx.var
+    def has_prev_entrant(self) -> bool:
+        return self.g_index > 0
+
+    @rx.var
+    def has_next_entrant(self) -> bool:
+        return self.g_index < len(self.grading_rows) - 1
+
+    def _load_dialog_for_index(self, index: int):
+        if not (0 <= index < len(self.grading_rows)):
+            return
+        self.g_index = index
+        existing = self.grading_rows[index]["grade"]
+        self.g_grade_input = existing
+        self.g_grade_original = existing
+
+    @rx.event
+    def open_grading_dialog(self, index: int = 0):
+        if not self.grading_rows:
+            return rx.toast.warning("У групі немає абітурієнтів!")
+        if not (0 <= index < len(self.grading_rows)):
+            index = 0
+        self._load_dialog_for_index(index)
+        self.g_open = True
+
+    @rx.event
+    def open_grading_dialog_for(self, entrant_id_str: str):
+        for i, row in enumerate(self.grading_rows):
+            if row["id"] == entrant_id_str:
+                self._load_dialog_for_index(i)
+                self.g_open = True
+                return
+        return rx.toast.error("Абітурієнта не знайдено в групі!")
+
+    @rx.event
+    def close_grading_dialog(self):
+        self.g_open = False
+
+    @rx.event
+    def set_g_open(self, value: bool):
+        self.g_open = value
+
+    @rx.event
+    def set_g_grade_input(self, value: str):
+        self.g_grade_input = value
+
+    @rx.event
+    def reset_grade(self):
+        self.g_grade_input = self.g_grade_original
+
+    @rx.event
+    def prev_entrant(self):
+        if self.g_index > 0:
+            self._load_dialog_for_index(self.g_index - 1)
+
+    @rx.event
+    def next_entrant(self):
+        if self.g_index < len(self.grading_rows) - 1:
+            self._load_dialog_for_index(self.g_index + 1)
+
+    @rx.event
+    def save_grade(self):
+        if not self.has_permission(Actions.ENTRANT_EXAM_EDIT):
+            yield rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
+            return
+        if self.item is None or self.item.id is None or self.item.id_item_zno is None:
+            yield rx.toast.error("Іспит не завантажений!")
+            return
+        if not (0 <= self.g_index < len(self.grading_rows)):
+            return
+        row = self.grading_rows[self.g_index]
+        try:
+            entrant_id = int(row["id"])
+        except (ValueError, TypeError):
+            yield rx.toast.error("Некоректний ідентифікатор абітурієнта!")
+            return
+
+        raw = (self.g_grade_input or "").strip()
+        points: Optional[int]
+        if raw == "":
+            points = None
+        else:
+            try:
+                points = int(raw)
+            except ValueError:
+                yield rx.toast.warning("Оцінка має бути цілим числом!")
+                return
+
+        try:
+            ResultZnoService().upsert(self.item.id_item_zno, entrant_id, points)
+            self.grades_by_entrant[row["id"]] = raw
+            self.g_grade_original = raw
+            self._reload_grading_rows()
+            yield rx.toast.success("Оцінку збережено!")
+        except Exception:
+            yield rx.toast.error("Під час збереження оцінки трапилась помилка. Спробуйте ще раз.")
 
 
 # ============================================================

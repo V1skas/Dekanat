@@ -309,6 +309,115 @@ def _view_worker_row(row: Dict[str, str]) -> rx.Component:
     )
 
 
+def _grading_row(row: Dict[str, str]) -> rx.Component:
+    return rx.table.row(
+        rx.table.row_header_cell(
+            rx.link(
+                row["pib"],
+                on_click=ViewEntrantExamState.open_grading_dialog_for(row["id"]),
+                cursor="pointer",
+            ),
+            align="left",
+        ),
+        rx.table.cell(rx.cond(row["grade"] != "", row["grade"], "—")),
+    )
+
+
+def _grading_section() -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.button(
+                rx.icon(
+                    rx.cond(ViewEntrantExamState.grading_open, "chevron_down", "chevron_right"),
+                    size=18,
+                ),
+                rx.heading("Оцінювання", size="3"),
+                on_click=ViewEntrantExamState.toggle_grading_open,
+                variant="ghost",
+                cursor="pointer",
+                color=rx.color("accent", 11),
+            ),
+            rx.spacer(),
+            rx.cond(
+                ViewEntrantExamState.get_user_actions.contains(Actions.ENTRANT_EXAM_EDIT),
+                controls.button_primary(
+                    rx.icon("clipboard_check", size=18),
+                    "Оцінювання",
+                    on_click=ViewEntrantExamState.open_grading_dialog(0),
+                ),
+            ),
+            width="100%",
+        ),
+        rx.cond(
+            ViewEntrantExamState.grading_open,
+            rx.cond(
+                ViewEntrantExamState.grading_rows.length() > 0,
+                rx.table.root(
+                    _table_header("ПІБ абітурієнта", "Оцінка"),
+                    rx.table.body(rx.foreach(ViewEntrantExamState.grading_rows, _grading_row)),
+                    variant="surface",
+                    width="100%",
+                ),
+                controls.empty_placeholder("У групі немає абітурієнтів"),
+            ),
+        ),
+        spacing="2",
+        align="stretch",
+        width="100%",
+    )
+
+
+def _grading_dialog() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title(
+                rx.hstack(
+                    rx.text("Оцінювання: "),
+                    rx.text(ViewEntrantExamState.current_entrant_pib, weight="bold"),
+                    rx.spacer(),
+                    rx.badge(ViewEntrantExamState.grading_indicator),
+                    width="100%",
+                    align="center",
+                )
+            ),
+            rx.vstack(
+                rx.text("Оцінка:"),
+                rx.input(
+                    type="number",
+                    value=ViewEntrantExamState.g_grade_input,
+                    on_change=ViewEntrantExamState.set_g_grade_input,
+                    placeholder="Бали",
+                    width="100%",
+                ),
+                rx.hstack(
+                    controls.button_image_secondary(
+                        name_icon="chevron_left",
+                        on_click=ViewEntrantExamState.prev_entrant,
+                        disabled=~ViewEntrantExamState.has_prev_entrant,
+                    ),
+                    controls.button_image_secondary(
+                        name_icon="chevron_right",
+                        on_click=ViewEntrantExamState.next_entrant,
+                        disabled=~ViewEntrantExamState.has_next_entrant,
+                    ),
+                    rx.spacer(),
+                    rx.dialog.close(controls.button_secondary("Скасувати", on_click=ViewEntrantExamState.close_grading_dialog)),
+                    controls.button_secondary("Скинути", on_click=ViewEntrantExamState.reset_grade),
+                    controls.button_primary("Зберегти", on_click=ViewEntrantExamState.save_grade),
+                    spacing="2",
+                    width="100%",
+                ),
+                spacing="3",
+                align="stretch",
+                width="100%",
+            ),
+            max_width="32rem",
+        ),
+        open=ViewEntrantExamState.g_open,
+        on_open_change=ViewEntrantExamState.set_g_open,
+    )
+
+
 def view_page_content() -> rx.Component:
     return rx.vstack(
         rx.heading(ViewEntrantExamState.item_zno_title, size="6"),
@@ -339,6 +448,8 @@ def view_page_content() -> rx.Component:
             ),
             controls.empty_placeholder("Відповідальних не призначено"),
         ),
+        _grading_section(),
+        _grading_dialog(),
         spacing="3",
         align="stretch",
         width="100%",
