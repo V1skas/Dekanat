@@ -94,17 +94,38 @@ def _list_table_row(item: EntrantModel) -> rx.Component:
     )
 
 
+def _sortable_header(title: str, field: str) -> rx.Component:
+    """Кликабельний заголовок столбця. Поруч із назвою — індикатор поточного
+    сортування ( ↑ / ↓ / порожньо). Курсор pointer + hover-підсвітка."""
+    return rx.table.column_header_cell(
+        rx.hstack(
+            rx.text(title, color=rx.color("accent", 2)),
+            rx.text(
+                ListEntrantState.sort_indicator[field],
+                color=rx.color("accent", 2),
+                weight="bold",
+            ),
+            spacing="1",
+            align="center",
+        ),
+        color=rx.color("accent", 2),
+        cursor="pointer",
+        on_click=ListEntrantState.on_click_sort(field),
+        _hover={"background_color": rx.color("accent", 10)},
+    )
+
+
 def _list_table() -> rx.Component:
     return rx.table.root(
         rx.table.header(
             rx.table.row(
-                rx.table.column_header_cell("ПІБ", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Номер телефону", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Електронна пошта", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("База вступу", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Джерело фінансування", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Спеціальність", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Статус заяви", color=rx.color("accent", 2)),
+                _sortable_header("ПІБ", "pib"),
+                _sortable_header("Номер телефону", "phone_number"),
+                _sortable_header("Електронна пошта", "email"),
+                _sortable_header("База вступу", "entry_base"),
+                _sortable_header("Джерело фінансування", "source_of_funding"),
+                _sortable_header("Спеціальність", "speciality"),
+                _sortable_header("Статус заяви", "application_status"),
             ),
             background_color=rx.color("accent", 9),
         ),
@@ -177,6 +198,19 @@ def _list_filter_panel() -> rx.Component:
                 ListEntrantState.entry_base_options,
                 ListEntrantState.filter_entry_base_id_str,
                 ListEntrantState.set_filter_entry_base_id,
+                placeholder="Будь-яка",
+                width="100%",
+            ),
+            spacing="1",
+            align="stretch",
+            width="100%",
+        ),
+        rx.vstack(
+            rx.text("Спеціальність у пріоритетах:", weight="medium"),
+            _select(
+                ListEntrantState.speciality_options,
+                ListEntrantState.filter_speciality_key,
+                ListEntrantState.set_filter_speciality_key,
                 placeholder="Будь-яка",
                 width="100%",
             ),

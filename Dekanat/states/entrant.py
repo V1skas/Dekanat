@@ -46,9 +46,17 @@ class ListEntrantState(AppState):
     filter_status_id: int = 0
     filter_entry_base_id: int = 0
     filter_campaign_id: int = 0  # 0 — без фільтра по кампанії
+    # "code|id_department"; "__all__" — без фільтра (Radix забороняє value="" в rx.select.item).
+    filter_speciality_key: str = "__all__"
     application_status_options: List[Dict[str, str]] = []
     entry_base_options: List[Dict[str, str]] = []
+    # Опции спеціальностей — обмежені квотами активної кампанії (як у формі абітурієнта).
+    speciality_options: List[Dict[str, str]] = []
     campaigns: List[AdmissionCampaignModel] = []
+
+    # Сортування. sort_field == "" — за замовчуванням (created_at desc).
+    sort_field: str = ""
+    sort_dir: str = "asc"  # "asc" | "desc"
 
     def _campaign_range(self):
         if not self.filter_campaign_id:
@@ -63,13 +71,27 @@ class ListEntrantState(AppState):
         except (ValueError, TypeError):
             return None
 
+    def _parse_speciality_key(self):
+        if not self.filter_speciality_key or self.filter_speciality_key == "__all__":
+            return (None, None)
+        try:
+            code, dept = self.filter_speciality_key.split("|", 1)
+            return (code, int(dept))
+        except (ValueError, TypeError):
+            return (None, None)
+
     def _reload_items(self):
         service = EntrantService()
+        spec_code, spec_dept = self._parse_speciality_key()
         self.items = service.get_list_items(
             pib=self.filter_pib.strip() or None,
             status_id=self.filter_status_id or None,
             entry_base_id=self.filter_entry_base_id or None,
             created_between=self._campaign_range(),
+            priority_speciality_code=spec_code,
+            priority_speciality_department=spec_dept,
+            sort_field=self.sort_field or None,
+            sort_dir=self.sort_dir,
         )
 
     @rx.event
@@ -93,6 +115,7 @@ class ListEntrantState(AppState):
             self.campaigns = list(campaign_service.get_list_items())
             active = campaign_service.get_active_campaign()
             self.filter_campaign_id = active.id if active is not None else 0
+            self._reload_speciality_options()
             self._reload_items()
             self.in_progress = False
             return
@@ -183,12 +206,80 @@ class ListEntrantState(AppState):
         self.filter_status_id = 0
         self.filter_entry_base_id = 0
         self.filter_campaign_id = 0
+        self.filter_speciality_key = "__all__"
         self.in_progress = True
         yield
         try:
             self._reload_items()
         finally:
             self.in_progress = False
+
+    # --- speciality filter ---
+
+    def _reload_speciality_options(self):
+        """Опції спеціальностей беремо з квот активної кампанії; якщо нема —
+        повний довідник, щоб фільтр все одно мав сенс у поза-кампанійному режимі.
+        Перший пункт — sentinel '__all__' (Radix забороняє value='')."""
+        opts: List[Dict[str, str]] = [{"value": "__all__", "label": "— Будь-яка —"}]
+        active = AdmissionCampaignService().get_active_campaign()
+        if active is not None and active.id is not None:
+            quotas = AdmissionCampaignSpecialityService().get_by_campaign(active.id)
+            for q in quotas:
+                if q.speciality is None:
+                    continue
+                opts.append({
+                    "value": f"{q.id_speciality_code}|{q.id_speciality_department}",
+                    "label": f"{q.speciality.code} {q.speciality.title}",
+                })
+        if len(opts) == 1:
+            for s in SpecialityService().get_list_items():
+                opts.append({
+                    "value": f"{s.code}|{s.id_department}",
+                    "label": f"{s.code} {s.title}",
+                })
+        self.speciality_options = opts
+
+    @rx.event
+    def set_filter_speciality_key(self, value: str):
+        self.filter_speciality_key = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    # --- sorting ---
+
+    @rx.event
+    def on_click_sort(self, field: str):
+        """Клік по заголовку столбця: якщо вже активне сортування цього поля —
+        тогглим напрямок; інакше — ставимо поле і починаємо з asc."""
+        if self.sort_field == field:
+            self.sort_dir = "desc" if self.sort_dir == "asc" else "asc"
+        else:
+            self.sort_field = field
+            self.sort_dir = "asc"
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.var
+    def sort_indicator(self) -> Dict[str, str]:
+        """Для кожного поля повертає " ↑" / " ↓" / "" — рендериться поруч із назвою колонки."""
+        arrow = " ↑" if self.sort_dir == "asc" else " ↓"
+        return {
+            "pib": arrow if self.sort_field == "pib" else "",
+            "phone_number": arrow if self.sort_field == "phone_number" else "",
+            "email": arrow if self.sort_field == "email" else "",
+            "entry_base": arrow if self.sort_field == "entry_base" else "",
+            "source_of_funding": arrow if self.sort_field == "source_of_funding" else "",
+            "speciality": arrow if self.sort_field == "speciality" else "",
+            "application_status": arrow if self.sort_field == "application_status" else "",
+        }
 
 
 # ---------- View page ----------

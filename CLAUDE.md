@@ -101,6 +101,7 @@ uv run python update.py # синхронизация enum Actions в БД пос
 - **Path-параметри маршрутів — через `AppState._route_param(name, default)`.** Прямий доступ `self.router.page.params.get(...)` зараз депрекейтнутий у Reflex 0.8; новий публічний API ще не дає path-params окремо від query. Helper інкапсулює доступ через `router._page.params`, щоб не плодити приватні виклики по всьому коду.
 - **`rx.Base` депрекейтнутий — для нових нащадків state-моделей використовуйте `pydantic.BaseModel`** (`from pydantic import BaseModel, Field`). Для `List[Model]`-полів усередині такого класу не забувайте `Field(default_factory=list)`.
 - **Computed var `-> str` зобовʼязаний повертати рядок навіть до `on_load`.** `Model()` без аргументів залишає required-поля як `None`, тому захищайтесь повністю: `return self.item.field if self.item is not None and self.item.field is not None else ""`. Часткова перевірка (`if self.item is not None else ""`) ловить лише перший шар і дає у логах `Computed var ... must return a value of type str, got None`.
+- **SQLite за замовчуванням сортує кирилицю неправильно.** Стандартне BINARY-collation порівнює побайтно по UTF-8, а літера `І` (U+0406) у Юнікоді стоїть **перед** кириличними А-Я (U+0410+) — тому «Іваненко» опиняється на початку списку. `lower()` теж не знає кирилицю. Рішення — кастомний collation `UA_CI` із `Dekanat/utils/db.py:register_ua_collation()` (реєструється у `Dekanat/Dekanat.py` при старті). У DAO для текстових сортувань пишіть `col.collate("UA_CI")` (зразок — `Dekanat/dao/entrant.py:_apply_sort`). Для латиниці (телефони, email) колацію не потрібно.
 
 ### Дружелюбная к печати страница (reuse session state)
 
@@ -130,6 +131,16 @@ uv run python update.py # синхронизация enum Actions в БД пос
 2. **View.** Диалог — `rx.dialog.root` с `open=...<x>_open` и `on_open_change=...set_<x>_open`. Таблица собственных записей — `rx.foreach(form_state.<collection>, _row_factory(form_state))`. Кнопка «+» рядом с заголовком таблицы; в строке — кнопки edit и `controls.delete_with_confirm`. Поля FK, доступные только при добавлении, оборачивайте в `rx.cond(form_state.<x>_index >= 0, _disabled_input, _select)` — иначе при редактировании юзер сможет случайно перевыбрать ключ.
 3. **Подписи в строках через словарь.** Поскольку добавленные в памяти модели не имеют подгруженного relationship, имя FK-сущности рендерится через computed-var-словарь (`speciality_labels`, `item_zno_titles` и т.п.), построенный из dropdown-опций. Доступ — `<labels>[item.fk_a + "|" + item.fk_b.to_string()]`.
 4. **Persistence.** Дочерние коллекции сохраняются вместе с родителем единым транзакционным «replace_all»: сервис очищает все старые записи по `id_parent` и вставляет переданный список заново. Эталоны — `EntrantService.edit_one(..., specialties=, results_zno=, ...)` и `AdmissionCampaignSpecialityService.replace_all_for_campaign(id, items)`. Не пытайтесь делать diff — это лишняя сложность; полный список из state всегда канонический.
+
+### Серверна сортировка списочних таблиць
+
+Шаблон «клік по заголовку столбця → ORDER BY на сервері». Реалізація — `ListEntrantState` + `EntrantDao._apply_sort` (`dao/entrant.py`).
+
+1. **DAO.** `get_all(..., sort_field: Optional[str], sort_dir: str = "asc")`. Хелпер `_apply_sort` бере statement і додає `ORDER BY`; для join'ів на справочники використовує `aliased(...)` + `outerjoin(...)`, щоб не зачепити інші where'и/join'и. Для текстових колонок — `col.collate("UA_CI")` (див. «SQLite не сортує кирилицю»). Дефолт без поля — `created_at.desc()`.
+2. **State.** Два поля: `sort_field: str = ""` і `sort_dir: str = "asc"`. Event `on_click_sort(field)` — якщо клік по поточному полю, перемикає `asc ⇄ desc`; інакше ставить нове поле і `asc`. Після зміни — `_reload_items()`. Computed var `sort_indicator: Dict[str, str]` мапить ключ поля у `" ↑"` / `" ↓"` / `""` — для рендеру стрілки поруч із назвою колонки.
+3. **View.** Хелпер `_sortable_header(title, field)` рендерить `rx.table.column_header_cell` із hstack-у двох text'ів (`title` + `State.sort_indicator[field]`), `cursor="pointer"`, `on_click=State.on_click_sort(field)`. Hover-підсвітку робимо через `_hover={"background_color": rx.color("accent", 10)}`.
+
+Якщо у таблиці є фільтри по серверу — їх state-поля живуть поряд із сортуванням, всі обробники сетерів закінчуються одним `_reload_items()`, який пробрасує все це у Service.
 
 ## Доменна структура
 

@@ -2,12 +2,16 @@ from datetime import datetime
 from typing import Sequence, Optional, Tuple
 from sqlmodel import Session, select
 from sqlalchemy import func
-from sqlalchemy.orm import selectinload, make_transient
+from sqlalchemy.orm import selectinload, aliased, make_transient
 
 from Dekanat.models import (
     EntrantModel,
     PersonModel,
     SpecialtieEntrantModel,
+    SpecialityModel,
+    SourceOfFundingModel,
+    EntryBaseModel,
+    ApplicationStatusModel,
     IdentityDocumentModel,
     DocumentAboutEducationModel,
     MilitaryAccountingModel,
@@ -16,6 +20,19 @@ from Dekanat.models import (
     SpecialConditionPersonModel,
     ResultZnoModel,
 )
+
+
+# Поля, доступні для сортування. Маппинг ключа з UI → spec для побудови ORDER BY.
+# Реалізація join'ів — у самому get_all (щоб уникнути дублювання таблиць).
+SORT_FIELDS = {
+    "pib",
+    "phone_number",
+    "email",
+    "entry_base",
+    "source_of_funding",
+    "speciality",
+    "application_status",
+}
 
 
 def _entrant_loaders():
@@ -36,6 +53,60 @@ def _entrant_loaders():
     ]
 
 
+def _apply_sort(statement, sort_field: Optional[str], sort_dir: str):
+    """Додає ORDER BY до запиту з урахуванням outerjoin'ів зі справочниками.
+
+    Для текстових полів використовуємо `COLLATE UA_CI` — кастомний SQLite
+    collation, зареєстрований у `Dekanat/utils/db.py`. Він сортує кирилицю
+    за українським алфавітом (`І` між `И` та `Ї`, а не на самому початку,
+    як у стандартному BINARY).
+    """
+    direction = (sort_dir or "asc").lower()
+    if direction not in ("asc", "desc"):
+        direction = "asc"
+
+    def _dir(col):
+        return col.desc() if direction == "desc" else col.asc()
+
+    def _txt(col):
+        # collation у SQLAlchemy чіпляємо саме на колонку, не на функцію.
+        return col.collate("UA_CI")
+
+    if sort_field == "pib":
+        return statement.order_by(_dir(_txt(PersonModel.pib)))
+    if sort_field == "phone_number":
+        return statement.order_by(_dir(PersonModel.phone_number))
+    if sort_field == "email":
+        return statement.order_by(_dir(func.coalesce(PersonModel.email, "")))
+    if sort_field == "entry_base":
+        eb = aliased(EntryBaseModel)
+        return statement.outerjoin(eb, PersonModel.id_entry_base == eb.id).order_by(_dir(_txt(eb.title)))
+    if sort_field == "source_of_funding":
+        sof = aliased(SourceOfFundingModel)
+        return statement.outerjoin(sof, PersonModel.id_source_of_funding == sof.id).order_by(_dir(_txt(sof.title)))
+    if sort_field == "application_status":
+        ast = aliased(ApplicationStatusModel)
+        return statement.outerjoin(ast, EntrantModel.id_application_status == ast.id).order_by(_dir(_txt(ast.title)))
+    if sort_field == "speciality":
+        # Сортуємо по специальності з першим пріоритетом (та, що відображається у таблиці).
+        sp_link = aliased(SpecialtieEntrantModel)
+        sp = aliased(SpecialityModel)
+        statement = (
+            statement
+            .outerjoin(
+                sp_link,
+                (sp_link.id_entrant == EntrantModel.id) & (sp_link.priority == 1),
+            )
+            .outerjoin(
+                sp,
+                (sp.code == sp_link.id_speciality_code) & (sp.id_department == sp_link.id_speciality_department),
+            )
+        )
+        return statement.order_by(_dir(sp.code), _dir(_txt(sp.title)))
+    # Дефолт — за датою створення (новіші вгорі).
+    return statement.order_by(EntrantModel.created_at.desc())
+
+
 class EntrantDao:
     @staticmethod
     def get_all(
@@ -45,11 +116,17 @@ class EntrantDao:
         pib_substring: Optional[str] = None,
         application_status_id: Optional[int] = None,
         entry_base_id: Optional[int] = None,
+        priority_speciality_code: Optional[str] = None,
+        priority_speciality_department: Optional[int] = None,
+        sort_field: Optional[str] = None,
+        sort_dir: str = "asc",
     ) -> Sequence[EntrantModel]:
-        statement = select(EntrantModel).options(*_entrant_loaders())
-        # JOIN на persons потрібен, лише якщо фільтруємо за полем особи.
-        if pib_substring or entry_base_id:
-            statement = statement.join(PersonModel, EntrantModel.id == PersonModel.id)
+        # Завжди джойнимо PersonModel — він потрібен і для більшості сортувань, і для пошуку по ПІБ.
+        statement = (
+            select(EntrantModel)
+            .options(*_entrant_loaders())
+            .join(PersonModel, EntrantModel.id == PersonModel.id)
+        )
         if not with_del:
             statement = statement.where(EntrantModel.is_deleted == False)
         if pib_substring:
@@ -62,6 +139,21 @@ class EntrantDao:
         if created_between is not None:
             start_dt, end_dt = created_between
             statement = statement.where(EntrantModel.created_at >= start_dt).where(EntrantModel.created_at <= end_dt)
+
+        # Фільтр по специальності з пріоритетів — будь-який пріоритет, не лише перший.
+        if priority_speciality_code and priority_speciality_department is not None:
+            spec_filter = aliased(SpecialtieEntrantModel)
+            statement = statement.where(
+                select(spec_filter.id_entrant)
+                .where(spec_filter.id_entrant == EntrantModel.id)
+                .where(spec_filter.id_speciality_code == priority_speciality_code)
+                .where(spec_filter.id_speciality_department == priority_speciality_department)
+                .exists()
+            )
+
+        # Сортування. Для полів зі звʼязаних таблиць — окремі outerjoin'и з аліасами,
+        # щоб не зачепити інші where'и (ProcessingOrder/Status могли б бути уже додані).
+        statement = _apply_sort(statement, sort_field, sort_dir)
         return session.exec(statement).all()
 
     @staticmethod

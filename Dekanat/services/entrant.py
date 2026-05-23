@@ -35,8 +35,12 @@ class EntrantService:
         status_id: Optional[int] = None,
         entry_base_id: Optional[int] = None,
         created_between: Optional[Tuple[datetime, datetime]] = None,
+        priority_speciality_code: Optional[str] = None,
+        priority_speciality_department: Optional[int] = None,
+        sort_field: Optional[str] = None,
+        sort_dir: str = "asc",
     ) -> Sequence[EntrantModel]:
-        """Повертає абітурієнтів із серверною фільтрацією по переданих параметрах."""
+        """Повертає абітурієнтів із серверною фільтрацією та сортуванням."""
         try:
             with rx.session() as session:
                 return EntrantDao.get_all(
@@ -45,6 +49,10 @@ class EntrantService:
                     application_status_id=status_id,
                     entry_base_id=entry_base_id,
                     created_between=created_between,
+                    priority_speciality_code=priority_speciality_code,
+                    priority_speciality_department=priority_speciality_department,
+                    sort_field=sort_field,
+                    sort_dir=sort_dir,
                 )
         except Exception as e:
             print(f"[EntrantService][get_list_items][ERROR] {e}")

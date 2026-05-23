@@ -1,6 +1,10 @@
 import reflex as rx
 
 from Dekanat import routes
+from Dekanat.utils.db import register_ua_collation
+
+# Реєструємо UA_CI collation для коректного сортування кирилиці (DK-23).
+register_ua_collation()
 
 from Dekanat.views.auth import require_login, index as login_page
 from Dekanat.views.templates.layouts import page_wrapper, header_subpage
