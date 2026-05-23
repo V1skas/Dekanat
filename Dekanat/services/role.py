@@ -1,9 +1,10 @@
 import reflex as rx
 
 from typing import Optional, Sequence, List
+from sqlmodel import select
 
 from Dekanat.dao.role import RoleDao
-from Dekanat.models import ActionModel, RoleModel
+from Dekanat.models import ActionModel, RoleModel, WorkerModel, WorkersRolesModel
 
 
 class RoleService:
@@ -47,6 +48,18 @@ class RoleService:
                 actions = [a for a in (session.get(ActionModel, aid) for aid in action_ids) if a is not None]
                 role.actions = actions
                 session.add(role)
+                # Бамп версії прав у всіх воркерів, які мають цю роль —
+                # щоб їх живі сесії перечитали actions_worker на наступному require_auth.
+                worker_ids = list(session.exec(
+                    select(WorkersRolesModel.id_worker).where(WorkersRolesModel.id_role == id)
+                ).all())
+                if worker_ids:
+                    workers = session.exec(
+                        select(WorkerModel).where(WorkerModel.id.in_(worker_ids))  # type: ignore[attr-defined]
+                    ).all()
+                    for w in workers:
+                        w.permissions_version = (w.permissions_version or 0) + 1
+                        session.add(w)
                 session.commit()
             return True
         except Exception as e:

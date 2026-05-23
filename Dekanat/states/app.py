@@ -12,11 +12,15 @@ from Dekanat.declared.submenu import SECTION_TITLES
 
 class AppState(rx.State):
     _auth_service: AuthService = AuthService()
- 
+
     worker: Optional[WorkerModel]
     actions_worker: List[str]
-    token: str = rx.Cookie(name="auth_token", max_age=86400, same_site="lax", path="/")
+    # Cookie живе до 30 днів; реальне закінчення сесії контролюється серверним
+    # AuthTokenModel.expires_at (ковзне вікно з налаштування session_timeout_minutes).
+    token: str = rx.Cookie(name="auth_token", max_age=60*60*24*30, same_site="lax", path="/")
     auth_token: Optional[AuthTokenModel]
+    # Кеш версії прав воркера — для звірки із актуальною у БД (DK-21).
+    permissions_version_seen: int = 0
 
     page_title: str = "Головна"
     sidebar_open: bool = True
@@ -44,7 +48,7 @@ class AppState(rx.State):
             if self.worker is None:
                 service = WorkerService()
                 self.worker = service.get_by_id(self.auth_token.id_worker)
-            if len(self.actions_worker) == 0:
+            if not self.actions_worker:
                 self.actions_worker = self._auth_service.get_list_worker_actions(self.worker.id)
             return action.value in self.actions_worker
         except Exception as e:
@@ -66,17 +70,37 @@ class AppState(rx.State):
         if not self.token:
             return rx.redirect(routes.LOGIN)
 
-        if self.auth_token is None:
-            self.auth_token = self._auth_service.get_auth_token(self.token)
-            if self.auth_token is None:
-                return self.logout()
+        # На кожному виклику тягнемо токен з БД — get_auth_token попутно:
+        #   * чистить протерміновані токени;
+        #   * перевіряє expires_at цього токена;
+        #   * продовжує ковзне вікно (touch).
+        # None означає: токен невалідний або протермінований — розлогуємось.
+        token = self._auth_service.get_auth_token(self.token)
+        if token is None:
+            return self.logout()
 
+        first_load = self.auth_token is None
+        self.auth_token = token
+
+        if first_load or self.worker is None:
             service = WorkerService()
             self.worker = service.get_by_id(self.auth_token.id_worker)
             if self.worker is None:
                 return self.logout()
-
             self.actions_worker = self._auth_service.get_list_worker_actions(self.worker.id)
+            self.permissions_version_seen = self.worker.permissions_version or 0
+            return
+
+        # Перевірка bump'у прав — щоб зміни адміна застосовувалися без релогіну.
+        current_version = self._auth_service.get_worker_permissions_version(self.worker.id)
+        if current_version != self.permissions_version_seen:
+            service = WorkerService()
+            refreshed = service.get_by_id(self.worker.id)
+            if refreshed is None:
+                return self.logout()
+            self.worker = refreshed
+            self.actions_worker = self._auth_service.get_list_worker_actions(self.worker.id)
+            self.permissions_version_seen = current_version
 
     @rx.var
     def worker_pib(self) -> str:
@@ -119,6 +143,7 @@ class AppState(rx.State):
         self.worker = None
         self.auth_token = None
         self.actions_worker = []
+        self.permissions_version_seen = 0
 
         yield rx.remove_cookie("auth_token")
         yield rx.redirect(routes.LOGIN)

@@ -51,6 +51,8 @@ ROLES_ADD = ROLES+"/add"
 ROLES_EDIT = ROLES+"/edit/"
 ROLES_VIEW = ROLES+"/view/"
 
+SETTINGS = ADMIN+"/settings"
+
 WORKERS = ADMIN+"/workers"
 WORKERS_LIST = WORKERS+"/list"
 WORKERS_ADD = WORKERS+"/add"

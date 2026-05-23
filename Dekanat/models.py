@@ -71,6 +71,14 @@ class AuthTokenModel(rx.Model, table=True):
     id: int = Field(primary_key=True, nullable=True) # type: ignore
     token: str = Field(nullable=False, unique=True)
     id_worker: int = Field(foreign_key="workers.id", nullable=False)
+    expires_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column=Column("expires_at", DateTime, nullable=False, server_default=func.current_timestamp()),
+    )
+    last_activity_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column=Column("last_activity_at", DateTime, nullable=False, server_default=func.current_timestamp()),
+    )
 
     # Relationships
     worker: Optional['WorkerModel'] = Relationship(back_populates="auth_tokens")
@@ -89,6 +97,7 @@ class WorkerModel(rx.Model, table=True): # type: ignore
     login: str = Field(unique=True)
     password: str
     password_salt: str
+    permissions_version: int = Field(default=0, nullable=False)
     is_deleted: bool = False
 
     # Relationships
@@ -480,6 +489,20 @@ class EntrantExamModel(rx.Model, table=True):
     group: Optional['EntrantGroupModel'] = Relationship(back_populates="exams")
     item_zno: Optional['ItemZnoModel'] = Relationship()
     responsible_workers: Optional[List['WorkerModel']] = Relationship(link_model=EntrantExamWorkerModel)
+
+
+@rx.ModelRegistry.register
+class AppSettingModel(rx.Model, table=True):
+    __tablename__ = "app_settings"
+
+    # Table columns
+    key: str = Field(primary_key=True)
+    category: str = Field(nullable=False)
+    title: str = Field(nullable=False)
+    description: Optional[str] = Field(default=None, nullable=True)
+    value: str = Field(nullable=False)
+    # "int" | "str" | "bool"
+    value_type: str = Field(nullable=False)
 
 
 @rx.ModelRegistry.register

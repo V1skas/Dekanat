@@ -38,6 +38,7 @@ MAIN: List[MenuItem] = [
     MenuItem("Адміністрування", "shield-user", children=[
         MenuItem("Користувачі", "users", routes.WORKERS_LIST, required_action=Actions.WORKER_LIST),
         MenuItem("Ролі", "key-round", routes.ROLES_LIST, required_action=Actions.ROLE_LIST),
+        MenuItem("Налаштування", "settings", routes.SETTINGS, required_action=Actions.SETTINGS_VIEW),
     ]),
 ]
 

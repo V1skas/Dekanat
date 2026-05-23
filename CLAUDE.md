@@ -47,14 +47,28 @@ uv run python update.py # синхронизация enum Actions в БД пос
 
 ## Auth и права
 
-- **`AppState`** (`Dekanat/states/app.py`) — базовый класс всех protected-стейтов. Хранит `worker`, `actions_worker`, cookie `auth_token`.
-- **Cookie** `auth_token` (`max_age=86400`, SameSite=Lax) → `AuthTokenModel` → `WorkerModel`.
-- **`@require_login`** (`Dekanat/views/auth.py`) — обёртка над компонентом страницы. Рендерит спиннер с `on_mount=AppState.require_auth`, который валидирует токен; при невалидном — редирект на `/login`.
+- **`AppState`** (`Dekanat/states/app.py`) — базовый класс всех protected-стейтов. Хранит `worker`, `actions_worker`, `permissions_version_seen`, cookie `auth_token`.
+- **Cookie** `auth_token` (`max_age=60*60*24*30`, SameSite=Lax) — длинная, но реальное закрытие сессии контролируется серверным `AuthTokenModel.expires_at` (см. ниже).
+- **`@require_login`** (`Dekanat/views/auth.py`) — обёртка над компонентом страницы. Рендерит спиннер с `on_mount=AppState.require_auth`, который валидирует токен; при невалидном/просроченном — редирект на `/login`.
 - **`AppState.has_permission(action: Actions) -> bool`** — проверяет, есть ли у пользователя право (через прямое назначение в `WorkersActionsModel` или через роль в `WorkersRolesModel`).
 - **Где проверять права:**
   - В **начале каждого `on_load`** state'а: при отсутствии — `yield rx.toast.error(...)` + `yield rx.redirect(routes.DASHBOARD)` + `return`.
   - В **каждом мутирующем event-обработчике** (`on_save`, `on_click_delete`, `on_click_edit`): при отсутствии — `yield rx.toast.error(...)` + `return`.
   - В **UI** для скрытия кнопок: `rx.cond(SomeState.get_user_actions.contains(Actions.X), ...)`.
+
+### Тайм-аут сессии (ковзне вікно)
+
+- `AuthTokenModel` має `expires_at` і `last_activity_at`. При логіні `AuthService.auth()` ставить `expires_at = now + session_timeout_minutes` (з `app_settings`, дефолт — 60 хв).
+- `AuthService.get_auth_token(token)` викликається з кожного `require_auth`: видаляє протерміновані токени, перевіряє `expires_at` поточного, а потім **продовжує** його через `AuthTokenDao.touch(...)` (= ковзне вікно). Протерміновані видаляються ліниво тут же та при логіні — окремого крон-скрипта немає.
+- Налаштування `session_timeout_minutes` редагується на `/admin/settings` (право `settings:edit`). Зміна застосовується до **нових** токенів і до наступного `touch` існуючих.
+
+### Негайне застосування прав (без релогіну)
+
+- `WorkerModel.permissions_version` — лічильник, що бампиться:
+  - у `WorkerService.edit_one` (зміна персональних прав/ролей користувача);
+  - у `RoleService.edit_one` для **всіх воркерів**, що мають цю роль (зміна набору прав ролі).
+- `AppState.require_auth` після першого завантаження порівнює `worker.permissions_version` з кешем `permissions_version_seen`; при невідповідності перечитує `actions_worker` і оновлює кеш. Тобто наступний перехід сторінок у вже залогіненої сесії побачить нові права.
+- Не варто покладатися на `actions_worker.length() == 0` як ознаку «треба перечитати» — після виходу з сесії воркера зі скиданням прав це призведе до циклу запитів. Завжди звіряйтесь з `permissions_version`.
 
 ## Добавление новой сущности — чек-лист
 
@@ -75,6 +89,30 @@ uv run python update.py # синхронизация enum Actions в БД пос
 - **Composite PK** требует двух path-параметров (`route+"[a]/[b]"`), DAO-метода `get_by_pk(a, b, session)` и read-only обоих ключей при редактировании.
 - **Свежесозданная `Model()` без аргументов оставляет required-поля как None.** Все `@rx.var def x -> str` должны защищаться: `return self.item.x if self.item is not None and self.item.x is not None else ""`. Иначе в логах появится `Computed var ... must return value of type str, got None`.
 - **FK-поля редактируются через `rx.select`** (см. `views/speciality.py`). В state хранится computed var-обёртка `..._str: str` для значения select и event `set_*`, парсящий int. Список опций готовится в `on_load` через сервис связанной сущности (например, `DepartmentService.get_list_items()`).
+- **`rx.select.item` не приймає `value=""`** (Radix кидає `A <Select.Item /> must have a value prop that is not an empty string`). Для пункту «всі / без фільтра» використовуйте sentinel-рядок (наприклад, `"__all__"` у `ListRatingState.selected_spec_key`), а порівняння у логіці робіть з ним же.
+- **SQLite: ніяких неявних INSERT'ів на hot path авторизації.** `AuthService.get_auth_token` смикається з кожного `require_auth` і пише в `auth_tokens` (touch/cleanup). Якщо в цей самий момент будь-який інший сервіс відкриє другу сесію з INSERT'ом — отримаєте `database is locked`. Урок із DK-21: `AppSettingService.get_by_key` повинен бути read-only; seed дефолтів — окремий `ensure_defaults()`, який викликається з `deploy.py` та з `on_load` сторінки настройок, але не з гарячих read'ів.
+- **`rx.foreach` не можна викликати на атрибуті `rx.Base`-моделі всередині зовнішнього `rx.foreach`** (Reflex: `Cannot pass a Var to a built-in function ... Happened while evaluating page ...`). Замість вкладеного циклу зробіть плоский список з sentinel-полем-заголовком (див. `SettingDraft.section_header` у `states/app_setting.py`) і відображайте заголовок секції через `rx.cond(item.section_header != "", ...)`.
+- **Зміна вкладеного поля `rx.Base` всередині списку state може не тригерити реренд.** Reflex реагує надійно на присвоєння списку цілком; точкова мутація `self.drafts[i].value = ...` може лишитися непомітною для UI. Перепризначуйте список новими обʼєктами (зразок — `ListAppSettingState.set_value`).
+
+### Дружелюбная к печати страница (reuse session state)
+
+`/admission_commission/entrant_exam/print` — приклад "лёгкого" варианта: окрема сторінка не має власних DAO-запитів, а **переиспользует** `ListEntrantExamState` (Reflex тримає state у межах сесії клієнта — навігація на інший роут не скидає `items_display`/фільтри). Сценарій:
+
+1. У списочному state'і є event `on_click_print → rx.redirect(routes.<...>_PRINT)`.
+2. На print-сторінці окремий `PrintEntrantExamState.on_load` робить `yield rx.call_script("setTimeout(() => window.print(), 300)")` — щоб браузер встиг намалювати таблицю.
+3. У view використовується контейнер `<div id="print-area">` навколо друкарського контенту, а в `_print_styles()` через `rx.html("<style>@media print { body * { visibility: hidden } #print-area, #print-area * { visibility: visible } ... }</style>")` гасяться шапка/сайдбар/кнопки. Хром застосунку не треба чіпати.
+
+Використовуйте цей патерн, коли треба експорт «список → таблиця для друку» без дублювання запитів. Для повноцінного PDF-експорту/складних шаблонів — будуйте окрему сутність зі своїм state.
+
+### Pop-up редактор по списку (carousel-style)
+
+Шаблон «таблиця рядків → діалог з навігацією попередній/наступний» — для масового редагування одного поля. Реалізація в `ViewEntrantExamState` (секція «Оцінювання»):
+
+- `grading_rows: List[Dict[str, str]]` — перерендерені рядки (`id`, `pib`, `grade`).
+- Стан діалогу: `g_open`, `g_index` (поточний рядок), `g_grade_input` (буфер вводу), `g_grade_original` (значення до правки — для кнопки «Скинути»).
+- Computed: `current_entrant_pib`, `grading_indicator` (`"X / N"`), `has_prev_entrant`, `has_next_entrant` — для заголовка діалога й `disabled` стрілок.
+- Events: `open_grading_dialog(index)` / `open_grading_dialog_for(row_id)` — за індексом або за ключем; `prev_entrant`/`next_entrant` — рухати `g_index`, перезавантажуючи буфер; `reset_grade` — `g_grade_input = g_grade_original`; `save_grade` — викликає upsert у БД, оновлює мапу `grades_by_entrant` і перерендерює `grading_rows` (без перечитування групи).
+- Persistence — без «replace_all», точковий upsert через окремий сервіс (`ResultZnoService.upsert(...)`), бо ми працюємо з однією парою ключів за раз.
 
 ### Дочерние коллекции — диалоги + "replace_all" при сохранении
 
@@ -107,9 +145,12 @@ uv run python update.py # синхронизация enum Actions в БД пос
 | Speciality | `SpecialityModel` | `/base/speciality` | Спеціальності (composite PK `(code, id_department)`) |
 | Application status | `ApplicationStatusModel` | `/base/application_status` | Статуси заявок |
 | Item ZNO | `ItemZnoModel` | `/base/item_zno` | Предмети ЗНО |
-| Entrants group | `EntrantGroupModel` | `/admission_commission/entrants_group` | Групи абітурієнтів на ЗНО (+ `EntrantExamModel` як підсутність у формі) |
+| Entrants group | `EntrantGroupModel` | `/admission_commission/entrants_group` | Групи абітурієнтів на ЗНО |
+| Entrant exam | `EntrantExamModel` | `/admission_commission/entrant_exam` | Графік іспитів груп: дата, час початку/завершення, опис, M2M відповідальні співробітники (`EntrantExamWorkerModel`). На сторінці перегляду — секція «Оцінювання» з upsert'ом у `ResultZnoModel` |
 | Admission campaign | `AdmissionCampaignModel` | `/admission_commission/campaign` | Вступна кампанія: назва, період + квоти по спеціальностям (`AdmissionCampaignSpecialityModel`) |
 | Entrant | `EntrantModel` | `/contingent/entrants` | Абітурієнт = `PersonModel` + статус заявки + комент + усі дочірні сутності особи, керовані діалогами на одній формі |
+| Rating | `RatingSnapshotModel` + `RatingEntryModel` | `/admission_commission/rating/list` | Знімок рейтингового списку для кампанії: дата формування + рядки (спеціальність, абітурієнт, позиція, сума балів, статус місця). Тільки `view` (фільтри по кампанії та спеціальності) і `generate` (кнопка формування) — без CRUD-сторінок. |
+| App settings | `AppSettingModel` | `/admin/settings` | Загальні налаштування системи (key/value/category/value_type). Одна сторінка, секції за `category` (наразі — «Авторизація» з `session_timeout_minutes`). Дефолтні записи сидяться у `deploy.py` через `AppSettingService.ensure_defaults()`. Права: `settings:view` / `settings:edit`. |
 
 #### Підсутності, що редагуються діалогами всередині батьківської форми
 
@@ -122,6 +163,10 @@ uv run python update.py # синхронизация enum Actions в БД пос
 - На формі **Admission campaign** (`views/admission_campaign.py`,
   `states/admission_campaign.py:_CampaignFormBase`): `AdmissionCampaignSpecialityModel`
   (квоти бюджет/контракт по спеціальностям).
+- На формі **Entrant exam** (`views/entrant_exam.py`,
+  `states/entrant_exam.py:_ExamFormBase`): список відповідальних
+  співробітників (`EntrantExamWorkerModel`, M2M) — обирається через
+  пікер-діалог з пошуком за ПІБ/email/логіном.
 
 #### За ER-схемою заплановані, моделей ще немає
 
@@ -137,11 +182,13 @@ uv run python update.py # синхронизация enum Actions в БД пос
 ### Логічні блоки і ключові зв'язки
 
 1. **Особа і її документи**: `person ← identity_document, document_about_education, military_accounting, medical_reference, information_about_relatives, special_conditions_person, results_zno`
-2. **Абітурієнти**: `entrants (id_person → person, id_entrant_group?) → specialties_entrant (priority list)`; `entrants_groups → entrants_exams (date_time, item_zno)`
-3. **Вступна кампанія**: `admission_campaigns ← admission_campaigns_specialties (speciality, budget_places, contract_places)` — задає перелік спеціальностей, доступних абітурієнту при подачі пріоритетів у межах поточної кампанії.
-4. **Студенти і навчання**: `students (id_person → person, id_group) → groups (id_specialties, id_curator) → specialties`
-5. **Викладання**: `subjects (id_specialties) ↔ workers (через subjects_workers)`; `schedule (group, period) → lessons (subject, worker, schedule)`
-6. **Документообіг**: `orders (id_type → type_orders, id_worker → workers)`
+2. **Абітурієнти**: `entrants (id_person → person, id_entrant_group?) → specialties_entrant (priority list)`; `entrants_groups → entrants_exams (date, time_start, time_end, item_zno) ↔ workers (entrants_exams_workers, M2M відповідальні)`.
+3. **Іспити та оцінки**: оцінка за іспит зберігається в існуючому `results_zno` через ключ `(id_items_zno, id_person)`. Сторінка перегляду іспиту виставляє оцінки абітурієнтам групи через `ResultZnoService.upsert(...)`; порожня оцінка видаляє запис.
+4. **Вступна кампанія**: `admission_campaigns ← admission_campaigns_specialties (speciality, budget_places, contract_places)` — задає перелік спеціальностей, доступних абітурієнту при подачі пріоритетів у межах поточної кампанії.
+5. **Студенти і навчання**: `students (id_person → person, id_group) → groups (id_specialties, id_curator) → specialties`
+6. **Викладання**: `subjects (id_specialties) ↔ workers (через subjects_workers)`; `schedule (group, period) → lessons (subject, worker, schedule)`
+7. **Документообіг**: `orders (id_type → type_orders, id_worker → workers)`
+8. **Рейтинг**: `rating_snapshots (id_campaign, generated_at) ← rating_entries (id_speciality, id_entrant, position, total_points, status)`. Знімок формується на вимогу через `RatingService.generate(id_campaign)`: сума `results_zno.points` по особі + ознака «квота» (`special_conditions_person → special_conditions.is_kvota = True`) → впорядкування «квоти зверху, далі за сумою балів desc» → розподіл по квотах `admission_campaigns_specialties` у статуси `kvota`/`budget`/`contract`/`rejected`. Попередній знімок кампанії перезаписується (історія не зберігається).
 
 ### Угода: FK на `SpecialityModel` — завжди composite
 
@@ -157,7 +204,13 @@ uv run python update.py # синхронизация enum Actions в БД пос
 Використовується, зокрема:
 
 - У фільтрі списку абітурієнтів (`ListEntrantState`) — за замовчуванням показує лише абітурієнтів, створених у межах активної кампанії.
+- У фільтрі графіка іспитів (`ListEntrantExamState`) — за замовчуванням обмежує іспити діапазоном дат активної кампанії; фільтрація йде по полю `EntrantExamModel.date` (рядки `YYYY-MM-DD` лексикографічно порівнюються коректно).
 - У формі абітурієнта (`EntrantFormState._load_dropdowns`) — список спеціальностей у діалозі пріоритету обмежується тими, що входять до квот активної кампанії. Повний довідник зберігається у `all_speciality_options` і використовується в `speciality_labels`, щоб уже збережені пріоритети завжди мали підпис.
+- На сторінці рейтингу (`ListRatingState`) — за замовчуванням обирається активна кампанія; список спеціальностей у фільтрі береться з квот обраної кампанії.
+
+## Seed-дані
+
+`uv run python seed.py` — наповнює БД тестовими записами для перевірки рейтингу та форм: довідники (відділення, спеціальності, предмети ЗНО, джерела фінансування, бази вступу, статуси, типи документів, родинні зв'язки, спецумови з is_kvota), активна вступна кампанія з квотами і ~100 абітурієнтів з результатами ЗНО, пріоритетами спеціальностей і випадковими спецумовами. Скрипт ідемпотентний по довідниках (get-or-create) і захищений від дублів абітурієнтів (через унікальний суфікс `_seed` у `edbo`).
 
 ## Локализация UI
 

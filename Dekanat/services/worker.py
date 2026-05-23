@@ -119,6 +119,8 @@ class WorkerService:
 
                 worker.roles = [r for r in (session.get(RoleModel, rid) for rid in role_ids) if r is not None]
                 worker.actions = [a for a in (session.get(ActionModel, aid) for aid in action_ids) if a is not None]
+                # Бамп версії — щоб залогінені сесії перечитали права на наступний require_auth.
+                worker.permissions_version = (worker.permissions_version or 0) + 1
 
                 session.add(worker)
                 session.commit()

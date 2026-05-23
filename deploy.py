@@ -6,6 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from Dekanat.models import ActionModel, RoleModel, WorkerModel
 from Dekanat.actions import Actions
+from Dekanat.services.app_setting import AppSettingService
 from Dekanat.utils.generators import generate_password_hash
 from update import sync_actions
 
@@ -128,7 +129,9 @@ def initial_deploy():
         ensure_admin_user(session, admin_role)
 
         session.commit()
-        print("\nДеплой успішно завершено!")
+
+    AppSettingService().ensure_defaults()
+    print("\nДеплой успішно завершено!")
 
 
 if __name__ == "__main__":

@@ -58,5 +58,6 @@ class AuthState(AppState):
         self.token = self.auth_token.token
 
         self.actions_worker = list(self._auth_service.get_list_worker_actions(self.worker.id))
+        self.permissions_version_seen = self.worker.permissions_version or 0
 
         return rx.redirect(routes.DASHBOARD)

@@ -6,6 +6,7 @@ from Dekanat.views.auth import require_login, index as login_page
 from Dekanat.views.templates.layouts import page_wrapper, header_subpage
 from Dekanat.views.templates.app_shell import app_shell_wrap, content_area_wrap
 from Dekanat.views import admission_campaign
+from Dekanat.views import app_setting
 from Dekanat.views import rating
 from Dekanat.views import application_status
 from Dekanat.views import dashboard
@@ -25,6 +26,7 @@ from Dekanat.views import worker
 
 from Dekanat.states.auth import AuthState
 from Dekanat.states import admission_campaign as admission_campaign_states
+from Dekanat.states import app_setting as app_setting_states
 from Dekanat.states import rating as rating_states
 from Dekanat.states import application_status as application_status_states
 from Dekanat.states import department as department_states
@@ -129,6 +131,8 @@ app.add_page(entrant.edit_page, route=routes.ENTRANT_EDIT+"[id]", on_load=entran
 app.add_page(entrant.view_page, route=routes.ENTRANT_VIEW+"[id]", on_load=entrant_states.ViewEntrantState.on_load)
 
 app.add_page(rating.list_page, route=routes.RATING_LIST, on_load=rating_states.ListRatingState.on_load)
+
+app.add_page(app_setting.list_page, route=routes.SETTINGS, on_load=app_setting_states.ListAppSettingState.on_load)
 
 app.add_page(admission_campaign.list_page, route=routes.ADMISSION_CAMPAIGN_LIST, on_load=admission_campaign_states.ListAdmissionCampaignState.on_load)
 app.add_page(admission_campaign.add_page, route=routes.ADMISSION_CAMPAIGN_ADD, on_load=admission_campaign_states.AddAdmissionCampaignState.on_load)
