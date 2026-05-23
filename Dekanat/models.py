@@ -480,3 +480,45 @@ class EntrantExamModel(rx.Model, table=True):
     group: Optional['EntrantGroupModel'] = Relationship(back_populates="exams")
     item_zno: Optional['ItemZnoModel'] = Relationship()
     responsible_workers: Optional[List['WorkerModel']] = Relationship(link_model=EntrantExamWorkerModel)
+
+
+@rx.ModelRegistry.register
+class RatingSnapshotModel(rx.Model, table=True):
+    __tablename__ = "rating_snapshots"
+
+    # Table columns
+    id: int = Field(primary_key=True)
+    id_campaign: int = Field(foreign_key="admission_campaigns.id", nullable=False)
+    generated_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column=Column("generated_at", DateTime, nullable=False, server_default=func.current_timestamp()),
+    )
+
+    # Relationships
+    entries: Optional[List['RatingEntryModel']] = Relationship()
+
+
+@rx.ModelRegistry.register
+class RatingEntryModel(rx.Model, table=True):
+    __tablename__ = "rating_entries"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["id_speciality_code", "id_speciality_department"],
+            ["specialties.code", "specialties.id_department"],
+        ),
+    )
+
+    # Table columns
+    id: Optional[int] = Field(default=None, primary_key=True)
+    id_snapshot: int = Field(foreign_key="rating_snapshots.id", nullable=False)
+    id_speciality_code: str = Field(nullable=False)
+    id_speciality_department: int = Field(nullable=False)
+    id_entrant: int = Field(foreign_key="entrants.id", nullable=False)
+    position: int = Field(nullable=False)
+    total_points: int = Field(default=0, nullable=False)
+    # 'budget' | 'contract' | 'kvota' | 'rejected'
+    status: str = Field(nullable=False)
+
+    # Relationships
+    speciality: Optional['SpecialityModel'] = Relationship()
+    entrant: Optional['EntrantModel'] = Relationship()
