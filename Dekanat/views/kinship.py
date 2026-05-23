@@ -50,7 +50,6 @@ def list_page_content() -> rx.Component:
 def view_page_content() -> rx.Component:
     return rx.vstack(
         rx.heading(ViewKinshipState.title),
-        rx.button("Редагувати", on_click=ViewKinshipState.on_click_edit),
 
         height="100%",
         width="100%"
@@ -59,13 +58,29 @@ def view_page_content() -> rx.Component:
 def add_page_content() -> rx.Component:
     return rx.vstack(
         rx.text("*Назва"),
-        rx.input(id="title", required=True, value=AddKinshipState.title, on_change=AddKinshipState.set_title),
+        rx.input(
+            id="title",
+            required=True,
+            value=AddKinshipState.title,
+            on_change=AddKinshipState.set_title,
+            width="100%",
+        ),
+        align="stretch",
+        width="100%",
     )
 
 def edit_page_content() -> rx.Component:
     return rx.vstack(
         rx.text("*Назва"),
-        rx.input(id="title", required=True, value=EditKinshipState.title, on_change=EditKinshipState.set_title),
+        rx.input(
+            id="title",
+            required=True,
+            value=EditKinshipState.title,
+            on_change=EditKinshipState.set_title,
+            width="100%",
+        ),
+        align="stretch",
+        width="100%",
     )
 
 @require_login

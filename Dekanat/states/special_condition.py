@@ -120,7 +120,7 @@ class EditSpecialConditionState(AppState):
 
     def _reload_item(self):
         service = SpecialConditionService()
-        loaded = service.get_by_code(str(self.router.page.params.get("code", "")))
+        loaded = service.get_by_code(str(self._route_param("code", "")))
         if loaded is not None:
             self.item = loaded
 
@@ -191,7 +191,7 @@ class EditSpecialConditionState(AppState):
 
     @rx.event
     def on_cancel(self):
-        return rx.redirect(routes.SPECIAL_CONDITION_VIEW + str(self.router.page.params.get("code", "")))
+        return rx.redirect(routes.SPECIAL_CONDITION_VIEW + str(self._route_param("code", "")))
 
 
 class ViewSpecialConditionState(AppState):
@@ -200,7 +200,7 @@ class ViewSpecialConditionState(AppState):
 
     def _reload_item(self):
         service = SpecialConditionService()
-        loaded = service.get_by_code(str(self.router.page.params.get("code", "")))
+        loaded = service.get_by_code(str(self._route_param("code", "")))
         if loaded is not None:
             self.item = loaded
 

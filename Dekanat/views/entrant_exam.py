@@ -116,7 +116,6 @@ def _filter_panel() -> rx.Component:
 
 def list_page_content() -> rx.Component:
     return rx.vstack(
-        _filter_panel(),
         rx.cond(
             ListEntrantExamState.items_display.length() > 0,
             _list_table(),
@@ -568,6 +567,7 @@ def list_page() -> rx.Component:
             width="100%",
         ),
         rx.skeleton(list_page_content(), loading=ListEntrantExamState.in_progress, height="100%"),
+        filter_panel=_filter_panel(),
     )
 
 

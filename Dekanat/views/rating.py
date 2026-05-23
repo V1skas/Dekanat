@@ -181,7 +181,6 @@ def _controls_panel() -> rx.Component:
 
 def list_page_content() -> rx.Component:
     return rx.vstack(
-        _controls_panel(),
         rx.cond(
             ListRatingState.groups.length() > 0,
             rx.vstack(
@@ -200,10 +199,13 @@ def list_page_content() -> rx.Component:
 
 @require_login
 def list_page() -> rx.Component:
+    # Карта з кампанією/спеціальністю/кнопкою генерації — поза скелетоном,
+    # щоб не «мерехтіла» при перезавантаженні групи.
     return page_wrapper(
         header_subpage(
             "Рейтинговий список",
             width="100%",
         ),
         rx.skeleton(list_page_content(), loading=ListRatingState.in_progress, height="100%"),
+        filter_panel=_controls_panel(),
     )

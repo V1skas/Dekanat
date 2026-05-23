@@ -92,7 +92,7 @@ class EditKinshipState(AppState):
 
     def _reload_item(self):
         service = KinshipService()
-        loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        loaded = service.get_by_id(int(self._route_param("id", "-1")))
         if loaded is not None:
             self.item = loaded
 
@@ -152,7 +152,7 @@ class ViewKinshipState(AppState):
 
     def _reload_item(self):
         service = KinshipService()
-        self.item = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        self.item = service.get_by_id(int(self._route_param("id", "-1")))
 
     @rx.event
     def on_load(self):

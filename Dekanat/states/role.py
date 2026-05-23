@@ -118,7 +118,7 @@ class EditRoleState(AppState):
     def _reload(self):
         role_service = RoleService()
         action_service = ActionService()
-        role = role_service.get_by_id(int(self.router.page.params.get("id", -1)))
+        role = role_service.get_by_id(int(self._route_param("id", "-1")))
         if role is None:
             self.role_id = 0
             return
@@ -198,7 +198,7 @@ class ViewRoleState(AppState):
 
     def _reload_item(self):
         service = RoleService()
-        loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        loaded = service.get_by_id(int(self._route_param("id", "-1")))
         if loaded is not None:
             self.item = loaded
         else:
@@ -225,7 +225,7 @@ class ViewRoleState(AppState):
 
     @rx.var
     def title(self) -> str:
-        return self.item.title if self.item is not None else ""
+        return self.item.title if self.item is not None and self.item.title is not None else ""
 
     @rx.var
     def description(self) -> str:

@@ -158,9 +158,9 @@ class EditSpecialityState(AppState):
 
     def _reload_item(self):
         service = SpecialityService()
-        code = str(self.router.page.params.get("spec_code", ""))
+        code = str(self._route_param("spec_code", ""))
         try:
-            id_department = int(self.router.page.params.get("dept_id", -1))
+            id_department = int(self._route_param("dept_id", "-1"))
         except (ValueError, TypeError):
             id_department = -1
         loaded = service.get_by_pk(code, id_department)
@@ -244,8 +244,8 @@ class EditSpecialityState(AppState):
 
     @rx.event
     def on_cancel(self):
-        id_department = self.router.page.params.get("dept_id", "")
-        code = self.router.page.params.get("spec_code", "")
+        id_department = self._route_param("dept_id", "")
+        code = self._route_param("spec_code", "")
         return rx.redirect(f"{routes.SPECIALITY_VIEW}{id_department}/{code}")
 
 
@@ -255,9 +255,9 @@ class ViewSpecialityState(AppState):
 
     def _reload_item(self):
         service = SpecialityService()
-        code = str(self.router.page.params.get("spec_code", ""))
+        code = str(self._route_param("spec_code", ""))
         try:
-            id_department = int(self.router.page.params.get("dept_id", -1))
+            id_department = int(self._route_param("dept_id", "-1"))
         except (ValueError, TypeError):
             id_department = -1
         loaded = service.get_by_pk(code, id_department)

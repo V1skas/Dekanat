@@ -101,7 +101,7 @@ class EditApplicationStatusState(AppState):
 
     def _reload_item(self):
         service = ApplicationStatusService()
-        loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        loaded = service.get_by_id(int(self._route_param("id", "-1")))
         if loaded is not None:
             self.item = loaded
 
@@ -160,7 +160,7 @@ class EditApplicationStatusState(AppState):
 
     @rx.event
     def on_cancel(self):
-        return rx.redirect(routes.APPLICATION_STATUS_VIEW + str(self.router.page.params.get("id", "")))
+        return rx.redirect(routes.APPLICATION_STATUS_VIEW + str(self._route_param("id", "")))
 
 
 class ViewApplicationStatusState(AppState):
@@ -169,7 +169,7 @@ class ViewApplicationStatusState(AppState):
 
     def _reload_item(self):
         service = ApplicationStatusService()
-        loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        loaded = service.get_by_id(int(self._route_param("id", "-1")))
         if loaded is not None:
             self.item = loaded
 

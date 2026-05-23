@@ -452,7 +452,7 @@ class EditEntrantExamState(_ExamFormBase):
 
     def _reload_item(self):
         service = EntrantExamService()
-        loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        loaded = service.get_by_id(int(self._route_param("id", "-1")))
         if loaded is not None:
             self.item = loaded
             self.responsible_worker_ids = [w.id for w in (loaded.responsible_workers or [])]
@@ -540,7 +540,7 @@ class ViewEntrantExamState(AppState):
 
     def _reload_item(self):
         service = EntrantExamService()
-        loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        loaded = service.get_by_id(int(self._route_param("id", "-1")))
         if loaded is not None:
             self.item = loaded
             self.responsible_workers_display = [

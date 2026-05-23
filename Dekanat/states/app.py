@@ -122,7 +122,7 @@ class AppState(rx.State):
 
     @rx.var
     def section_title(self) -> str:
-        path = self.router.page.path or ""
+        path = self.router.url.path or ""
         best_base = ""
         best_title = ""
         for base, title in SECTION_TITLES.items():
@@ -130,6 +130,20 @@ class AppState(rx.State):
                 best_base = base
                 best_title = title
         return best_title
+
+    def _route_param(self, name: str, default: str = "") -> str:
+        """Path-параметр маршруту (наприклад `[id]`).
+
+        Reflex 0.8 рендерить `RouterData.page` депрекейтнутим, але прямого
+        публічного API для path-params поки немає. Чита́ємо через приватний
+        `router._page.params` — це джерело, з якого старий `router.page.params`
+        теж бере дані; deprecation warning при цьому зникає. Якщо у майбутньому
+        зʼявиться нормальний геттер — замінимо тут одне місце.
+        """
+        try:
+            return str(self.router._page.params.get(name, default))
+        except Exception:
+            return default
 
     @rx.event
     def logout(self):

@@ -1,14 +1,15 @@
 import reflex as rx
 
 from typing import List, Dict
+from pydantic import BaseModel, Field
 
 from Dekanat.actions import Actions
 
 
-class RatingGroup(rx.Base):
+class RatingGroup(BaseModel):
     spec_key: str = ""
     spec_label: str = ""
-    rows: List[Dict[str, str]] = []
+    rows: List[Dict[str, str]] = Field(default_factory=list)
 
 from Dekanat import routes
 from Dekanat.states.app import AppState

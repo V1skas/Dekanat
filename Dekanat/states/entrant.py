@@ -207,7 +207,7 @@ class ViewEntrantState(AppState):
         self.in_process = True
         try:
             service = EntrantService()
-            self.item = service.get_by_id(int(self.router.page.params.get("id", -1)))
+            self.item = service.get_by_id(int(self._route_param("id", "-1")))
             if self.item is None:
                 yield rx.toast.warning("Запис не знайдено!")
                 yield rx.redirect(routes.ENTRANT_LIST)
@@ -520,7 +520,7 @@ class EntrantFormState(AppState):
             self._reset_form()
             self._load_dropdowns()
 
-            id_param = int(self.router.page.params.get("id", -1))
+            id_param = int(self._route_param("id", "-1"))
             entrant = EntrantService().get_by_id(id_param)
             if entrant is None or entrant.person is None:
                 yield rx.toast.warning("Запис не знайдено!")
@@ -608,6 +608,187 @@ class EntrantFormState(AppState):
             self.id_entrant_group = int(value) if value else 0
         except (ValueError, TypeError):
             self.id_entrant_group = 0
+
+    # ============================================================
+    # Прості сетери для базових текстових полів форми.
+    # Reflex 0.8.9+ депрекейтить state_auto_setters; нижче — явні
+    # сетери для всіх полів, що використовуються через `set_X` у view.
+    # ============================================================
+
+    @rx.event
+    def set_edbo(self, value: str):
+        self.edbo = value
+
+    @rx.event
+    def set_pib(self, value: str):
+        self.pib = value
+
+    @rx.event
+    def set_sex(self, value: str):
+        self.sex = value
+
+    @rx.event
+    def set_email(self, value: str):
+        self.email = value
+
+    @rx.event
+    def set_mokpp(self, value: str):
+        self.mokpp = value
+
+    @rx.event
+    def set_comment(self, value: str):
+        self.comment = value
+
+    @rx.event
+    def set_citizenship(self, value: str):
+        self.citizenship = value
+
+    @rx.event
+    def set_date_of_birth(self, value: str):
+        self.date_of_birth = value
+
+    @rx.event
+    def set_place_of_registration_city(self, value: str):
+        self.place_of_registration_city = value
+
+    @rx.event
+    def set_place_of_registration(self, value: str):
+        self.place_of_registration = value
+
+    @rx.event
+    def set_phone_number(self, value: str):
+        self.phone_number = value
+
+    @rx.event
+    def set_the_need_for_a_dormitory(self, value: bool):
+        self.the_need_for_a_dormitory = value
+
+    # ---- iddoc dialog ----
+    @rx.event
+    def set_iddoc_number(self, value: str):
+        self.iddoc_number = value
+
+    @rx.event
+    def set_iddoc_series(self, value: str):
+        self.iddoc_series = value
+
+    @rx.event
+    def set_iddoc_code(self, value: str):
+        self.iddoc_code = value
+
+    @rx.event
+    def set_iddoc_issued_by(self, value: str):
+        self.iddoc_issued_by = value
+
+    @rx.event
+    def set_iddoc_date_of_issue(self, value: str):
+        self.iddoc_date_of_issue = value
+
+    @rx.event
+    def set_iddoc_open(self, value: bool):
+        self.iddoc_open = value
+
+    # ---- docedu dialog ----
+    @rx.event
+    def set_docedu_title(self, value: str):
+        self.docedu_title = value
+
+    @rx.event
+    def set_docedu_number(self, value: str):
+        self.docedu_number = value
+
+    @rx.event
+    def set_docedu_series(self, value: str):
+        self.docedu_series = value
+
+    @rx.event
+    def set_docedu_issued_by(self, value: str):
+        self.docedu_issued_by = value
+
+    @rx.event
+    def set_docedu_date_of_issue(self, value: str):
+        self.docedu_date_of_issue = value
+
+    @rx.event
+    def set_docedu_open(self, value: bool):
+        self.docedu_open = value
+
+    # ---- mil dialog ----
+    @rx.event
+    def set_mil_number(self, value: str):
+        self.mil_number = value
+
+    @rx.event
+    def set_mil_series(self, value: str):
+        self.mil_series = value
+
+    @rx.event
+    def set_mil_issued_by(self, value: str):
+        self.mil_issued_by = value
+
+    @rx.event
+    def set_mil_date_of_issue(self, value: str):
+        self.mil_date_of_issue = value
+
+    @rx.event
+    def set_mil_open(self, value: bool):
+        self.mil_open = value
+
+    # ---- med dialog ----
+    @rx.event
+    def set_med_number(self, value: str):
+        self.med_number = value
+
+    @rx.event
+    def set_med_date_of_issue(self, value: str):
+        self.med_date_of_issue = value
+
+    @rx.event
+    def set_med_open(self, value: bool):
+        self.med_open = value
+
+    # ---- rel dialog ----
+    @rx.event
+    def set_rel_pib(self, value: str):
+        self.rel_pib = value
+
+    @rx.event
+    def set_rel_phone_number(self, value: str):
+        self.rel_phone_number = value
+
+    @rx.event
+    def set_rel_open(self, value: bool):
+        self.rel_open = value
+
+    # ---- scp dialog ----
+    @rx.event
+    def set_scp_title(self, value: str):
+        self.scp_title = value
+
+    @rx.event
+    def set_scp_number(self, value: str):
+        self.scp_number = value
+
+    @rx.event
+    def set_scp_description(self, value: str):
+        self.scp_description = value
+
+    @rx.event
+    def set_scp_date_of_issue(self, value: str):
+        self.scp_date_of_issue = value
+
+    @rx.event
+    def set_scp_open(self, value: bool):
+        self.scp_open = value
+
+    # ---- specialty / zno dialogs ----
+    @rx.event
+    def set_sp_open(self, value: bool):
+        self.sp_open = value
+
+    @rx.event
+    def set_rz_open(self, value: bool):
+        self.rz_open = value
 
     # ============================================================
     # Photo upload / clear

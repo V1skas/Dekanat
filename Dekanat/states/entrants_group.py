@@ -271,7 +271,7 @@ class EditEntrantsGroupState(AppState):
 
     def _reload_item(self):
         service = EntrantsGroupService()
-        group_id = int(self.router.page.params.get("id", -1))
+        group_id = int(self._route_param("id", "-1"))
         loaded = service.get_by_id(group_id)
         if loaded is not None:
             self.item = loaded
@@ -387,7 +387,7 @@ class ViewEntrantsGroupState(AppState):
 
     def _reload_item(self):
         service = EntrantsGroupService()
-        group_id = int(self.router.page.params.get("id", -1))
+        group_id = int(self._route_param("id", "-1"))
         loaded = service.get_by_id(group_id)
         if loaded is not None:
             self.item = loaded

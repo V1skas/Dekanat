@@ -1,6 +1,7 @@
 import reflex as rx
 
 from typing import List, Dict, Optional
+from pydantic import BaseModel
 
 from Dekanat.actions import Actions
 from Dekanat import routes
@@ -17,7 +18,7 @@ CATEGORY_TITLES: Dict[str, str] = {
 }
 
 
-class SettingDraft(rx.Base):
+class SettingDraft(BaseModel):
     key: str = ""
     category: str = ""
     title: str = ""

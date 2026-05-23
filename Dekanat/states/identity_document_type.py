@@ -101,7 +101,7 @@ class EditIdentityDocumentTypeState(AppState):
 
     def _reload_item(self):
         service = IdentityDocumentTypeService()
-        self.item = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        self.item = service.get_by_id(int(self._route_param("id", "-1")))
 
     @rx.event
     def on_load(self):
@@ -157,7 +157,7 @@ class EditIdentityDocumentTypeState(AppState):
 
     @rx.event
     def on_cancel(self):
-        return rx.redirect(routes.IDENTITY_DOCUMENT_TYPE_VIEW+str(self.router.page.params.get("id", "")))
+        return rx.redirect(routes.IDENTITY_DOCUMENT_TYPE_VIEW+str(self._route_param("id", "")))
 
 
 class ViewIdentityDocumentTypeState(AppState):
@@ -166,7 +166,7 @@ class ViewIdentityDocumentTypeState(AppState):
 
     def _reload_item(self):
         service = IdentityDocumentTypeService()
-        self.item = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        self.item = service.get_by_id(int(self._route_param("id", "-1")))
 
     @rx.event
     def on_load(self):

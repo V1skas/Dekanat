@@ -93,7 +93,7 @@ class EditSourceOfFundingState(AppState):
 
     def _reload_item(self):
         service = SourceOfFundingService()
-        loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        loaded = service.get_by_id(int(self._route_param("id", "-1")))
         if loaded is not None:
             self.item = loaded
 
@@ -144,7 +144,7 @@ class EditSourceOfFundingState(AppState):
 
     @rx.event
     def on_cancel(self):
-        return rx.redirect(routes.SOURCE_OF_FUNDING_VIEW + str(self.router.page.params.get("id", "")))
+        return rx.redirect(routes.SOURCE_OF_FUNDING_VIEW + str(self._route_param("id", "")))
 
 
 class ViewSourceOfFundingState(AppState):
@@ -153,7 +153,7 @@ class ViewSourceOfFundingState(AppState):
 
     def _reload_item(self):
         service = SourceOfFundingService()
-        loaded = service.get_by_id(int(self.router.page.params.get("id", -1)))
+        loaded = service.get_by_id(int(self._route_param("id", "-1")))
         if loaded is not None:
             self.item = loaded
 

@@ -180,7 +180,7 @@ class EditWorkerState(AppState):
     in_process: bool = True
 
     def _reload(self):
-        worker = WorkerService().get_by_id_full(int(self.router.page.params.get("id", -1)))
+        worker = WorkerService().get_by_id_full(int(self._route_param("id", "-1")))
         if worker is None:
             self.worker_id = 0
             return
@@ -302,7 +302,7 @@ class ViewWorkerState(AppState):
     in_process: bool = True
 
     def _reload_item(self):
-        loaded = WorkerService().get_by_id_full(int(self.router.page.params.get("id", -1)))
+        loaded = WorkerService().get_by_id_full(int(self._route_param("id", "-1")))
         if loaded is not None:
             self.item = loaded
         else:
