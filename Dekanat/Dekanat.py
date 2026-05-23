@@ -62,6 +62,10 @@ app.extra_app_wraps[10, "ContentArea"] = content_area_wrap
 
 app.add_page(login_page, route=routes.LOGIN, on_load=AuthState.on_load)
 app.add_page(dashboard.dashboard_page, route=routes.DASHBOARD)
+app.add_page(dashboard.base_dashboard_page, route=routes.DASHBOARD_BASE)
+app.add_page(dashboard.contingent_dashboard_page, route=routes.DASHBOARD_CONTINGENT)
+app.add_page(dashboard.admission_commission_dashboard_page, route=routes.DASHBOARD_ADMISSION_COMMISSION)
+app.add_page(dashboard.admin_dashboard_page, route=routes.DASHBOARD_ADMIN)
 
 app.add_page(identity_document_type.list_page, route=routes.IDENTITY_DOCUMENT_TYPE_LIST, on_load=identity_document_type_states.ListIdentityDocumentTypeState.on_load)
 app.add_page(identity_document_type.add_page, route=routes.IDENTITY_DOCUMENT_TYPE_ADD, on_load=identity_document_type_states.AddIdentityDocumentTypeState.on_load)

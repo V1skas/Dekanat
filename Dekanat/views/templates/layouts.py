@@ -2,6 +2,7 @@ from typing import List, Optional
 
 import reflex as rx
 
+from Dekanat import routes
 from Dekanat.states.app import AppState
 from Dekanat.declared.submenu import MenuItem
 
@@ -72,7 +73,8 @@ def header() -> rx.Component:
                 align="center",
                 spacing="3",
             ),
-            href="/",
+            # Завжди веде на головний dashboard, незалежно від поточного розділу.
+            href=routes.DASHBOARD,
             underline="none",
         ),
 
@@ -107,6 +109,9 @@ def header() -> rx.Component:
     )
 
 def sidebar_item(item: MenuItem, indent: bool = False) -> rx.Component:
+    # Пункти з прапором dashboard_only живуть лише на dashboard-сторінці розділу.
+    if item.dashboard_only:
+        return rx.fragment()
     rendered = rx.link(
         rx.hstack(
             rx.icon(item.icon, size=24, color="white", flex_shrink="0"),
@@ -152,7 +157,9 @@ def sidebar_item(item: MenuItem, indent: bool = False) -> rx.Component:
 
 def sidebar_group(item: MenuItem) -> rx.Component:
     expanded = AppState.expanded_groups.contains(item.label)
-    head = rx.hstack(
+
+    # Внутрішня частина head — однакова для обох режимів.
+    head_inner = rx.hstack(
         rx.icon(item.icon, size=24, color="white", flex_shrink="0"),
         rx.cond(
             AppState.sidebar_open,
@@ -190,8 +197,13 @@ def sidebar_group(item: MenuItem) -> rx.Component:
         overflow="hidden",
         transition="all 0.2s ease",
         _hover={"background_color": "rgba(255, 255, 255, 0.15)"},
-        on_click=AppState.toggle_group(item.label),
     )
+
+    # Розгорнутий sidebar — клік по голові тогглить розкриття дітей.
+    head_toggle = rx.box(head_inner, on_click=AppState.toggle_group(item.label), width="100%")
+    # Згорнутий sidebar — діти все одно сховані; клік по групі веде на її dashboard.
+    head_link = rx.link(head_inner, href=item.url or "#", underline="none", width="100%")
+    head = rx.cond(AppState.sidebar_open, head_toggle, head_link)
 
     children_visible = expanded & AppState.sidebar_open
     children_open = rx.box(

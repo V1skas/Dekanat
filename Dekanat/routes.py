@@ -5,6 +5,14 @@ CONTINGENT = "/contingent"
 ADMIN = "/admin"
 ADMISSION_COMMISSION = "/admission_commission"
 
+# Розділові dashboard'и — кожен розділ глобального меню має власну сторінку
+# з картками-посиланнями на свої пункти. Згортання бокового меню робить
+# заголовок групи клікабельним і веде саме сюди (DK-22).
+DASHBOARD_BASE = BASE + "/dashboard"
+DASHBOARD_CONTINGENT = CONTINGENT + "/dashboard"
+DASHBOARD_ADMISSION_COMMISSION = ADMISSION_COMMISSION + "/dashboard"
+DASHBOARD_ADMIN = ADMIN + "/dashboard"
+
 ENTRANT = "/contingent/entrants"
 ENTRANT_LIST = ENTRANT+"/list"
 ENTRANT_ADD = ENTRANT+"/add"

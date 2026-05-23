@@ -84,7 +84,7 @@ uv run python update.py # синхронизация enum Actions в БД пос
 6. State'ы в `Dekanat/states/<entity>.py` (4 класса, наследуют `AppState`).
 7. View в `Dekanat/views/<entity>.py` (4 страницы, декорированы `@require_login`).
 8. Регистрация страниц в `Dekanat/Dekanat.py` (`app.add_page` + `on_load=...State.on_load`, для edit/view добавляется `+"[id]"`).
-9. Если сущность нужна в сайдбаре — добавить пункт в `Dekanat/declared/submenu.py` (`MAIN` — единственный реально используемый список).
+9. Если сущность нужна в сайдбаре — добавить пункт в `Dekanat/declared/submenu.py` (`MAIN` — единственный реально используемый список). Хочешь показать её только на dashboard'е раздела, но не в боковом меню — постав `dashboard_only=True`.
 10. **`uv run python update.py`** — синхронизировать новые `Actions` в БД.
 
 ### Тонкости из практики
@@ -256,6 +256,14 @@ uv run python update.py # синхронизация enum Actions в БД пос
 - Тело страницы оборачивается в `page_wrapper(page_header, page_content, filter_panel=None)` из `Dekanat/views/templates/layouts.py`.
 - Заголовок подстраницы — `header_subpage("Назва", *action_buttons)`. Это `hstack` с градиентным текстом и градиентным подчёркиванием снизу.
 - **`filter_panel=` — это слот для управляющей карточки** (фильтры, выбор кампании/специальности и т.п.), которая рендерится **между header и контентом** и НЕ оборачивается в `rx.skeleton`. Если кладёте карточку с контролами внутрь `list_page_content`, она будет мигать при каждой подгрузке списка. Эталоны — `views/entrant.py`, `views/entrant_exam.py`, `views/rating.py`.
+- **«Деканат» в шапке** ведёт на `routes.DASHBOARD` (главный dashboard), не на `/`.
+
+### Dashboard'и розділів (DK-22)
+- `Dekanat/declared/submenu.py:MenuItem` має поле `url` навіть у груп — там лежить маршрут section-dashboard'а (`routes.DASHBOARD_BASE`/`_CONTINGENT`/`_ADMISSION_COMMISSION`/`_ADMIN`).
+- `MenuItem.dashboard_only: bool = False` — якщо `True`, пункт ховається з бокового меню (`sidebar_item` повертає `rx.fragment()`), але потрапляє у картки section-dashboard'а. Зручно для «сервісних» сторінок, які не варто пхати у головну навігацію.
+- `sidebar_group` має різну поведінку залежно від `AppState.sidebar_open`: розгорнутий sidebar — клік по голові групи тогглить розкриття дітей; згорнутий — `head` стає `rx.link` на `item.url` (section-dashboard).
+- Сторінки dashboard'ів (`views/dashboard.py`) — головний (`/dashboard`) + чотири розділових. Усі будуються з `MAIN` через `_cards_grid([MenuItem])` → `_card(item)`. Картки приховуються згідно `required_action` через `rx.cond(AppState.get_user_actions.contains(...))`.
+- Резолв «який розділ → яка група» — `find_group_by_url(url)` із `submenu.py`, щоб view не дублював дерево.
 
 ### Кнопки и контролы (`Dekanat/views/templates/controls.py`)
 - `controls.button_primary(...)` — заполненная градиентом, белый текст.
