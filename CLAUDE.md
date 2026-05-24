@@ -101,6 +101,7 @@ uv run python update.py # синхронизация enum Actions в БД пос
 - **Path-параметри маршрутів — через `AppState._route_param(name, default)`.** Прямий доступ `self.router.page.params.get(...)` зараз депрекейтнутий у Reflex 0.8; новий публічний API ще не дає path-params окремо від query. Helper інкапсулює доступ через `router._page.params`, щоб не плодити приватні виклики по всьому коду.
 - **`rx.Base` депрекейтнутий — для нових нащадків state-моделей використовуйте `pydantic.BaseModel`** (`from pydantic import BaseModel, Field`). Для `List[Model]`-полів усередині такого класу не забувайте `Field(default_factory=list)`.
 - **Computed var `-> str` зобовʼязаний повертати рядок навіть до `on_load`.** `Model()` без аргументів залишає required-поля як `None`, тому захищайтесь повністю: `return self.item.field if self.item is not None and self.item.field is not None else ""`. Часткова перевірка (`if self.item is not None else ""`) ловить лише перший шар і дає у логах `Computed var ... must return a value of type str, got None`.
+- **Індексування Python-списку всередині `rx.foreach` не працює.** Якщо потрібно мати палітру/мапу і брати її за `index` (Var), то `MY_PALETTE[index]` кидає `Cannot index into a primitive sequence with a Var`. Загортайте у `rx.Var.create(MY_PALETTE)` — отримана Var підтримує `[index % len(MY_PALETTE)]` як Var-операцію (зразок — `views/admission_campaign_report.py:_pie_cell`).
 - **SQLite за замовчуванням сортує кирилицю неправильно.** Стандартне BINARY-collation порівнює побайтно по UTF-8, а літера `І` (U+0406) у Юнікоді стоїть **перед** кириличними А-Я (U+0410+) — тому «Іваненко» опиняється на початку списку. `lower()` теж не знає кирилицю. Рішення — кастомний collation `UA_CI` із `Dekanat/utils/db.py:register_ua_collation()` (реєструється у `Dekanat/Dekanat.py` при старті). У DAO для текстових сортувань пишіть `col.collate("UA_CI")` (зразок — `Dekanat/dao/entrant.py:_apply_sort`). Для латиниці (телефони, email) колацію не потрібно.
 
 ### Дружелюбная к печати страница (reuse session state)
@@ -150,6 +151,19 @@ uv run python update.py # синхронизация enum Actions в БД пос
 5. **Збереження** — фільтруємо порожні групи перед відправкою у `bulk_create_with_entrants` (тост «пропущено порожніх: N»). По успіху — `rx.redirect` на список. `on_cancel` просто редиректить, нічого не пише.
 6. **Рівномірний розподіл.** Якщо для бакета потрібно більше однієї групи, ділимо `total // n` базово плюс `extras = total % n` додаткових: перші `extras` груп отримують +1, решта — порівну. Реалізація — у `preview_auto_groups`. Дає 25/24/24 замість 30/30/13.
 
+### Звіти-знімки з графіками (recharts)
+
+Шаблон «згенерувати знімок → зберегти JSON → рендерити графіками». Реалізація — `/reporting/admission_campaign` (`AdmissionCampaignReportService` + `ListAdmissionReportState` + `views/admission_campaign_report.py`).
+
+1. **Модель.** Одна таблиця з `id_campaign`, `generated_at`, `payload: str`. Знімок — JSON цілком. Це дозволяє додавати нові секції звіту без міграцій і не змушує користувача перегенерувати при кожному відкритті сторінки.
+2. **Сервіс.** `generate(id)` робить один запит, всередині рахує всі зрізи відразу (totals, серії, розподіли) і кладе у JSON. `get_payload(id)` повертає `(dict, generated_at)`. Попередній знімок кампанії видаляється — історія не потрібна.
+3. **Структура payload.** Числові — `totals: {today, week, period}`. Серії — `week_series`, `period_series` як `List[{date, count}]`. Розподіли по специальностях — `by_spec_top` і `by_spec_any` як **словник трьох зрізів** `{day: [...], week: [...], period: [...]}`. Це потрібно, щоб глобальний перемикач періоду перемикав pie без перегенерації.
+4. **Toggle періоду.** State тримає `selected_period: str` ("day"/"week"/"period") + computed `is_period_*`. У view — таблетка з трьох кнопок: `rx.cond(is_active, button_primary, button_secondary)` на кожній. Активний графік обирається через `rx.match(selected_period, ("day", bar), ("week", line_week), ...)`.
+5. **Сумісність зі старими знімками.** Хелпер `_spec_bucket(payload, key)` дивиться, чи `payload[key]` — це `dict` (новий формат) чи `list` (legacy), і в обох випадках віддає список `{name, value}`. Так живі знімки не ламаються при розширенні структури.
+6. **Recharts.** `rx.recharts.bar_chart`, `line_chart`, `pie_chart` із дочірніми `bar/line/pie`, `x_axis`, `y_axis`, `cartesian_grid`, `graphing_tooltip`, `legend`. Для порівняння двох кампаній — другий `bar`/`line` із тим самим `data` (поля `primary`/`compare` злиті у state). Для pie — окремий чарт біля основного, накладення секторів нечитабельне.
+7. **Palette для pie.** Reflex не дозволяє `_PALETTE[index]` всередині `rx.foreach` (`index` — Var). Загорніть палітру у `rx.Var.create(_PALETTE)` і робіть `palette[index % len(_PALETTE)]` — це валідна Var-операція.
+8. **Сравнение кампаний.** `compare_campaign_id: int = 0` (sentinel `__none__` у select). State склеює серії «по порядку днів», а не по конкретних датах — щоб кампанії різних років були сумірні; графік дня — це один-два бари в одному рядку.
+
 ### Серверна сортировка списочних таблиць
 
 Шаблон «клік по заголовку столбця → ORDER BY на сервері». Реалізація — `ListEntrantState` + `EntrantDao._apply_sort` (`dao/entrant.py`).
@@ -188,6 +202,7 @@ uv run python update.py # синхронизация enum Actions в БД пос
 | Entrant | `EntrantModel` | `/contingent/entrants` | Абітурієнт = `PersonModel` + статус заявки + комент + усі дочірні сутності особи, керовані діалогами на одній формі |
 | Rating | `RatingSnapshotModel` + `RatingEntryModel` | `/admission_commission/rating/list` | Знімок рейтингового списку для кампанії: дата формування + рядки (спеціальність, абітурієнт, позиція, сума балів, статус місця). Тільки `view` (фільтри по кампанії та спеціальності) і `generate` (кнопка формування) — без CRUD-сторінок. |
 | App settings | `AppSettingModel` | `/admin/settings` | Загальні налаштування системи (key/value/category/value_type). Одна сторінка, секції за `category` (наразі — «Авторизація» з `session_timeout_minutes`). Дефолтні записи сидяться у `deploy.py` через `AppSettingService.ensure_defaults()`. Права: `settings:view` / `settings:edit`. |
+| Admission campaign report | `AdmissionCampaignReportModel` | `/reporting/admission_campaign` | Знімок звіту по приймальній кампанії: totals (день/тиждень/період), серії по дням, розподіл по специальностях (`by_spec_top` priority=1, `by_spec_any` будь-який — обидва з зрізами `day/week/period`). Уся структура — JSON у полі `payload`, історія не зберігається (кампанія перезаписується). Сторінка дозволяє порівнювати з іншою кампанією. Права: `report_admission:view` / `report_admission:generate`. |
 
 #### Підсутності, що редагуються діалогами всередині батьківської форми
 

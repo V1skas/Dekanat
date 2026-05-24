@@ -10,6 +10,7 @@ from Dekanat.views.auth import require_login, index as login_page
 from Dekanat.views.templates.layouts import page_wrapper, header_subpage
 from Dekanat.views.templates.app_shell import app_shell_wrap, content_area_wrap
 from Dekanat.views import admission_campaign
+from Dekanat.views import admission_campaign_report
 from Dekanat.views import app_setting
 from Dekanat.views import rating
 from Dekanat.views import application_status
@@ -30,6 +31,7 @@ from Dekanat.views import worker
 
 from Dekanat.states.auth import AuthState
 from Dekanat.states import admission_campaign as admission_campaign_states
+from Dekanat.states import admission_campaign_report as admission_campaign_report_states
 from Dekanat.states import app_setting as app_setting_states
 from Dekanat.states import rating as rating_states
 from Dekanat.states import application_status as application_status_states
@@ -66,6 +68,8 @@ app.add_page(dashboard.base_dashboard_page, route=routes.DASHBOARD_BASE)
 app.add_page(dashboard.contingent_dashboard_page, route=routes.DASHBOARD_CONTINGENT)
 app.add_page(dashboard.admission_commission_dashboard_page, route=routes.DASHBOARD_ADMISSION_COMMISSION)
 app.add_page(dashboard.admin_dashboard_page, route=routes.DASHBOARD_ADMIN)
+app.add_page(dashboard.reporting_dashboard_page, route=routes.DASHBOARD_REPORTING)
+app.add_page(admission_campaign_report.list_page, route=routes.REPORT_ADMISSION, on_load=admission_campaign_report_states.ListAdmissionReportState.on_load)
 
 app.add_page(identity_document_type.list_page, route=routes.IDENTITY_DOCUMENT_TYPE_LIST, on_load=identity_document_type_states.ListIdentityDocumentTypeState.on_load)
 app.add_page(identity_document_type.add_page, route=routes.IDENTITY_DOCUMENT_TYPE_ADD, on_load=identity_document_type_states.AddIdentityDocumentTypeState.on_load)

@@ -492,6 +492,23 @@ class EntrantExamModel(rx.Model, table=True):
 
 
 @rx.ModelRegistry.register
+class AdmissionCampaignReportModel(rx.Model, table=True):
+    __tablename__ = "admission_campaign_reports"
+
+    # Table columns
+    id: int = Field(primary_key=True)
+    id_campaign: int = Field(foreign_key="admission_campaigns.id", nullable=False)
+    generated_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column=Column("generated_at", DateTime, nullable=False, server_default=func.current_timestamp()),
+    )
+    # JSON payload зі звітом (числа за день/тиждень/період, серії, розподіл по
+    # специальностях). Зберігаємо як рядок, щоб не плодити окремих таблиць —
+    # звіт відображається цілком як знімок (DK-25).
+    payload: str = Field(nullable=False)
+
+
+@rx.ModelRegistry.register
 class AppSettingModel(rx.Model, table=True):
     __tablename__ = "app_settings"
 

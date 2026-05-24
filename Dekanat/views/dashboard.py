@@ -149,3 +149,8 @@ def admission_commission_dashboard_page() -> rx.Component:
 @require_login
 def admin_dashboard_page() -> rx.Component:
     return _section_page(routes.DASHBOARD_ADMIN)
+
+
+@require_login
+def reporting_dashboard_page() -> rx.Component:
+    return _section_page(routes.DASHBOARD_REPORTING)

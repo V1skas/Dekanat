@@ -38,6 +38,9 @@ MAIN: List[MenuItem] = [
         MenuItem("Графік іспитів", "calendar-clock", routes.ENTRANT_EXAM_LIST, required_action=Actions.ENTRANT_EXAM_LIST),
         MenuItem("Рейтинговий список", "list-ordered", routes.RATING_LIST, required_action=Actions.RATING_VIEW),
     ]),
+    MenuItem("Звітність", "chart-line", routes.DASHBOARD_REPORTING, children=[
+        MenuItem("Приймальна кампанія", "chart-pie", routes.REPORT_ADMISSION, required_action=Actions.REPORT_ADMISSION_VIEW),
+    ]),
     MenuItem("Адміністрування", "shield-user", routes.DASHBOARD_ADMIN, children=[
         MenuItem("Користувачі", "users", routes.WORKERS_LIST, required_action=Actions.WORKER_LIST),
         MenuItem("Ролі", "key-round", routes.ROLES_LIST, required_action=Actions.ROLE_LIST),
