@@ -24,6 +24,10 @@ class ListEntrantsGroupState(AppState):
     filter_campaign_id: int = 0  # 0 — без фільтра по кампанії
     campaigns: List[AdmissionCampaignModel] = []
 
+    # Режим вибору груп для друку (DK-24 follow-up).
+    select_mode: bool = False
+    selected_ids: List[int] = []
+
     def _campaign_range(self):
         if not self.filter_campaign_id:
             return None
@@ -117,6 +121,48 @@ class ListEntrantsGroupState(AppState):
             self._reload_items()
         finally:
             self.in_progress = False
+
+    # --- режим вибору груп для друку ---
+
+    @rx.event
+    def toggle_select_mode(self):
+        self.select_mode = not self.select_mode
+        if not self.select_mode:
+            self.selected_ids = []
+
+    @rx.event
+    def select_all(self):
+        if self.items is None:
+            self.selected_ids = []
+            return
+        self.selected_ids = [it.id for it in self.items if it.id is not None]
+
+    @rx.event
+    def clear_selection(self):
+        self.selected_ids = []
+
+    @rx.event
+    def toggle_selected(self, group_id: int):
+        if group_id in self.selected_ids:
+            self.selected_ids = [i for i in self.selected_ids if i != group_id]
+        else:
+            self.selected_ids = self.selected_ids + [group_id]
+
+    @rx.var
+    def selected_set(self) -> List[str]:
+        """`contains`-перевірка для рендеру стану чекбокса (Reflex дозволяє
+        порівняти лише з типом списку Var; ID конвертуємо в рядки)."""
+        return [str(i) for i in self.selected_ids]
+
+    @rx.event
+    def on_click_print_confirm(self):
+        if not self.selected_ids:
+            yield rx.toast.warning("Оберіть принаймні одну групу.")
+            return
+        ids_str = ",".join(str(i) for i in self.selected_ids)
+        self.select_mode = False
+        self.selected_ids = []
+        yield rx.redirect(f"{routes.ENTRANTS_GROUP_PRINT}?ids={ids_str}")
 
 
 # ---------- Form state helpers ----------
@@ -427,6 +473,12 @@ class ViewEntrantsGroupState(AppState):
         return rx.redirect(routes.ENTRANTS_GROUP_EDIT + str(self.item.id))
 
     @rx.event
+    def on_click_print(self):
+        if self.item is None or self.item.id is None:
+            return rx.toast.warning("Запис не завантажено.")
+        return rx.redirect(f"{routes.ENTRANTS_GROUP_PRINT}?ids={self.item.id}")
+
+    @rx.event
     def on_click_delete(self):
         if not self.has_permission(Actions.ENTRANTS_GROUP_DELETE):
             yield rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
@@ -443,3 +495,354 @@ class ViewEntrantsGroupState(AppState):
     @rx.var
     def title(self) -> str:
         return self.item.title if self.item is not None and self.item.title is not None else ""
+
+
+# ============================================================
+# Auto-generate page (DK-24)
+# ============================================================
+
+from pydantic import BaseModel, Field
+
+
+class GeneratedEntrant(BaseModel):
+    id: int = 0
+    pib: str = ""
+    # Приоритетная (priority=1) спеціальність абітурієнта — для відображення
+    # у picker'і та діалозі складу групи (DK-24 follow-up).
+    spec_label: str = ""
+
+
+class GeneratedGroup(BaseModel):
+    title: str = ""
+    spec_code: str = ""
+    spec_dept: int = 0
+    spec_label: str = ""
+    entrants: List[GeneratedEntrant] = Field(default_factory=list)
+
+
+class AutoGenerateEntrantsGroupState(AppState):
+    in_progress: bool = True
+    generating: bool = False
+    saving: bool = False
+
+    # Параметри генерації
+    max_size: int = 25
+    # Сформовані групи — тримаємо в памʼяті до натискання «Зберегти».
+    generated_groups: List[GeneratedGroup] = []
+    # Список «вільних» абітурієнтів кампанії, з якого можна руками додавати у групи.
+    # Перерахунок робиться при кожному відкритті picker'а: підмножина = pool − ті, що
+    # вже потрапили хоча б в одну сформовану групу.
+    _pool: List[GeneratedEntrant] = []
+
+    # Діалог складу групи
+    composition_open: bool = False
+    composition_index: int = -1
+
+    # Picker додавання у відкриту групу
+    picker_open: bool = False
+    picker_search: str = ""
+
+    # ---- Lifecycle ----
+
+    @rx.event
+    def on_load(self):
+        if not self.has_permission(Actions.ENTRANTS_GROUP_AUTO_GENERATE):
+            yield rx.toast.error("У Вас немає дозволу на формування груп!")
+            yield rx.redirect(routes.DASHBOARD)
+            return
+        # Перевіримо що активна кампанія взагалі є — інакше форма безглузда.
+        if AdmissionCampaignService().get_active_campaign() is None:
+            yield rx.toast.warning("Немає активної вступної кампанії — спочатку створіть її.")
+            yield rx.redirect(routes.ENTRANTS_GROUP_LIST)
+            return
+        self.in_progress = False
+
+    # ---- Form fields ----
+
+    @rx.event
+    def set_max_size(self, value: str):
+        try:
+            self.max_size = max(1, int(value)) if value else 1
+        except (ValueError, TypeError):
+            self.max_size = 1
+
+    # ---- Запуск формування ----
+
+    @rx.event
+    def on_click_generate(self):
+        if not self.has_permission(Actions.ENTRANTS_GROUP_AUTO_GENERATE):
+            yield rx.toast.error("У Вас немає дозволу на формування груп!")
+            return
+        if self.max_size < 1:
+            yield rx.toast.warning("Розмір групи має бути не менше 1.")
+            return
+
+        self.generating = True
+        yield  # тригер реренду перед важкою операцією
+        try:
+            preview = EntrantsGroupService().preview_auto_groups(self.max_size)
+            self.generated_groups = [
+                GeneratedGroup(
+                    title=g["title"],
+                    spec_code=g["spec_code"],
+                    spec_dept=g["spec_dept"],
+                    spec_label=g["spec_label"],
+                    entrants=[
+                        GeneratedEntrant(
+                            id=e["id"],
+                            pib=e["pib"],
+                            spec_label=e.get("spec_label", g["spec_label"]),
+                        )
+                        for e in g["entrants"]
+                    ],
+                )
+                for g in preview
+            ]
+            self._pool = [
+                GeneratedEntrant(id=r["id"], pib=r["pib"], spec_label=r.get("spec_label", ""))
+                for r in EntrantsGroupService().get_assignable_for_campaign()
+            ]
+            if not self.generated_groups:
+                yield rx.toast.info("Немає кандидатів для формування груп.")
+            else:
+                yield rx.toast.success(f"Сформовано груп: {len(self.generated_groups)}.")
+        except Exception as ex:
+            print(f"[AutoGenerateEntrantsGroupState][on_click_generate][ERROR] {ex}")
+            yield rx.toast.error("Під час формування трапилась помилка. Спробуйте ще раз.")
+        finally:
+            self.generating = False
+
+    # ---- Composition dialog ----
+
+    @rx.event
+    def open_composition(self, index: int):
+        if index < 0 or index >= len(self.generated_groups):
+            return
+        self.composition_index = index
+        self.composition_open = True
+
+    @rx.event
+    def set_composition_open(self, value: bool):
+        self.composition_open = value
+        if not value:
+            self.composition_index = -1
+
+    @rx.event
+    def remove_entrant_from_group(self, entrant_id: int):
+        if not (0 <= self.composition_index < len(self.generated_groups)):
+            return
+        group = self.generated_groups[self.composition_index]
+        new_group = GeneratedGroup(
+            title=group.title,
+            spec_code=group.spec_code,
+            spec_dept=group.spec_dept,
+            spec_label=group.spec_label,
+            entrants=[e for e in group.entrants if e.id != entrant_id],
+        )
+        new_groups = list(self.generated_groups)
+        new_groups[self.composition_index] = new_group
+        self.generated_groups = new_groups
+
+    # ---- Picker для ручного додавання ----
+
+    @rx.event
+    def open_picker(self):
+        self.picker_search = ""
+        self.picker_open = True
+
+    @rx.event
+    def set_picker_open(self, value: bool):
+        self.picker_open = value
+        if not value:
+            self.picker_search = ""
+
+    @rx.event
+    def set_picker_search(self, value: str):
+        self.picker_search = value
+
+    @rx.event
+    def add_entrant_to_group(self, entrant_id: int):
+        if not (0 <= self.composition_index < len(self.generated_groups)):
+            return
+        # Знайдемо абітурієнта у пулі для коректного pib.
+        match = next((p for p in self._pool if p.id == entrant_id), None)
+        if match is None:
+            return
+        group = self.generated_groups[self.composition_index]
+        if any(e.id == entrant_id for e in group.entrants):
+            return  # уже в групі
+        new_group = GeneratedGroup(
+            title=group.title,
+            spec_code=group.spec_code,
+            spec_dept=group.spec_dept,
+            spec_label=group.spec_label,
+            entrants=list(group.entrants) + [
+                GeneratedEntrant(id=match.id, pib=match.pib, spec_label=match.spec_label),
+            ],
+        )
+        new_groups = list(self.generated_groups)
+        new_groups[self.composition_index] = new_group
+        self.generated_groups = new_groups
+
+    # ---- Сomputed для view ----
+
+    @rx.var
+    def current_group_title(self) -> str:
+        if 0 <= self.composition_index < len(self.generated_groups):
+            return self.generated_groups[self.composition_index].title
+        return ""
+
+    @rx.var
+    def current_group_entrants(self) -> List[GeneratedEntrant]:
+        if 0 <= self.composition_index < len(self.generated_groups):
+            return self.generated_groups[self.composition_index].entrants
+        return []
+
+    @rx.var
+    def picker_rows(self) -> List[GeneratedEntrant]:
+        """Підмножина пулу: фільтруємо за пошуком та виключаємо тих,
+        хто вже доданий хоча б в одну сформовану групу."""
+        taken_ids = {e.id for g in self.generated_groups for e in g.entrants}
+        q = self.picker_search.strip().lower()
+        rows: List[GeneratedEntrant] = []
+        for p in self._pool:
+            if p.id in taken_ids:
+                continue
+            if q and q not in p.pib.lower():
+                continue
+            rows.append(p)
+        return rows[:200]  # не валимо UI великим списком
+
+    @rx.var
+    def group_rows(self) -> List[Dict[str, str]]:
+        """Плоский список для таблиці результатів: назва, спеціальність, кількість."""
+        return [
+            {
+                "index": str(i),
+                "title": g.title,
+                "spec_label": g.spec_label,
+                "count": str(len(g.entrants)),
+            }
+            for i, g in enumerate(self.generated_groups)
+        ]
+
+    # ---- Save / cancel ----
+
+    @rx.event
+    def on_save(self):
+        if not self.has_permission(Actions.ENTRANTS_GROUP_AUTO_GENERATE):
+            yield rx.toast.error("У Вас немає дозволу на формування груп!")
+            return
+        if not self.generated_groups:
+            yield rx.toast.warning("Немає груп для збереження.")
+            return
+
+        # Після ручного редагування деякі групи можуть залишитися без учасників —
+        # такі ігноруємо: створювати порожні групи безглуздо.
+        non_empty = [g for g in self.generated_groups if g.entrants]
+        if not non_empty:
+            yield rx.toast.warning("Усі групи порожні — нема чого зберігати.")
+            return
+        skipped = len(self.generated_groups) - len(non_empty)
+
+        self.saving = True
+        yield
+        try:
+            payload = [
+                {
+                    "title": g.title,
+                    "entrants": [{"id": e.id} for e in g.entrants],
+                }
+                for g in non_empty
+            ]
+            count = EntrantsGroupService().bulk_create_with_entrants(payload)
+            msg = f"Збережено груп: {count}."
+            if skipped:
+                msg += f" Пропущено порожніх: {skipped}."
+            yield rx.toast.success(msg)
+            self.generated_groups = []
+            self._pool = []
+            yield rx.redirect(routes.ENTRANTS_GROUP_LIST)
+        except Exception as ex:
+            print(f"[AutoGenerateEntrantsGroupState][on_save][ERROR] {ex}")
+            yield rx.toast.error("Під час збереження трапилась помилка. Спробуйте ще раз.")
+        finally:
+            self.saving = False
+
+    @rx.event
+    def on_cancel(self):
+        return rx.redirect(routes.ENTRANTS_GROUP_LIST)
+
+
+# ============================================================
+# Print page state (DK-24 follow-up)
+# ============================================================
+
+
+class PrintEntrantRow(BaseModel):
+    pib: str = ""
+
+
+class PrintGroup(BaseModel):
+    id: int = 0
+    title: str = ""
+    entrants: List[PrintEntrantRow] = Field(default_factory=list)
+
+
+class PrintEntrantsGroupState(AppState):
+    in_progress: bool = True
+    groups: List[PrintGroup] = []
+
+    @rx.event
+    def on_load(self):
+        if not self.has_permission(Actions.ENTRANTS_GROUP_VIEW):
+            yield rx.toast.error("У Вас немає дозволу на перегляд цієї сторінки!")
+            yield rx.redirect(routes.DASHBOARD)
+            return
+
+        self.in_progress = True
+        # Парсимо ids із query (`?ids=1,2,3`). Path-params для цього маршруту нема —
+        # один сценарій передає ids зі списку (декілька), інший — з view (один).
+        ids_raw = ""
+        try:
+            ids_raw = self.router.url.query_parameters.get("ids", "") or ""
+        except Exception:
+            ids_raw = ""
+        ids = [int(s) for s in ids_raw.split(",") if s.strip().isdigit()]
+        if not ids:
+            yield rx.toast.warning("Не передано жодної групи для друку.")
+            yield rx.redirect(routes.ENTRANTS_GROUP_LIST)
+            return
+
+        try:
+            service = EntrantsGroupService()
+            collected: List[PrintGroup] = []
+            for gid in ids:
+                group = service.get_by_id(gid)
+                if group is None:
+                    continue
+                entrants = service.get_entrants(gid)
+                rows: List[PrintEntrantRow] = []
+                for e in entrants:
+                    person = e.person
+                    rows.append(PrintEntrantRow(
+                        pib=person.pib if person and person.pib else f"#{e.id}",
+                    ))
+                rows.sort(key=lambda r: r.pib.lower())
+                collected.append(PrintGroup(id=group.id, title=group.title or f"#{group.id}", entrants=rows))
+            self.groups = collected
+            self.in_progress = False
+            # Дамо браузеру намалювати таблиці, потім автоматично відкриваємо діалог друку.
+            yield rx.call_script("setTimeout(() => window.print(), 300)")
+        except Exception as ex:
+            print(f"[PrintEntrantsGroupState][on_load][ERROR] {ex}")
+            self.in_progress = False
+            yield rx.toast.error("Під час завантаження сталася помилка.")
+
+    @rx.event
+    def on_click_back(self):
+        return rx.redirect(routes.ENTRANTS_GROUP_LIST)
+
+    @rx.event
+    def on_click_print(self):
+        return rx.call_script("window.print()")

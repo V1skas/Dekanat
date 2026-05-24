@@ -113,6 +113,13 @@ uv run python update.py # синхронизация enum Actions в БД пос
 
 Використовуйте цей патерн, коли треба експорт «список → таблиця для друку» без дублювання запитів. Для повноцінного PDF-експорту/складних шаблонів — будуйте окрему сутність зі своїм state.
 
+**Варіант із вибором набору (`?ids=…`).** У `entrants_group/print` сценарій інший: треба роздрукувати **довільний підмножина** записів — або обрану зі списку чекбоксами, або один зі сторінки перегляду. Тут окремий `PrintEntrantsGroupState` сам тягне дані з сервісу за списком id з query-параметра:
+
+1. `ListEntrantsGroupState` має `select_mode: bool` + `selected_ids: List[int]` + computed `selected_set: List[str]` (для `contains`-перевірки чекбокса у `rx.cond`). Перемикач режиму — окрема іконка `printer` у шапці; у режимі вибору ця кнопка стає `circle_x`-primary, а ліворуч зʼявляється група «виділити все / зняти / підтвердити».
+2. У таблиці списку стовпчик-чекбокс рендериться через `rx.cond(...select_mode, rx.table.cell(rx.checkbox(...)), fragment)` — і в `header`, і в кожній `row`. Те саме і для заголовка стовпчика.
+3. `on_click_print_confirm` робить `rx.redirect(f"{routes.<...>_PRINT}?ids={','.join(...)}")`. Сторінка перегляду одного запису посилає той самий маршрут, але з одним id.
+4. `PrintEntrantsGroupState.on_load` читає `self.router.url.query_parameters.get("ids", "")`, ходить у сервіс за кожним id, заповнює `groups: List[PrintGroup]` (pydantic.BaseModel) і вже потім зве `window.print()`. Кожна група рендериться окремою таблицею; через CSS `.print-group { page-break-after: always }` кожна друкується з нової сторінки.
+
 ### Pop-up редактор по списку (carousel-style)
 
 Шаблон «таблиця рядків → діалог з навігацією попередній/наступний» — для масового редагування одного поля. Реалізація в `ViewEntrantExamState` (секція «Оцінювання»):
@@ -131,6 +138,17 @@ uv run python update.py # синхронизация enum Actions в БД пос
 2. **View.** Диалог — `rx.dialog.root` с `open=...<x>_open` и `on_open_change=...set_<x>_open`. Таблица собственных записей — `rx.foreach(form_state.<collection>, _row_factory(form_state))`. Кнопка «+» рядом с заголовком таблицы; в строке — кнопки edit и `controls.delete_with_confirm`. Поля FK, доступные только при добавлении, оборачивайте в `rx.cond(form_state.<x>_index >= 0, _disabled_input, _select)` — иначе при редактировании юзер сможет случайно перевыбрать ключ.
 3. **Подписи в строках через словарь.** Поскольку добавленные в памяти модели не имеют подгруженного relationship, имя FK-сущности рендерится через computed-var-словарь (`speciality_labels`, `item_zno_titles` и т.п.), построенный из dropdown-опций. Доступ — `<labels>[item.fk_a + "|" + item.fk_b.to_string()]`.
 4. **Persistence.** Дочерние коллекции сохраняются вместе с родителем единым транзакционным «replace_all»: сервис очищает все старые записи по `id_parent` и вставляет переданный список заново. Эталоны — `EntrantService.edit_one(..., specialties=, results_zno=, ...)` и `AdmissionCampaignSpecialityService.replace_all_for_campaign(id, items)`. Не пытайтесь делать diff — это лишняя сложность; полный список из state всегда канонический.
+
+### Автогенерація з preview-state і bulk-save
+
+Шаблон «згенерувати багато сутностей за один клік, дати поправити руками, зберегти однією транзакцією». Реалізація — `/admission_commission/entrants_group/auto` (`EntrantsGroupService.preview_auto_groups / bulk_create_with_entrants` + `AutoGenerateEntrantsGroupState`).
+
+1. **Сервіс — два методи.** `preview_*(params) -> List[Dict]` рахує наповнення груп **без жодного INSERT**. `bulk_create_with_entrants(payload)` пише все в одній транзакції — приймає вже відредаговану структуру і не дублює бізнес-логіку розрахунку.
+2. **State.** Чернеткові групи живуть у `List[GeneratedGroup]` (pydantic.BaseModel із `Field(default_factory=list)`). Кожна `GeneratedGroup` має `entrants: List[GeneratedEntrant]`. Для UI-індикації — `generating: bool` (запуск формування) та `saving: bool` (запис). Перед важкою операцією — `self.generating = True; yield` (без yield на момент стартового рендеру Reflex не покаже спіннер).
+3. **Ручне редагування.** Діалог складу групи (`composition_index`, `composition_open`) дозволяє виключати/додавати абітурієнтів. Доступний пул для додавання — окремий `_pool` із сервісу, picker мінусом тих, хто вже потрапив у будь-яку чернеткову групу. **Жодних лімітів розміру** при ручній правці — користувач сам вирішує.
+4. **Мутації списку — через перепризначення.** `self.generated_groups[i].entrants.append(...)` Reflex може не побачити; завжди робіть нову `GeneratedGroup` і переписуйте список `self.generated_groups = new_groups` (див. `add_entrant_to_group`).
+5. **Збереження** — фільтруємо порожні групи перед відправкою у `bulk_create_with_entrants` (тост «пропущено порожніх: N»). По успіху — `rx.redirect` на список. `on_cancel` просто редиректить, нічого не пише.
+6. **Рівномірний розподіл.** Якщо для бакета потрібно більше однієї групи, ділимо `total // n` базово плюс `extras = total % n` додаткових: перші `extras` груп отримують +1, решта — порівну. Реалізація — у `preview_auto_groups`. Дає 25/24/24 замість 30/30/13.
 
 ### Серверна сортировка списочних таблиць
 
@@ -164,7 +182,7 @@ uv run python update.py # синхронизация enum Actions в БД пос
 | Speciality | `SpecialityModel` | `/base/speciality` | Спеціальності (composite PK `(code, id_department)`) |
 | Application status | `ApplicationStatusModel` | `/base/application_status` | Статуси заявок |
 | Item ZNO | `ItemZnoModel` | `/base/item_zno` | Предмети ЗНО |
-| Entrants group | `EntrantGroupModel` | `/admission_commission/entrants_group` | Групи абітурієнтів на ЗНО |
+| Entrants group | `EntrantGroupModel` | `/admission_commission/entrants_group` | Групи абітурієнтів на ЗНО. Окремо: `/auto` — автоформування за приоритетной специальностью активної кампанії з рівномірним розподілом (DK-24), `/print?ids=…` — друк складу обраних груп. Право `entrants_group:auto_generate` гейтить кнопку, доступ на сторінку та сам запуск формування. |
 | Entrant exam | `EntrantExamModel` | `/admission_commission/entrant_exam` | Графік іспитів груп: дата, час початку/завершення, опис, M2M відповідальні співробітники (`EntrantExamWorkerModel`). На сторінці перегляду — секція «Оцінювання» з upsert'ом у `ResultZnoModel` |
 | Admission campaign | `AdmissionCampaignModel` | `/admission_commission/campaign` | Вступна кампанія: назва, період + квоти по спеціальностям (`AdmissionCampaignSpecialityModel`) |
 | Entrant | `EntrantModel` | `/contingent/entrants` | Абітурієнт = `PersonModel` + статус заявки + комент + усі дочірні сутності особи, керовані діалогами на одній формі |
