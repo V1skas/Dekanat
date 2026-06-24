@@ -104,72 +104,131 @@ def _legend() -> rx.Component:
     )
 
 
+def _filter_field(label: str, placeholder: str, options, value, on_change) -> rx.Component:
+    return rx.vstack(
+        rx.text(label, weight="bold", size="2"),
+        rx.select.root(
+            rx.select.trigger(placeholder=placeholder),
+            rx.select.content(rx.foreach(options, _select_item)),
+            value=value,
+            on_change=on_change,
+            width="100%",
+        ),
+        spacing="1",
+        align="stretch",
+        width="100%",
+    )
+
+
+def _generated_text() -> rx.Component:
+    return rx.cond(
+        ListRatingState.generated_at_display != "",
+        rx.text(
+            "Останнє формування: ",
+            rx.text.strong(ListRatingState.generated_at_display),
+            size="2",
+            color="gray",
+        ),
+        rx.text("Рейтинг ще не формувався для цієї кампанії", size="2", color="gray"),
+    )
+
+
+def _generate_button() -> rx.Component:
+    return rx.cond(
+        ListRatingState.get_user_actions.contains(Actions.RATING_GENERATE),
+        controls.button_primary(
+            rx.icon("refresh-cw", size=18),
+            "Сформувати рейтинг",
+            on_click=ListRatingState.on_click_generate,
+            loading=ListRatingState.generating,
+        ),
+    )
+
+
+def _filters_grid() -> rx.Component:
+    """Поля фільтрів у сітці 2×2."""
+    return rx.grid(
+        _filter_field(
+            "Вступна кампанія:", "Оберіть кампанію",
+            ListRatingState.campaign_options,
+            ListRatingState.selected_campaign_id_str,
+            ListRatingState.set_selected_campaign_id,
+        ),
+        _filter_field(
+            "Спеціальність:", "Усі спеціальності",
+            ListRatingState.speciality_options,
+            ListRatingState.selected_spec_key,
+            ListRatingState.set_selected_spec_key,
+        ),
+        _filter_field(
+            "База вступу:", "Усі бази вступу",
+            ListRatingState.base_filter_options,
+            ListRatingState.selected_base_key,
+            ListRatingState.set_selected_base_key,
+        ),
+        _filter_field(
+            "Форма навчання:", "Усі форми навчання",
+            ListRatingState.form_filter_options,
+            ListRatingState.selected_form_key,
+            ListRatingState.set_selected_form_key,
+        ),
+        columns="2",
+        spacing="3",
+        width="100%",
+    )
+
+
+def _controls_panel_expanded() -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.text("Фільтри", weight="bold", size="3"),
+            rx.spacer(),
+            controls.button_image_secondary(
+                name_icon="chevrons-down-up",
+                on_click=ListRatingState.toggle_filter_collapsed,
+            ),
+            width="100%",
+            align="center",
+        ),
+        _filters_grid(),
+        rx.hstack(
+            _generated_text(),
+            rx.spacer(),
+            _generate_button(),
+            width="100%",
+            align="center",
+            wrap="wrap",
+        ),
+        _legend(),
+        spacing="3",
+        align="stretch",
+        width="100%",
+    )
+
+
+def _controls_panel_collapsed() -> rx.Component:
+    """Згорнутий вид: лише маркери, дата формування та кнопка розгортання."""
+    return rx.hstack(
+        _legend(),
+        rx.spacer(),
+        _generated_text(),
+        controls.button_image_secondary(
+            name_icon="chevrons-up-down",
+            on_click=ListRatingState.toggle_filter_collapsed,
+        ),
+        width="100%",
+        align="center",
+        spacing="3",
+        wrap="wrap",
+    )
+
+
 def _controls_panel() -> rx.Component:
     return rx.box(
-        rx.vstack(
-            rx.hstack(
-                rx.vstack(
-                    rx.text("Вступна кампанія:", weight="bold"),
-                    rx.select.root(
-                        rx.select.trigger(placeholder="Оберіть кампанію"),
-                        rx.select.content(
-                            rx.foreach(ListRatingState.campaign_options, _select_item),
-                        ),
-                        value=ListRatingState.selected_campaign_id_str,
-                        on_change=ListRatingState.set_selected_campaign_id,
-                        width="100%",
-                    ),
-                    spacing="1",
-                    align="stretch",
-                    width="100%",
-                ),
-                rx.vstack(
-                    rx.text("Спеціальність:", weight="bold"),
-                    rx.select.root(
-                        rx.select.trigger(placeholder="Усі спеціальності"),
-                        rx.select.content(
-                            rx.foreach(ListRatingState.speciality_options, _select_item),
-                        ),
-                        value=ListRatingState.selected_spec_key,
-                        on_change=ListRatingState.set_selected_spec_key,
-                        width="100%",
-                    ),
-                    spacing="1",
-                    align="stretch",
-                    width="100%",
-                ),
-                spacing="3",
-                align="end",
-                width="100%",
-            ),
-            rx.hstack(
-                rx.cond(
-                    ListRatingState.generated_at_display != "",
-                    rx.text(
-                        "Останнє формування: ",
-                        rx.text.strong(ListRatingState.generated_at_display),
-                        size="2",
-                        color="gray",
-                    ),
-                    rx.text("Рейтинг ще не формувався для цієї кампанії", size="2", color="gray"),
-                ),
-                rx.spacer(),
-                rx.cond(
-                    ListRatingState.get_user_actions.contains(Actions.RATING_GENERATE),
-                    controls.button_primary(
-                        rx.icon("refresh-cw", size=18),
-                        "Сформувати рейтинг",
-                        on_click=ListRatingState.on_click_generate,
-                        loading=ListRatingState.generating,
-                    ),
-                ),
-                width="100%",
-                align="center",
-            ),
-            _legend(),
-            spacing="3",
-            align="stretch",
-            width="100%",
+        rx.cond(
+            ListRatingState.filter_collapsed,
+            _controls_panel_collapsed(),
+            _controls_panel_expanded(),
         ),
         padding="1rem",
         border_radius="0.6rem",

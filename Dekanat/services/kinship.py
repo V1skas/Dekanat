@@ -37,10 +37,10 @@ class KinshipService:
     def edit_one(self, item: KinshipModel) -> KinshipModel:
         try:
             with rx.session() as session:
-                KinshipDao.edit_one(item, session)
+                managed = KinshipDao.edit_one(item, session)
                 session.commit()
-                session.refresh(item)
-            return item
+                session.refresh(managed)
+            return managed
         except Exception as e:
             print(f"[KinshipService][edit_one][ERROR] {e}")
             raise

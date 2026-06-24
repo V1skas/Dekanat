@@ -38,10 +38,10 @@ class IdentityDocumentTypeService:
     def edit_one(self, item: IdentityDocumentTypeModel) -> IdentityDocumentTypeModel:
         try:
             with rx.session() as session:
-                IdentityDocumentTypeDao.edit_one(item, session)
+                managed = IdentityDocumentTypeDao.edit_one(item, session)
                 session.commit()
-                session.refresh(item)
-            return item
+                session.refresh(managed)
+            return managed
 
         except Exception as e:
             print(f"[IdentityDocumentTypeService][edit_one][ERROR] {e}")

@@ -71,8 +71,9 @@ class AdmissionCampaignReportService:
                 entrants = session.exec(
                     select(EntrantModel)
                     .options(
-                        selectinload(EntrantModel.person),
-                        selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.speciality),
+                        selectinload(EntrantModel.person).selectinload(PersonModel.entry_base),
+                        selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.speciality).selectinload(SpecialityModel.department),
+                        selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.form_of_study),
                     )
                     .join(PersonModel, EntrantModel.id == PersonModel.id)
                     .where(EntrantModel.is_deleted == False)
@@ -110,6 +111,20 @@ class AdmissionCampaignReportService:
                 spec_top: Dict[str, Dict[str, int]] = {"day": {}, "week": {}, "period": {}}
                 spec_any: Dict[str, Dict[str, int]] = {"day": {}, "week": {}, "period": {}}
 
+                # Нові зрізи (DK-26): по базах вступу, формах навчання, а також загальні
+                # підсумки по специальностях (з розрізненням бази/форми) та по відділеннях.
+                by_base: Dict[str, Dict[str, int]] = {"day": {}, "week": {}, "period": {}}
+                by_form: Dict[str, Dict[str, int]] = {"day": {}, "week": {}, "period": {}}
+                totals_by_spec: Dict[str, Dict[str, int]] = {"day": {}, "week": {}, "period": {}}
+                totals_by_dept: Dict[str, Dict[str, int]] = {"day": {}, "week": {}, "period": {}}
+
+                def _bump(bucket: Dict[str, Dict[str, int]], name: str, in_today: bool, in_week: bool):
+                    bucket["period"][name] = bucket["period"].get(name, 0) + 1
+                    if in_week:
+                        bucket["week"][name] = bucket["week"].get(name, 0) + 1
+                    if in_today:
+                        bucket["day"][name] = bucket["day"].get(name, 0) + 1
+
                 for e in entrants:
                     if e.created_at is None:
                         continue
@@ -144,6 +159,29 @@ class AdmissionCampaignReportService:
                                 spec_any["day"][label] = spec_any["day"].get(label, 0) + 1
                             seen_specs.add(label)
 
+                    # Розподіл по базі вступу — по особі (одна база на абітурієнта).
+                    base_name = (
+                        e.person.entry_base.title
+                        if e.person is not None and e.person.entry_base is not None
+                        else "—"
+                    )
+                    _bump(by_base, base_name, in_today, in_week)
+
+                    # Форма навчання, підсумок по специальності (з базою/формою) та по
+                    # відділенню — рахуємо за пріоритетною (priority=1) специальністю.
+                    top = next((s for s in (e.specialties or []) if s.priority == 1), None)
+                    if top is not None:
+                        form_name = top.form_of_study.title if top.form_of_study is not None else "—"
+                        _bump(by_form, form_name, in_today, in_week)
+                        spec_lbl = _spec_label(top.speciality)
+                        _bump(totals_by_spec, f"{spec_lbl} · {base_name} · {form_name}", in_today, in_week)
+                        dept_name = (
+                            top.speciality.department.title
+                            if top.speciality is not None and top.speciality.department is not None
+                            else "—"
+                        )
+                        _bump(totals_by_dept, dept_name, in_today, in_week)
+
                 def _bucket_to_list(d: Dict[str, int]) -> List[Dict]:
                     return sorted(
                         [{"spec": k, "count": v} for k, v in d.items()],
@@ -177,6 +215,26 @@ class AdmissionCampaignReportService:
                         "day": _bucket_to_list(spec_any["day"]),
                         "week": _bucket_to_list(spec_any["week"]),
                         "period": _bucket_to_list(spec_any["period"]),
+                    },
+                    "by_entry_base": {
+                        "day": _bucket_to_list(by_base["day"]),
+                        "week": _bucket_to_list(by_base["week"]),
+                        "period": _bucket_to_list(by_base["period"]),
+                    },
+                    "by_form": {
+                        "day": _bucket_to_list(by_form["day"]),
+                        "week": _bucket_to_list(by_form["week"]),
+                        "period": _bucket_to_list(by_form["period"]),
+                    },
+                    "totals_by_spec": {
+                        "day": _bucket_to_list(totals_by_spec["day"]),
+                        "week": _bucket_to_list(totals_by_spec["week"]),
+                        "period": _bucket_to_list(totals_by_spec["period"]),
+                    },
+                    "totals_by_department": {
+                        "day": _bucket_to_list(totals_by_dept["day"]),
+                        "week": _bucket_to_list(totals_by_dept["week"]),
+                        "period": _bucket_to_list(totals_by_dept["period"]),
                     },
                 }
 

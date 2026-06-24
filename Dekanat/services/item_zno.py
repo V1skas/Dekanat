@@ -37,10 +37,10 @@ class ItemZnoService:
     def edit_one(self, item: ItemZnoModel) -> ItemZnoModel:
         try:
             with rx.session() as session:
-                ItemZnoDao.edit_one(item, session)
+                managed = ItemZnoDao.edit_one(item, session)
                 session.commit()
-                session.refresh(item)
-            return item
+                session.refresh(managed)
+            return managed
         except Exception as e:
             print(f"[ItemZnoService][edit_one][ERROR] {e}")
             raise

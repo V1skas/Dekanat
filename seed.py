@@ -19,6 +19,7 @@ from Dekanat.models import (
     ItemZnoModel,
     SourceOfFundingModel,
     EntryBaseModel,
+    FormOfStudyModel,
     ApplicationStatusModel,
     IdentityDocumentTypeModel,
     KinshipModel,
@@ -115,11 +116,21 @@ def seed_reference_data(session):
         s, _ = get_or_create(session, SourceOfFundingModel, title=t)
         sources.append(s)
 
-    eb_titles = ["Повна загальна середня освіта", "Базова середня освіта", "Освітньо-кваліфікаційний рівень"]
+    eb_data = [
+        ("Повна загальна середня освіта", "ПЗСО"),
+        ("Базова середня освіта", "БСО"),
+        ("Освітньо-кваліфікаційний рівень", "ОКР"),
+    ]
     entry_bases = []
-    for t in eb_titles:
-        b, _ = get_or_create(session, EntryBaseModel, title=t)
+    for t, prefix in eb_data:
+        b, _ = get_or_create(session, EntryBaseModel, title=t, defaults={"prefix": prefix})
         entry_bases.append(b)
+
+    fos_data = [("Денна", "Д"), ("Заочна", "З")]
+    forms_of_study = []
+    for t, prefix in fos_data:
+        f, _ = get_or_create(session, FormOfStudyModel, title=t, defaults={"prefix": prefix})
+        forms_of_study.append(f)
 
     status_data = [
         ("Подана", "Заявку подано"),
@@ -167,6 +178,7 @@ def seed_reference_data(session):
         "item_znos": item_znos,
         "sources": sources,
         "entry_bases": entry_bases,
+        "forms_of_study": forms_of_study,
         "statuses": statuses,
         "id_types": id_types,
         "kinships": kinships,
@@ -174,7 +186,7 @@ def seed_reference_data(session):
     }
 
 
-def seed_campaign(session, specialties):
+def seed_campaign(session, specialties, entry_bases, forms_of_study):
     print("→ Вступна кампанія + квоти")
     today = datetime.now().date()
     start = today - timedelta(days=30)
@@ -205,16 +217,22 @@ def seed_campaign(session, specialties):
         session.delete(old)
     session.flush()
 
+    # Квоти тепер задаються по кортежу (спеціальність, база вступу, форма навчання).
+    # Для повноти тестових даних створюємо квоту на кожну комбінацію (DK-26).
     for s in specialties:
-        budget = random.randint(5, 12)
-        contract = random.randint(8, 18)
-        session.add(AdmissionCampaignSpecialityModel(
-            id_admission_campaign=campaign.id,
-            id_speciality_code=s.code,
-            id_speciality_department=s.id_department,
-            budget_places=budget,
-            contract_places=contract,
-        ))
+        for base in entry_bases:
+            for form in forms_of_study:
+                budget = random.randint(5, 12)
+                contract = random.randint(8, 18)
+                session.add(AdmissionCampaignSpecialityModel(
+                    id_admission_campaign=campaign.id,
+                    id_speciality_code=s.code,
+                    id_speciality_department=s.id_department,
+                    id_entry_base=base.id,
+                    id_form_of_study=form.id,
+                    budget_places=budget,
+                    contract_places=contract,
+                ))
     session.flush()
     return campaign
 
@@ -236,6 +254,7 @@ def seed_entrants(session, refs, campaign, count=100):
     item_znos = refs["item_znos"]
     sources = refs["sources"]
     entry_bases = refs["entry_bases"]
+    forms_of_study = refs["forms_of_study"]
     statuses = refs["statuses"]
     special_conditions = refs["special_conditions"]
 
@@ -286,13 +305,15 @@ def seed_entrants(session, refs, campaign, count=100):
                 points=random.randint(100, 200),
             ))
 
-        # Пріоритети — 1-3 спеціальностей з кампанії
+        # Пріоритети — 1-3 спеціальностей з кампанії; кожному пріоритету призначаємо
+        # форму навчання (квоти існують для будь-якої комбінації база×форма) (DK-26).
         chosen_specs = random.sample(specialties, k=random.randint(1, 3))
         for priority, sp in enumerate(chosen_specs, start=1):
             session.add(SpecialtieEntrantModel(
                 id_entrant=entrant.id,
                 id_speciality_code=sp.code,
                 id_speciality_department=sp.id_department,
+                id_form_of_study=random.choice(forms_of_study).id,
                 priority=priority,
             ))
 
@@ -320,7 +341,7 @@ def main():
     print("=== Завантаження тестових даних ===\n")
     with rx.session() as session:
         refs = seed_reference_data(session)
-        campaign = seed_campaign(session, refs["specialties"])
+        campaign = seed_campaign(session, refs["specialties"], refs["entry_bases"], refs["forms_of_study"])
         seed_entrants(session, refs, campaign, count=100)
         session.commit()
     print("\n=== Готово ===")

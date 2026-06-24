@@ -37,10 +37,10 @@ class ApplicationStatusService:
     def edit_one(self, item: ApplicationStatusModel) -> ApplicationStatusModel:
         try:
             with rx.session() as session:
-                ApplicationStatusDao.edit_one(item, session)
+                managed = ApplicationStatusDao.edit_one(item, session)
                 session.commit()
-                session.refresh(item)
-            return item
+                session.refresh(managed)
+            return managed
         except Exception as e:
             print(f"[ApplicationStatusService][edit_one][ERROR] {e}")
             raise

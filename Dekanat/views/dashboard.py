@@ -5,7 +5,7 @@ from typing import List
 from Dekanat import routes
 from Dekanat.declared.submenu import MAIN, MenuItem, find_group_by_url
 from Dekanat.states.app import AppState
-from Dekanat.views.templates.layouts import page_wrapper, header_subpage
+from Dekanat.views.templates.layouts import page_wrapper, header_subpage, _menu_visibility
 from Dekanat.views.auth import require_login
 
 
@@ -47,15 +47,22 @@ def _card(item: MenuItem) -> rx.Component:
 
 
 def _card_with_permission(item: MenuItem) -> rx.Component:
-    """Обгортка картки під перевірку прав. Якщо у пункта є required_action,
-    показуємо тільки за наявності цього права у користувача."""
-    if item.required_action is None:
-        return _card(item)
-    return rx.cond(
-        AppState.get_user_actions.contains(item.required_action),
-        _card(item),
-        rx.fragment(),
-    )
+    """Обгортка картки під перевірку прав:
+    * лист із власним `required_action` — показуємо за наявності цього права;
+    * група (без власного права, але з дітьми) — показуємо, лише якщо доступне
+      хоча б одне дитя (OR по їх `required_action`), як у боковому меню;
+    * інакше (немає ні права, ні дітей) — показуємо завжди."""
+    if item.required_action is not None:
+        return rx.cond(
+            AppState.get_user_actions.contains(item.required_action),
+            _card(item),
+            rx.fragment(),
+        )
+    if item.children:
+        visibility = _menu_visibility(item.children)
+        if visibility is not None:
+            return rx.cond(visibility, _card(item), rx.fragment())
+    return _card(item)
 
 
 def _cards_grid(items: List[MenuItem]) -> rx.Component:

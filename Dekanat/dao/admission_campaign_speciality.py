@@ -13,7 +13,9 @@ class AdmissionCampaignSpecialityDao:
             .options(
                 selectinload(AdmissionCampaignSpecialityModel.speciality).selectinload(
                     SpecialityModel.department
-                )
+                ),
+                selectinload(AdmissionCampaignSpecialityModel.entry_base),
+                selectinload(AdmissionCampaignSpecialityModel.form_of_study),
             )
             .where(AdmissionCampaignSpecialityModel.id_admission_campaign == id_campaign)
         )

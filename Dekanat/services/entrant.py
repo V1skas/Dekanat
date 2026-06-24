@@ -66,6 +66,36 @@ class EntrantService:
             print(f"[EntrantService][get_by_id][ERROR] {e}")
             raise
 
+    def _validate_specialties(
+        self, person: PersonModel, specialties: list[SpecialtieEntrantModel]
+    ) -> None:
+        """Перевіряє, що кожна обрана абітурієнтом спеціальність доступна для його бази
+        вступу та обраної форми навчання в активній кампанії (DK-26). Викликається до
+        відкриття пишучої сесії, щоб не плодити вкладені сесії на hot path."""
+        if not specialties:
+            return
+        from Dekanat.services.admission_campaign import AdmissionCampaignService
+        from Dekanat.services.admission_campaign_speciality import (
+            AdmissionCampaignSpecialityService,
+        )
+
+        campaign = AdmissionCampaignService().get_active_campaign()
+        if campaign is None or campaign.id is None:
+            return  # немає активної кампанії — немає з чим звіряти
+        quotas = AdmissionCampaignSpecialityService().get_by_campaign(campaign.id)
+        valid = {
+            (q.id_speciality_code, q.id_speciality_department, q.id_entry_base, q.id_form_of_study)
+            for q in quotas
+        }
+        base = person.id_entry_base
+        for sp in specialties:
+            key = (sp.id_speciality_code, sp.id_speciality_department, base, sp.id_form_of_study)
+            if key not in valid:
+                raise ValueError(
+                    "Обрана спеціальність недоступна для цієї бази вступу та форми "
+                    "навчання в активній кампанії."
+                )
+
     def add_one(
         self,
         person: PersonModel,
@@ -80,6 +110,7 @@ class EntrantService:
         results_zno: list[ResultZnoModel],
     ) -> EntrantModel:
         try:
+            self._validate_specialties(person, specialties)
             with rx.session() as session:
                 person.id = None  # type: ignore[assignment]
                 saved_person = EntrantDao.add_person(person, session)
@@ -118,6 +149,7 @@ class EntrantService:
         results_zno: list[ResultZnoModel],
     ) -> EntrantModel:
         try:
+            self._validate_specialties(person, specialties)
             with rx.session() as session:
                 # Preserve timestamps from existing rows and bump status_changed_at only if status really changed.
                 existing_person = session.get(PersonModel, person.id)

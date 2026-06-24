@@ -137,8 +137,9 @@ class EntrantsGroupService:
             stmt = (
                 select(EntrantModel)
                 .options(
-                    selectinload(EntrantModel.person),
+                    selectinload(EntrantModel.person).selectinload(PersonModel.entry_base),
                     selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.speciality),
+                    selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.form_of_study),
                     selectinload(EntrantModel.entrant_group),
                 )
                 .join(PersonModel, EntrantModel.id == PersonModel.id)
@@ -157,15 +158,22 @@ class EntrantsGroupService:
 
             candidates = [e for e in entrants if _is_free(e)]
 
-            # Згрупуємо за приоритетной специальностью.
-            by_spec: Dict[Tuple[str, int], Dict] = {}
+            # Згрупуємо за кортежем (приоритетная специальность, база вступу, форма
+            # навчання) — назва групи тепер враховує префікси бази та форми (DK-26).
+            by_spec: Dict[Tuple[str, int, int, int], Dict] = {}
             for e in candidates:
                 top = next((s for s in (e.specialties or []) if s.priority == 1), None)
-                if top is None or top.speciality is None:
+                if top is None or top.speciality is None or top.form_of_study is None:
                     continue
-                key = (top.id_speciality_code, top.id_speciality_department)
+                if e.person is None or e.person.entry_base is None:
+                    continue
+                base = e.person.entry_base
+                form = top.form_of_study
+                key = (top.id_speciality_code, top.id_speciality_department, base.id, form.id)
                 bucket = by_spec.setdefault(key, {
                     "spec": top.speciality,
+                    "base": base,
+                    "form": form,
                     "entrants": [],
                 })
                 bucket["entrants"].append(e)
@@ -188,13 +196,18 @@ class EntrantsGroupService:
                 return max_n + 1
 
             result: List[Dict] = []
-            for (code, dept), bucket in by_spec.items():
+            for (code, dept, base_id, form_id), bucket in by_spec.items():
                 spec: SpecialityModel = bucket["spec"]
+                base = bucket["base"]
+                form = bucket["form"]
                 ents: List[EntrantModel] = bucket["entrants"]
                 # Стабільний порядок: за ПІБ.
                 ents.sort(key=lambda e: (e.person.pib if e.person and e.person.pib else "").lower())
-                spec_label = f"{spec.code} {spec.title}"
-                prefix = f"{spec.tag}-{yy}-"
+                base_prefix = base.prefix or ""
+                form_prefix = form.prefix or ""
+                spec_label = f"{spec.code} {spec.title} · {base.title} · {form.title}"
+                # Шаблон назви: (тег)-(рік)(префікс бази)(префікс форми)-(номер) (DK-26).
+                prefix = f"{spec.tag}-{yy}{base_prefix}{form_prefix}-"
                 n = _next_number(prefix)
                 # Рівномірний розподіл: якщо груп більше однієї, ділимо людей
                 # навпіл/натретіх якомога рівніше. Перші `extras` груп отримують

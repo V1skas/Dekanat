@@ -37,10 +37,10 @@ class DepartmentService:
     def edit_one(self, item: DepartmentModel) -> DepartmentModel:
         try:
             with rx.session() as session:
-                DepartmentDao.edit_one(item, session)
+                managed = DepartmentDao.edit_one(item, session)
                 session.commit()
-                session.refresh(item)
-            return item
+                session.refresh(managed)
+            return managed
         except Exception as e:
             print(f"[DepartmentService][edit_one][ERROR] {e}")
             raise

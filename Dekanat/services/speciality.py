@@ -37,10 +37,10 @@ class SpecialityService:
     def edit_one(self, item: SpecialityModel) -> SpecialityModel:
         try:
             with rx.session() as session:
-                SpecialityDao.edit_one(item, session)
+                managed = SpecialityDao.edit_one(item, session)
                 session.commit()
-                session.refresh(item)
-            return item
+                session.refresh(managed)
+            return managed
         except Exception as e:
             print(f"[SpecialityService][edit_one][ERROR] {e}")
             raise

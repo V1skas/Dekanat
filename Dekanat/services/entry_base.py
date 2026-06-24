@@ -37,10 +37,10 @@ class EntryBaseService:
     def edit_one(self, item: EntryBaseModel) -> EntryBaseModel:
         try:
             with rx.session() as session:
-                EntryBaseDao.edit_one(item, session)
+                managed = EntryBaseDao.edit_one(item, session)
                 session.commit()
-                session.refresh(item)
-            return item
+                session.refresh(managed)
+            return managed
         except Exception as e:
             print(f"[EntryBaseService][edit_one][ERROR] {e}")
             raise

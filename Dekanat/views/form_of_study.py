@@ -1,0 +1,127 @@
+import reflex as rx
+
+from Dekanat import routes
+from Dekanat.actions import Actions
+from Dekanat.states.form_of_study import ListFormOfStudyState, AddFormOfStudyState, EditFormOfStudyState, ViewFormOfStudyState
+from Dekanat.models import FormOfStudyModel
+
+from Dekanat.views.templates.layouts import page_wrapper, header_subpage
+from Dekanat.views.templates import controls
+from Dekanat.views.auth import require_login
+
+
+def table_row(item: FormOfStudyModel) -> rx.Component:
+    return rx.table.row(
+        rx.table.row_header_cell(
+            rx.link(item.title, href=f"{routes.FORM_OF_STUDY_VIEW}{item.id}"),
+            align="left"
+        ),
+        rx.table.cell(item.prefix),
+    )
+
+def table() -> rx.Component:
+    return rx.table.root(
+        rx.table.header(
+            rx.table.row(
+                rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Префікс", color=rx.color("accent", 2)),
+            ),
+            background_color=rx.color("accent", 9),
+        ),
+        rx.table.body(
+            rx.foreach(ListFormOfStudyState.items, table_row),
+            height="100%",
+            width="100%"
+        ),
+        variant="surface",
+        height="100%",
+        width="100%"
+    )
+
+def list_page_content() -> rx.Component:
+    return rx.vstack(
+        rx.cond((ListFormOfStudyState.items.is_not_none() & (ListFormOfStudyState.items.length() > 0)),
+                table(),
+                controls.empty_placeholder()),
+    )
+
+def view_page_content() -> rx.Component:
+    return rx.vstack(
+        rx.heading(ViewFormOfStudyState.title),
+        rx.hstack(rx.text("Префікс:", weight="bold"), rx.text(ViewFormOfStudyState.prefix)),
+        height="100%",
+        width="100%"
+    )
+
+def add_page_content() -> rx.Component:
+    return rx.vstack(
+        rx.text("*Назва"),
+        rx.input(id="title", required=True, value=AddFormOfStudyState.title, on_change=AddFormOfStudyState.set_title, width="100%"),
+        rx.text("Префікс"),
+        rx.input(id="prefix", value=AddFormOfStudyState.prefix, on_change=AddFormOfStudyState.set_prefix, width="100%"),
+        align="stretch",
+        spacing="3",
+        width="100%",
+    )
+
+def edit_page_content() -> rx.Component:
+    return rx.vstack(
+        rx.text("*Назва"),
+        rx.input(id="title", required=True, value=EditFormOfStudyState.title, on_change=EditFormOfStudyState.set_title, width="100%"),
+        rx.text("Префікс"),
+        rx.input(id="prefix", value=EditFormOfStudyState.prefix, on_change=EditFormOfStudyState.set_prefix, width="100%"),
+        align="stretch",
+        spacing="3",
+        width="100%",
+    )
+
+@require_login
+def list_page() -> rx.Component:
+    return page_wrapper(
+        header_subpage(
+            "Список",
+            rx.cond(ListFormOfStudyState.get_user_actions.contains(Actions.FORM_OF_STUDY_ADD),
+                    controls.button_image_primary(name_icon="plus", on_click=ListFormOfStudyState.on_click_add)),
+            width="100%"
+        ),
+        rx.skeleton(list_page_content(), loading=ListFormOfStudyState.in_progress, height="100%")
+    )
+
+@require_login
+def view_page() -> rx.Component:
+    return page_wrapper(
+        header_subpage(
+            "Перегляд",
+            rx.cond(ViewFormOfStudyState.get_user_actions.contains(Actions.FORM_OF_STUDY_DELETE),
+                    controls.delete_with_confirm(on_confirm=ViewFormOfStudyState.on_click_delete)),
+            rx.cond(ViewFormOfStudyState.get_user_actions.contains(Actions.FORM_OF_STUDY_EDIT),
+                    controls.button_image_primary(name_icon="pencil_line", on_click=ViewFormOfStudyState.on_click_edit)),
+            left=controls.button_back(routes.FORM_OF_STUDY_LIST),
+            width="100%"
+        ),
+        rx.skeleton(view_page_content(), loading=ViewFormOfStudyState.in_process, height="100%")
+    )
+
+@require_login
+def add_page() -> rx.Component:
+    return page_wrapper(
+        header_subpage(
+            "Додавання",
+            controls.button_image_secondary(name_icon="circle_x", on_click=AddFormOfStudyState.on_cancel),
+            controls.button_image_primary(name_icon="save", on_click=AddFormOfStudyState.on_save),
+            width="100%"
+        ),
+        add_page_content()
+    )
+
+@require_login
+def edit_page() -> rx.Component:
+    return page_wrapper(
+        header_subpage(
+            "Редагування",
+            controls.button_image_secondary(name_icon="circle_x", on_click=EditFormOfStudyState.on_cancel),
+            controls.button_image_primary(name_icon="save", on_click=EditFormOfStudyState.on_save),
+            width="100%"
+        ),
+        rx.skeleton(edit_page_content(), loading=EditFormOfStudyState.in_process, height="100%")
+    )

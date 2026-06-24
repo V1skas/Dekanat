@@ -310,6 +310,66 @@ def _spec_section() -> rx.Component:
     )
 
 
+def _labeled_count_table(data_var, head_label: str) -> rx.Component:
+    return rx.cond(
+        data_var.length() > 0,
+        rx.table.root(
+            rx.table.header(
+                rx.table.row(
+                    rx.table.column_header_cell(head_label, color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Кількість", color=rx.color("accent", 2)),
+                ),
+                background_color=rx.color("accent", 9),
+            ),
+            rx.table.body(rx.foreach(data_var, _spec_count_row)),
+            variant="surface",
+            width="100%",
+        ),
+        rx.text("Немає даних", color="gray", size="2"),
+    )
+
+
+def _pie_with_labeled_list(data_var, head_label: str) -> rx.Component:
+    return rx.vstack(
+        _pie_chart(data_var),
+        _labeled_count_table(data_var, head_label),
+        spacing="3",
+        align="stretch",
+        width="100%",
+    )
+
+
+def _dk26_section() -> rx.Component:
+    """Розділи DK-26: розподіл по базах вступу та формах навчання, а також
+    загальні підсумки по специальностях (з розрізненням бази/форми) і по відділеннях."""
+    return rx.vstack(
+        rx.hstack(
+            _chart_block(
+                "За базою вступу",
+                _pie_with_labeled_list(ListAdmissionReportState.by_entry_base_primary, "База вступу"),
+            ),
+            _chart_block(
+                "За формою навчання",
+                _pie_with_labeled_list(ListAdmissionReportState.by_form_primary, "Форма навчання"),
+            ),
+            spacing="3",
+            wrap="wrap",
+            width="100%",
+        ),
+        _chart_block(
+            "Всього по специальностям (з урахуванням бази та форми)",
+            _pie_with_labeled_list(ListAdmissionReportState.totals_by_spec_primary, "Спеціальність"),
+        ),
+        _chart_block(
+            "Всього по відділеннях",
+            _pie_with_labeled_list(ListAdmissionReportState.totals_by_department_primary, "Відділення"),
+        ),
+        spacing="3",
+        align="stretch",
+        width="100%",
+    )
+
+
 def _period_pill(label: str, is_active, on_click) -> rx.Component:
     """Один сегмент перемикача періоду: primary якщо активний, secondary інакше."""
     return rx.cond(
@@ -361,6 +421,7 @@ def _report_body() -> rx.Component:
         ),
         _chart_block_dyn(_main_chart_title(), _main_chart()),
         _spec_section(),
+        _dk26_section(),
         spacing="4",
         align="stretch",
         width="100%",

@@ -467,6 +467,7 @@ def _v_sp_row(item: SpecialtieEntrantModel) -> rx.Component:
         rx.table.cell(item.priority),
         rx.table.cell(rx.cond(item.speciality, item.speciality.code, "—")),
         rx.table.cell(rx.cond(item.speciality, item.speciality.title, "—")),
+        rx.table.cell(rx.cond(item.form_of_study, item.form_of_study.title, "—")),
     )
 
 
@@ -479,6 +480,7 @@ def _v_sp_table() -> rx.Component:
                     rx.table.column_header_cell("Пріоритет", color=rx.color("accent", 2)),
                     rx.table.column_header_cell("Код", color=rx.color("accent", 2)),
                     rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Форма навчання", color=rx.color("accent", 2)),
                 ),
                 background_color=rx.color("accent", 9),
             ),
@@ -925,6 +927,7 @@ def _f_sp_row(item, idx: int) -> rx.Component:
     return rx.table.row(
         rx.table.cell(item.priority),
         rx.table.cell(EntrantFormState.speciality_labels[item.id_speciality_code + "|" + item.id_speciality_department.to_string()]),
+        rx.table.cell(EntrantFormState.form_labels[item.id_form_of_study.to_string()]),
         _action_cell(
             EntrantFormState.open_sp_edit(idx),
             EntrantFormState.delete_sp(idx),
@@ -943,7 +946,7 @@ def _f_sp_section() -> rx.Component:
         rx.cond(
             EntrantFormState.specialties.length() > 0,
             rx.table.root(
-                _sub_table_header("Пріоритет", "Спеціальність", "Дії"),
+                _sub_table_header("Пріоритет", "Спеціальність", "Форма навчання", "Дії"),
                 rx.table.body(rx.foreach(EntrantFormState.specialties, _f_sp_row)),
                 variant="surface",
                 width="100%",
@@ -1144,8 +1147,24 @@ def _dlg_sp() -> rx.Component:
         rx.dialog.content(
             rx.dialog.title("Спеціальність (пріоритет)"),
             rx.vstack(
+                rx.text("*Форма навчання:"),
+                _select(
+                    EntrantFormState.sp_form_options,
+                    EntrantFormState.sp_id_form_of_study_str,
+                    EntrantFormState.set_sp_id_form_of_study,
+                    placeholder="Спочатку оберіть базу вступу",
+                    disabled=EntrantFormState.id_entry_base == 0,
+                    width="100%",
+                ),
                 rx.text("*Спеціальність:"),
-                _select(EntrantFormState.speciality_options, EntrantFormState.sp_combined, EntrantFormState.set_sp_combined, width="100%"),
+                _select(
+                    EntrantFormState.sp_speciality_options,
+                    EntrantFormState.sp_combined,
+                    EntrantFormState.set_sp_combined,
+                    placeholder="Спочатку оберіть форму навчання",
+                    disabled=EntrantFormState.sp_id_form_of_study == 0,
+                    width="100%",
+                ),
                 rx.text("*Пріоритет:"),
                 rx.input(type="number", value=EntrantFormState.sp_priority.to_string(), on_change=EntrantFormState.set_sp_priority, width="100%"),
                 _dialog_buttons(EntrantFormState.save_sp, EntrantFormState.close_sp),

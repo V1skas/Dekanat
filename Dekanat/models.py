@@ -126,6 +126,20 @@ class EntryBaseModel(rx.Model, table=True):
     # Table columns
     id: int = Field(primary_key=True)
     title: str
+    # Префікс додається до назви екзаменаційної групи при автоформуванні (DK-26).
+    prefix: str = Field(default="")
+    is_deleted: bool = False
+
+
+@rx.ModelRegistry.register
+class FormOfStudyModel(rx.Model, table=True):
+    __tablename__ = "forms_of_study"
+
+    # Table columns
+    id: int = Field(primary_key=True)
+    title: str
+    # Префікс додається до назви екзаменаційної групи при автоформуванні (DK-26).
+    prefix: str = Field(default="")
     is_deleted: bool = False
 
 
@@ -158,11 +172,17 @@ class AdmissionCampaignSpecialityModel(rx.Model, table=True):
     id_admission_campaign: int = Field(primary_key=True, foreign_key="admission_campaigns.id")
     id_speciality_code: str = Field(primary_key=True)
     id_speciality_department: int = Field(primary_key=True)
+    # База вступу та форма навчання входять до ключа квоти: для однієї спеціальності
+    # може існувати кілька квот з різними базою/формою (DK-26).
+    id_entry_base: int = Field(primary_key=True, foreign_key="entry_base.id")
+    id_form_of_study: int = Field(primary_key=True, foreign_key="forms_of_study.id")
     budget_places: int = Field(default=0)
     contract_places: int = Field(default=0)
 
     # Relationships
     speciality: Optional['SpecialityModel'] = Relationship()
+    entry_base: Optional['EntryBaseModel'] = Relationship()
+    form_of_study: Optional['FormOfStudyModel'] = Relationship()
 
 
 @rx.ModelRegistry.register
@@ -404,11 +424,15 @@ class SpecialtieEntrantModel(rx.Model, table=True):
     id_entrant: int = Field(primary_key=True, foreign_key="entrants.id")
     id_speciality_code: str = Field(primary_key=True)
     id_speciality_department: int = Field(primary_key=True)
+    # Форма навчання входить до ключа: абітурієнт може подати ту саму спеціальність
+    # з різними формами навчання, але не двічі з однаковою (обов'язкова, DK-26).
+    id_form_of_study: int = Field(primary_key=True, foreign_key="forms_of_study.id")
     priority: int
 
     # Relationships
     # entrant: Optional['EntrantModel'] = Relationship(back_populates="specialties")
     speciality: Optional['SpecialityModel'] = Relationship()
+    form_of_study: Optional['FormOfStudyModel'] = Relationship()
 
 
 @rx.ModelRegistry.register
@@ -553,6 +577,9 @@ class RatingEntryModel(rx.Model, table=True):
     id_snapshot: int = Field(foreign_key="rating_snapshots.id", nullable=False)
     id_speciality_code: str = Field(nullable=False)
     id_speciality_department: int = Field(nullable=False)
+    # Квота рейтингу — за кортежем (спеціальність, база вступу, форма навчання) (DK-26).
+    id_entry_base: int = Field(default=0, nullable=False)
+    id_form_of_study: int = Field(default=0, nullable=False)
     id_entrant: int = Field(foreign_key="entrants.id", nullable=False)
     position: int = Field(nullable=False)
     total_points: int = Field(default=0, nullable=False)

@@ -25,5 +25,6 @@ class SourceOfFundingDao:
 
     @staticmethod
     def edit_one(item: SourceOfFundingModel, session: Session):
-        item = session.merge(item)
-        session.add(item)
+        merged = session.merge(item)
+        session.add(merged)
+        return merged

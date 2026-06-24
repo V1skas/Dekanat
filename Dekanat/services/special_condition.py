@@ -37,10 +37,10 @@ class SpecialConditionService:
     def edit_one(self, item: SpecialConditionModel) -> SpecialConditionModel:
         try:
             with rx.session() as session:
-                SpecialConditionDao.edit_one(item, session)
+                managed = SpecialConditionDao.edit_one(item, session)
                 session.commit()
-                session.refresh(item)
-            return item
+                session.refresh(managed)
+            return managed
         except Exception as e:
             print(f"[SpecialConditionService][edit_one][ERROR] {e}")
             raise

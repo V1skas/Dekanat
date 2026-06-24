@@ -41,6 +41,7 @@ def _entrant_loaders():
         selectinload(EntrantModel.application_status),
         selectinload(EntrantModel.entrant_group),
         selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.speciality),
+        selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.form_of_study),
         selectinload(EntrantModel.person).selectinload(PersonModel.source_of_funding),
         selectinload(EntrantModel.person).selectinload(PersonModel.entry_base),
         selectinload(EntrantModel.person).selectinload(PersonModel.identity_document).selectinload(IdentityDocumentModel.type),

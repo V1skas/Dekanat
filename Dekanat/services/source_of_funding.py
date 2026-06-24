@@ -37,10 +37,10 @@ class SourceOfFundingService:
     def edit_one(self, item: SourceOfFundingModel) -> SourceOfFundingModel:
         try:
             with rx.session() as session:
-                SourceOfFundingDao.edit_one(item, session)
+                managed = SourceOfFundingDao.edit_one(item, session)
                 session.commit()
-                session.refresh(item)
-            return item
+                session.refresh(managed)
+            return managed
         except Exception as e:
             print(f"[SourceOfFundingService][edit_one][ERROR] {e}")
             raise

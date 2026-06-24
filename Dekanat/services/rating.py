@@ -89,7 +89,9 @@ class RatingService:
                     ).all()
                 }
 
-                # Підготовка даних по кожному абітурієнту
+                # Підготовка даних по кожному абітурієнту. Квота визначається кортежем
+                # (спеціальність, база вступу, форма навчання): база береться з особи,
+                # форма — з конкретного запису пріоритету (DK-26).
                 entrant_info: Dict[int, Dict] = {}
                 for ent in entrants:
                     if ent.person is None:
@@ -100,22 +102,26 @@ class RatingService:
                         for sc in (ent.person.special_conditions or [])
                     )
                     spec_keys = [
-                        (s.id_speciality_code, s.id_speciality_department)
+                        (s.id_speciality_code, s.id_speciality_department, s.id_form_of_study)
                         for s in (ent.specialties or [])
                     ]
                     entrant_info[ent.id] = {
                         "id": ent.id,
                         "total": total,
                         "kvota": has_kvota,
+                        "base": ent.person.id_entry_base,
                         "specs": spec_keys,
                     }
 
-                # Будуємо рейтинг для кожної спеціальності з квот кампанії
+                # Будуємо рейтинг для кожної квоти кампанії (спеціальність+база+форма)
                 entries: List[RatingEntryModel] = []
                 for q in quotas:
-                    key = (q.id_speciality_code, q.id_speciality_department)
                     applicants = [
-                        info for info in entrant_info.values() if key in info["specs"]
+                        info
+                        for info in entrant_info.values()
+                        if info["base"] == q.id_entry_base
+                        and (q.id_speciality_code, q.id_speciality_department, q.id_form_of_study)
+                        in info["specs"]
                     ]
                     # Кандидати з квотою — нагору; в межах груп сортування за балом desc
                     kvotas = sorted(
@@ -130,47 +136,31 @@ class RatingService:
                     )
                     ordered = kvotas + others
 
-                    budget_seats = q.budget_places or 0
-                    contract_seats = q.contract_places or 0
-                    budget_filled = 0
-
                     for pos, info in enumerate(ordered, start=1):
-                        if info["kvota"]:
-                            status = STATUS_KVOTA
-                            budget_filled += 1
-                        elif budget_filled < budget_seats:
-                            status = STATUS_BUDGET
-                            budget_filled += 1
-                        elif (
-                            budget_filled - budget_seats < contract_seats
-                            if budget_filled >= budget_seats
-                            else False
-                        ):
-                            # not used branch; рівноцінно простішому лічильнику нижче
-                            status = STATUS_CONTRACT
-                        else:
-                            status = ""  # вирішимо нижче
-
                         entries.append(
                             RatingEntryModel(
                                 id_snapshot=0,  # set later
                                 id_speciality_code=q.id_speciality_code,
                                 id_speciality_department=q.id_speciality_department,
+                                id_entry_base=q.id_entry_base,
+                                id_form_of_study=q.id_form_of_study,
                                 id_entrant=info["id"],
                                 position=pos,
                                 total_points=info["total"],
-                                status=status,
+                                status=STATUS_KVOTA if info["kvota"] else "",
                             )
                         )
 
-                # Простіше визначити статус не-квота-абітурієнтів за лічильниками
-                # (перепишемо statuses, що ще не виставлені)
-                # Для цього групуємо вже сформовані entries за спеціальністю
-                by_spec: Dict[Tuple[str, int], List[RatingEntryModel]] = {}
+                # Виставляємо статуси не-квота-абітурієнтам за лічильниками місць.
+                # Групуємо вже сформовані entries за кортежем квоти (спеціальність+база+форма).
+                by_spec: Dict[Tuple[str, int, int, int], List[RatingEntryModel]] = {}
                 for e in entries:
-                    by_spec.setdefault((e.id_speciality_code, e.id_speciality_department), []).append(e)
+                    by_spec.setdefault(
+                        (e.id_speciality_code, e.id_speciality_department, e.id_entry_base, e.id_form_of_study),
+                        [],
+                    ).append(e)
                 for q in quotas:
-                    key = (q.id_speciality_code, q.id_speciality_department)
+                    key = (q.id_speciality_code, q.id_speciality_department, q.id_entry_base, q.id_form_of_study)
                     spec_entries = by_spec.get(key, [])
                     budget_left = q.budget_places or 0
                     contract_left = q.contract_places or 0

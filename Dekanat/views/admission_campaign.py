@@ -86,6 +86,8 @@ def _view_quota_row(item: AdmissionCampaignSpecialityModel) -> rx.Component:
             ),
             align="left",
         ),
+        rx.table.cell(rx.cond(item.entry_base, item.entry_base.title, "—")),
+        rx.table.cell(rx.cond(item.form_of_study, item.form_of_study.title, "—")),
         rx.table.cell(item.budget_places),
         rx.table.cell(item.contract_places),
         rx.table.cell(item.budget_places + item.contract_places),
@@ -98,7 +100,7 @@ def _view_quotas_section() -> rx.Component:
         rx.cond(
             ViewAdmissionCampaignState.quotas.length() > 0,
             rx.table.root(
-                _quotas_header("Спеціальність", "Бюджет", "Контракт", "Всього"),
+                _quotas_header("Спеціальність", "База вступу", "Форма навчання", "Бюджет", "Контракт", "Всього"),
                 rx.table.body(rx.foreach(ViewAdmissionCampaignState.quotas, _view_quota_row)),
                 variant="surface",
                 width="100%",
@@ -145,6 +147,8 @@ def _form_quota_row_factory(form_state):
                 ],
                 align="left",
             ),
+            rx.table.cell(form_state.entry_base_labels[item.id_entry_base.to_string()]),
+            rx.table.cell(form_state.form_labels[item.id_form_of_study.to_string()]),
             rx.table.cell(item.budget_places),
             rx.table.cell(item.contract_places),
             rx.table.cell(item.budget_places + item.contract_places),
@@ -177,7 +181,7 @@ def _form_quotas_section(form_state) -> rx.Component:
         rx.cond(
             form_state.quotas.length() > 0,
             rx.table.root(
-                _quotas_header("Спеціальність", "Бюджет", "Контракт", "Всього", "Дії"),
+                _quotas_header("Спеціальність", "База вступу", "Форма навчання", "Бюджет", "Контракт", "Всього", "Дії"),
                 rx.table.body(rx.foreach(form_state.quotas, _form_quota_row_factory(form_state))),
                 variant="surface",
                 width="100%",
@@ -217,6 +221,26 @@ def _quota_dialog(form_state) -> rx.Component:
             rx.vstack(
                 rx.text("*Спеціальність:"),
                 speciality_field,
+                rx.text("*База вступу:"),
+                rx.select.root(
+                    rx.select.trigger(placeholder="Оберіть базу вступу"),
+                    rx.select.content(
+                        rx.foreach(form_state.entry_base_options, _select_item),
+                    ),
+                    value=form_state.q_id_entry_base_str,
+                    on_change=form_state.set_q_id_entry_base,
+                    width="100%",
+                ),
+                rx.text("*Форма навчання:"),
+                rx.select.root(
+                    rx.select.trigger(placeholder="Оберіть форму навчання"),
+                    rx.select.content(
+                        rx.foreach(form_state.form_of_study_options, _select_item),
+                    ),
+                    value=form_state.q_id_form_of_study_str,
+                    on_change=form_state.set_q_id_form_of_study,
+                    width="100%",
+                ),
                 rx.text("*Бюджетних місць:"),
                 rx.input(
                     type="number",

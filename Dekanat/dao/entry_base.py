@@ -24,6 +24,9 @@ class EntryBaseDao:
         session.add(item)
 
     @staticmethod
-    def edit_one(item: EntryBaseModel, session: Session):
-        item = session.merge(item)
-        session.add(item)
+    def edit_one(item: EntryBaseModel, session: Session) -> EntryBaseModel:
+        # merge повертає НОВИЙ persistent-екземпляр; саме його треба використовувати
+        # далі (commit/refresh), бо переданий `item` лишається detached.
+        merged = session.merge(item)
+        session.add(merged)
+        return merged

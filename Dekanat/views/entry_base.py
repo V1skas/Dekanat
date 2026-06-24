@@ -16,6 +16,7 @@ def table_row(item: EntryBaseModel) -> rx.Component:
             rx.link(item.title, href=f"{routes.ENTRY_BASE_VIEW}{item.id}"),
             align="left"
         ),
+        rx.table.cell(item.prefix),
     )
 
 def table() -> rx.Component:
@@ -23,6 +24,7 @@ def table() -> rx.Component:
         rx.table.header(
             rx.table.row(
                 rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Префікс", color=rx.color("accent", 2)),
             ),
             background_color=rx.color("accent", 9),
         ),
@@ -46,6 +48,7 @@ def list_page_content() -> rx.Component:
 def view_page_content() -> rx.Component:
     return rx.vstack(
         rx.heading(ViewEntryBaseState.title),
+        rx.hstack(rx.text("Префікс:", weight="bold"), rx.text(ViewEntryBaseState.prefix)),
         height="100%",
         width="100%"
     )
@@ -54,6 +57,8 @@ def add_page_content() -> rx.Component:
     return rx.vstack(
         rx.text("*Назва"),
         rx.input(id="title", required=True, value=AddEntryBaseState.title, on_change=AddEntryBaseState.set_title, width="100%"),
+        rx.text("Префікс"),
+        rx.input(id="prefix", value=AddEntryBaseState.prefix, on_change=AddEntryBaseState.set_prefix, width="100%"),
         align="stretch",
         spacing="3",
         width="100%",
@@ -63,6 +68,8 @@ def edit_page_content() -> rx.Component:
     return rx.vstack(
         rx.text("*Назва"),
         rx.input(id="title", required=True, value=EditEntryBaseState.title, on_change=EditEntryBaseState.set_title, width="100%"),
+        rx.text("Префікс"),
+        rx.input(id="prefix", value=EditEntryBaseState.prefix, on_change=EditEntryBaseState.set_prefix, width="100%"),
         align="stretch",
         spacing="3",
         width="100%",

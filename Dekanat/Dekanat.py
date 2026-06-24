@@ -20,6 +20,7 @@ from Dekanat.views import entrant
 from Dekanat.views import entrant_exam
 from Dekanat.views import entrants_group
 from Dekanat.views import entry_base
+from Dekanat.views import form_of_study
 from Dekanat.views import identity_document_type
 from Dekanat.views import item_zno
 from Dekanat.views import kinship
@@ -40,6 +41,7 @@ from Dekanat.states import entrant as entrant_states
 from Dekanat.states import entrant_exam as entrant_exam_states
 from Dekanat.states import entrants_group as entrants_group_states
 from Dekanat.states import entry_base as entry_base_states
+from Dekanat.states import form_of_study as form_of_study_states
 from Dekanat.states import identity_document_type as identity_document_type_states
 from Dekanat.states import item_zno as item_zno_states
 from Dekanat.states import kinship as kinship_states
@@ -125,6 +127,11 @@ app.add_page(entry_base.list_page, route=routes.ENTRY_BASE_LIST, on_load=entry_b
 app.add_page(entry_base.add_page, route=routes.ENTRY_BASE_ADD, on_load=entry_base_states.AddEntryBaseState.on_load)
 app.add_page(entry_base.edit_page, route=routes.ENTRY_BASE_EDIT+"[id]", on_load=entry_base_states.EditEntryBaseState.on_load)
 app.add_page(entry_base.view_page, route=routes.ENTRY_BASE_VIEW+"[id]", on_load=entry_base_states.ViewEntryBaseState.on_load)
+
+app.add_page(form_of_study.list_page, route=routes.FORM_OF_STUDY_LIST, on_load=form_of_study_states.ListFormOfStudyState.on_load)
+app.add_page(form_of_study.add_page, route=routes.FORM_OF_STUDY_ADD, on_load=form_of_study_states.AddFormOfStudyState.on_load)
+app.add_page(form_of_study.edit_page, route=routes.FORM_OF_STUDY_EDIT+"[id]", on_load=form_of_study_states.EditFormOfStudyState.on_load)
+app.add_page(form_of_study.view_page, route=routes.FORM_OF_STUDY_VIEW+"[id]", on_load=form_of_study_states.ViewFormOfStudyState.on_load)
 
 app.add_page(entrant_exam.list_page, route=routes.ENTRANT_EXAM_LIST, on_load=entrant_exam_states.ListEntrantExamState.on_load)
 app.add_page(entrant_exam.add_page, route=routes.ENTRANT_EXAM_ADD, on_load=entrant_exam_states.AddEntrantExamState.on_load)

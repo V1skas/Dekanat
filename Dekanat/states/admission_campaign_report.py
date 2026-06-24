@@ -314,3 +314,29 @@ class ListAdmissionReportState(AppState):
     @rx.var
     def spec_any_compare(self) -> List[Dict]:
         return self._spec_bucket(self.compare_payload, "by_spec_any")
+
+    # --- нові зрізи DK-26 (по обраному періоду) ---
+
+    @rx.var
+    def by_entry_base_primary(self) -> List[Dict]:
+        return self._spec_bucket(self.primary_payload, "by_entry_base")
+
+    @rx.var
+    def by_entry_base_compare(self) -> List[Dict]:
+        return self._spec_bucket(self.compare_payload, "by_entry_base")
+
+    @rx.var
+    def by_form_primary(self) -> List[Dict]:
+        return self._spec_bucket(self.primary_payload, "by_form")
+
+    @rx.var
+    def by_form_compare(self) -> List[Dict]:
+        return self._spec_bucket(self.compare_payload, "by_form")
+
+    @rx.var
+    def totals_by_spec_primary(self) -> List[Dict]:
+        return self._spec_bucket(self.primary_payload, "totals_by_spec")
+
+    @rx.var
+    def totals_by_department_primary(self) -> List[Dict]:
+        return self._spec_bucket(self.primary_payload, "totals_by_department")

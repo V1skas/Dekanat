@@ -22,6 +22,7 @@ from Dekanat.models import (
 from Dekanat.services.entrant import EntrantService, photo_to_data_url
 from Dekanat.services.source_of_funding import SourceOfFundingService
 from Dekanat.services.entry_base import EntryBaseService
+from Dekanat.services.form_of_study import FormOfStudyService
 from Dekanat.services.application_status import ApplicationStatusService
 from Dekanat.services.entrants_group import EntrantsGroupService
 from Dekanat.services.speciality import SpecialityService
@@ -224,11 +225,16 @@ class ListEntrantState(AppState):
         active = AdmissionCampaignService().get_active_campaign()
         if active is not None and active.id is not None:
             quotas = AdmissionCampaignSpecialityService().get_by_campaign(active.id)
+            seen_keys: set = set()
             for q in quotas:
                 if q.speciality is None:
                     continue
+                key = f"{q.id_speciality_code}|{q.id_speciality_department}"
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
                 opts.append({
-                    "value": f"{q.id_speciality_code}|{q.id_speciality_department}",
+                    "value": key,
                     "label": f"{q.speciality.code} {q.speciality.title}",
                 })
         if len(opts) == 1:
@@ -427,9 +433,12 @@ class EntrantFormState(AppState):
     entry_base_options: List[Dict[str, str]] = []
     application_status_options: List[Dict[str, str]] = []
     entrant_group_options: List[Dict[str, str]] = []
-    # speciality_options — лише ті спеціальності, що входять до квот активної кампанії
-    # (для select'а у діалозі додавання пріоритету).
-    speciality_options: List[Dict[str, str]] = []
+    # campaign_quota_rows — рядки квот активної кампанії: spec_key|base_id|form_id.
+    # На їх основі обчислюються speciality_options (фільтр за базою вступу абітурієнта)
+    # та sp_form_options (форми, доступні для обраної спеціальності+бази) — DK-26.
+    campaign_quota_rows: List[Dict[str, str]] = []
+    # form_of_study_options — повний довідник форм навчання (для лейблів у таблиці).
+    form_of_study_options: List[Dict[str, str]] = []
     # all_speciality_options — повний довідник спеціальностей; використовується для
     # відображення назв у таблиці вже збережених пріоритетів абітурієнта (у т.ч. тих,
     # що могли бути додані в минулих кампаніях і вже не входять до активної).
@@ -502,6 +511,7 @@ class EntrantFormState(AppState):
     sp_open: bool = False
     sp_index: int = -1
     sp_combined: str = ""  # "code|id_department"
+    sp_id_form_of_study: int = 0
     sp_priority: int = 1
 
     # ---- ZNO result dialog ----
@@ -530,20 +540,23 @@ class EntrantFormState(AppState):
         self.all_speciality_options = [
             {"value": k, "label": v} for k, v in sp_by_key.items()
         ]
-        # Фільтр спеціальностей у діалозі — лише ті, що входять до квот активної кампанії.
+        # Форми навчання — повний довідник (для лейблів і select'ів).
+        self.form_of_study_options = [
+            {"value": str(f.id), "label": f.title} for f in FormOfStudyService().get_list_items()
+        ]
+        # Квоти активної кампанії — основа фільтрації спеціальностей за базою вступу
+        # та підбору форм навчання для обраної спеціальності (DK-26).
         active_campaign = AdmissionCampaignService().get_active_campaign()
+        rows: List[Dict[str, str]] = []
         if active_campaign is not None and active_campaign.id is not None:
             quotas = AdmissionCampaignSpecialityService().get_by_campaign(active_campaign.id)
-            allowed_keys = [
-                f"{q.id_speciality_code}|{q.id_speciality_department}" for q in quotas
-            ]
-            self.speciality_options = [
-                {"value": k, "label": sp_by_key[k]}
-                for k in allowed_keys
-                if k in sp_by_key
-            ]
-        else:
-            self.speciality_options = []
+            for q in quotas:
+                rows.append({
+                    "spec_key": f"{q.id_speciality_code}|{q.id_speciality_department}",
+                    "base_id": str(q.id_entry_base),
+                    "form_id": str(q.id_form_of_study),
+                })
+        self.campaign_quota_rows = rows
         idt = IdentityDocumentTypeService().get_list_items()
         self.identity_document_type_options = [{"value": str(t.id), "label": t.title} for t in idt]
         ks = KinshipService().get_list_items()
@@ -677,6 +690,10 @@ class EntrantFormState(AppState):
             self.id_entry_base = int(value) if value else 0
         except (ValueError, TypeError):
             self.id_entry_base = 0
+        # Зміна бази вступу може зробити обрану спеціальність/форму недоступною — скидаємо
+        # незбережений вибір у діалозі пріоритету (DK-26).
+        self.sp_combined = ""
+        self.sp_id_form_of_study = 0
 
     @rx.var
     def id_application_status_str(self) -> str:
@@ -936,6 +953,51 @@ class EntrantFormState(AppState):
         # Завжди повний довідник — щоб уже збережені пріоритети відображались навіть якщо
         # відповідна спеціальність більше не входить до квот поточної кампанії.
         return {opt["value"]: opt["label"] for opt in self.all_speciality_options}
+
+    @rx.var
+    def form_labels(self) -> Dict[str, str]:
+        return {opt["value"]: opt["label"] for opt in self.form_of_study_options}
+
+    @rx.var
+    def sp_form_options(self) -> List[Dict[str, str]]:
+        """Форми навчання, доступні для бази вступу абітурієнта (з квот активної
+        кампанії). Обираються ПЕРШИМИ у діалозі. Поки база не обрана — порожньо (DK-26)."""
+        if not self.id_entry_base:
+            return []
+        base = str(self.id_entry_base)
+        form_map = {opt["value"]: opt["label"] for opt in self.form_of_study_options}
+        seen: set = set()
+        result: List[Dict[str, str]] = []
+        for row in self.campaign_quota_rows:
+            if row["base_id"] != base:
+                continue
+            fid = row["form_id"]
+            if fid in seen:
+                continue
+            seen.add(fid)
+            result.append({"value": fid, "label": form_map.get(fid, fid)})
+        return result
+
+    @rx.var
+    def sp_speciality_options(self) -> List[Dict[str, str]]:
+        """Спеціальності, доступні для (база вступу + обрана форма навчання). Поки
+        форма не обрана — порожньо (поле спеціальності неактивне) — DK-26."""
+        if not self.id_entry_base or not self.sp_id_form_of_study:
+            return []
+        base = str(self.id_entry_base)
+        form = str(self.sp_id_form_of_study)
+        label_map = {opt["value"]: opt["label"] for opt in self.all_speciality_options}
+        seen: set = set()
+        result: List[Dict[str, str]] = []
+        for row in self.campaign_quota_rows:
+            if row["base_id"] != base or row["form_id"] != form:
+                continue
+            key = row["spec_key"]
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append({"value": key, "label": label_map.get(key, key)})
+        return result
 
     # ============================================================
     # Identity document dialog
@@ -1355,6 +1417,7 @@ class EntrantFormState(AppState):
     def _reset_sp_dialog(self):
         self.sp_index = -1
         self.sp_combined = ""
+        self.sp_id_form_of_study = 0
         self.sp_priority = 1
 
     @rx.event
@@ -1371,6 +1434,7 @@ class EntrantFormState(AppState):
         item = self.specialties[index]
         self.sp_index = index
         self.sp_combined = f"{item.id_speciality_code}|{item.id_speciality_department}"
+        self.sp_id_form_of_study = item.id_form_of_study or 0
         self.sp_priority = item.priority or 1
         self.sp_open = True
 
@@ -1382,6 +1446,20 @@ class EntrantFormState(AppState):
     @rx.event
     def set_sp_combined(self, value: str):
         self.sp_combined = value
+
+    @rx.var
+    def sp_id_form_of_study_str(self) -> str:
+        return str(self.sp_id_form_of_study) if self.sp_id_form_of_study else ""
+
+    @rx.event
+    def set_sp_id_form_of_study(self, value: str):
+        try:
+            self.sp_id_form_of_study = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.sp_id_form_of_study = 0
+        # Форма обирається першою; зміна форми скидає спеціальність — набір доступних
+        # спеціальностей залежить від форми (DK-26).
+        self.sp_combined = ""
 
     @rx.event
     def set_sp_priority(self, value: str):
@@ -1402,14 +1480,30 @@ class EntrantFormState(AppState):
         except Exception:
             yield rx.toast.warning("Некоректна спеціальність!")
             return
+        if not self.sp_id_form_of_study:
+            yield rx.toast.warning("Оберіть форму навчання!")
+            return
         if self.sp_priority < 1:
             yield rx.toast.warning("Пріоритет має бути додатнім!")
             return
+
+        # Дозволяємо ту саму спеціальність з різними формами навчання, але не двічі
+        # з однаковою формою (це порушило б ключ specialties_entrants) — DK-26.
+        for i, sp in enumerate(self.specialties):
+            if (
+                sp.id_speciality_code == id_speciality_code
+                and sp.id_speciality_department == id_speciality_department
+                and sp.id_form_of_study == self.sp_id_form_of_study
+                and i != self.sp_index
+            ):
+                yield rx.toast.warning("Цю спеціальність з обраною формою навчання вже додано!")
+                return
 
         item = SpecialtieEntrantModel(
             id_entrant=self.entrant_id if self.entrant_id > 0 else 0,
             id_speciality_code=id_speciality_code,
             id_speciality_department=id_speciality_department,
+            id_form_of_study=self.sp_id_form_of_study,
             priority=self.sp_priority,
         )
         if 0 <= self.sp_index < len(self.specialties):
@@ -1602,6 +1696,9 @@ class EntrantFormState(AppState):
                 )
                 yield rx.toast.success("Запис додано!")
                 yield rx.redirect(routes.ENTRANT_VIEW + str(saved.id))
+        except ValueError as e:
+            # Бекенд-валідація (наприклад, недоступна спеціальність) — показуємо текст.
+            yield rx.toast.error(str(e))
         except Exception:
             yield rx.toast.error("Під час виконання запиту трапилась помилка. Спробуйте ще раз.")
 

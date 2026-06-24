@@ -25,5 +25,6 @@ class DepartmentDao:
 
     @staticmethod
     def edit_one(item: DepartmentModel, session: Session):
-        item = session.merge(item)
-        session.add(item)
+        merged = session.merge(item)
+        session.add(merged)
+        return merged
