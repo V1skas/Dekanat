@@ -287,8 +287,10 @@ def _v_iddoc_row(item: IdentityDocumentModel) -> rx.Component:
         rx.table.cell(rx.cond(item.type, item.type.title, "—")),
         rx.table.cell(rx.cond(item.series, item.series, "—") + " " + item.number),
         rx.table.cell(rx.cond(item.code, item.code, "—")),
+        rx.table.cell(rx.cond(item.unzr, item.unzr, "—")),
         rx.table.cell(item.issued_by),
         rx.table.cell(item.date_of_issue),
+        rx.table.cell(rx.cond(item.date_of_expiry, item.date_of_expiry, "—")),
     )
 
 
@@ -301,8 +303,10 @@ def _v_iddoc_table() -> rx.Component:
                     rx.table.column_header_cell("Тип", color=rx.color("accent", 2)),
                     rx.table.column_header_cell("Серія та номер", color=rx.color("accent", 2)),
                     rx.table.column_header_cell("Код", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("УНЗР", color=rx.color("accent", 2)),
                     rx.table.column_header_cell("Ким видано", color=rx.color("accent", 2)),
                     rx.table.column_header_cell("Дата видачі", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Дійсний до", color=rx.color("accent", 2)),
                 ),
                 background_color=rx.color("accent", 9),
             ),
@@ -715,8 +719,10 @@ def _f_iddoc_row(item, idx: int) -> rx.Component:
         rx.table.cell(EntrantFormState.identity_document_type_titles[item.id_type.to_string()]),
         rx.table.cell(rx.cond(item.series, item.series, "—") + " " + item.number),
         rx.table.cell(rx.cond(item.code, item.code, "—")),
+        rx.table.cell(rx.cond(item.unzr, item.unzr, "—")),
         rx.table.cell(item.issued_by),
         rx.table.cell(item.date_of_issue),
+        rx.table.cell(rx.cond(item.date_of_expiry, item.date_of_expiry, "—")),
         _action_cell(
             EntrantFormState.open_iddoc_edit(idx),
             EntrantFormState.delete_iddoc(idx),
@@ -735,7 +741,7 @@ def _f_iddoc_section() -> rx.Component:
         rx.cond(
             EntrantFormState.identity_documents.length() > 0,
             rx.table.root(
-                _sub_table_header("Тип", "Серія/номер", "Код", "Ким видано", "Дата видачі", "Дії"),
+                _sub_table_header("Тип", "Серія/номер", "Код", "УНЗР", "Ким видано", "Дата видачі", "Дійсний до", "Дії"),
                 rx.table.body(
                     rx.foreach(EntrantFormState.identity_documents, _f_iddoc_row),
                 ),
@@ -1015,10 +1021,28 @@ def _dlg_iddoc() -> rx.Component:
                 rx.input(value=EntrantFormState.iddoc_series, on_change=EntrantFormState.set_iddoc_series, width="100%"),
                 rx.text("Код:"),
                 rx.input(value=EntrantFormState.iddoc_code, on_change=EntrantFormState.set_iddoc_code, width="100%"),
+                rx.text("УНЗР:"),
+                rx.input(value=EntrantFormState.iddoc_unzr, on_change=EntrantFormState.set_iddoc_unzr, width="100%"),
                 rx.text("*Ким видано:"),
                 rx.input(value=EntrantFormState.iddoc_issued_by, on_change=EntrantFormState.set_iddoc_issued_by, width="100%"),
-                rx.text("*Дата видачі:"),
-                rx.input(type="date", value=EntrantFormState.iddoc_date_of_issue, on_change=EntrantFormState.set_iddoc_date_of_issue, width="100%"),
+                rx.hstack(
+                    rx.vstack(
+                        rx.text("*Дата видачі:"),
+                        rx.input(type="date", value=EntrantFormState.iddoc_date_of_issue, on_change=EntrantFormState.set_iddoc_date_of_issue, width="100%"),
+                        spacing="1",
+                        align="stretch",
+                        width="100%",
+                    ),
+                    rx.vstack(
+                        rx.text("Дійсний до:"),
+                        rx.input(type="date", value=EntrantFormState.iddoc_date_of_expiry, on_change=EntrantFormState.set_iddoc_date_of_expiry, width="100%"),
+                        spacing="1",
+                        align="stretch",
+                        width="100%",
+                    ),
+                    spacing="2",
+                    width="100%",
+                ),
                 _dialog_buttons(EntrantFormState.save_iddoc, EntrantFormState.close_iddoc),
                 spacing="2",
                 align="stretch",

@@ -371,6 +371,9 @@ class IdentityDocumentModel(rx.Model, table=True):
     number: str = Field(primary_key=True)
     series: str = Field(nullable=True)
     code: str = Field(nullable=True)
+    # УНЗР та дата закінчення строку дії — необов'язкові (DK-33).
+    unzr: Optional[str] = Field(default=None, nullable=True)
+    date_of_expiry: Optional[str] = Field(default=None, nullable=True)
     issued_by: str
     date_of_issue: str
     id_person: int = Field(foreign_key="persons.id")

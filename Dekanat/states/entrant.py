@@ -465,8 +465,10 @@ class EntrantFormState(AppState):
     iddoc_number: str = ""
     iddoc_series: str = ""
     iddoc_code: str = ""
+    iddoc_unzr: str = ""
     iddoc_issued_by: str = ""
     iddoc_date_of_issue: str = ""
+    iddoc_date_of_expiry: str = ""
 
     # ---- Document about education dialog ----
     docedu_open: bool = False
@@ -785,12 +787,20 @@ class EntrantFormState(AppState):
         self.iddoc_code = value
 
     @rx.event
+    def set_iddoc_unzr(self, value: str):
+        self.iddoc_unzr = value
+
+    @rx.event
     def set_iddoc_issued_by(self, value: str):
         self.iddoc_issued_by = value
 
     @rx.event
     def set_iddoc_date_of_issue(self, value: str):
         self.iddoc_date_of_issue = value
+
+    @rx.event
+    def set_iddoc_date_of_expiry(self, value: str):
+        self.iddoc_date_of_expiry = value
 
     @rx.event
     def set_iddoc_open(self, value: bool):
@@ -1009,8 +1019,10 @@ class EntrantFormState(AppState):
         self.iddoc_number = ""
         self.iddoc_series = ""
         self.iddoc_code = ""
+        self.iddoc_unzr = ""
         self.iddoc_issued_by = ""
         self.iddoc_date_of_issue = ""
+        self.iddoc_date_of_expiry = ""
 
     @rx.event
     def open_iddoc_add(self):
@@ -1027,8 +1039,10 @@ class EntrantFormState(AppState):
         self.iddoc_number = item.number or ""
         self.iddoc_series = item.series or ""
         self.iddoc_code = item.code or ""
+        self.iddoc_unzr = item.unzr or ""
         self.iddoc_issued_by = item.issued_by or ""
         self.iddoc_date_of_issue = item.date_of_issue or ""
+        self.iddoc_date_of_expiry = item.date_of_expiry or ""
         self.iddoc_open = True
 
     @rx.event
@@ -1066,8 +1080,10 @@ class EntrantFormState(AppState):
             number=self.iddoc_number.strip(),
             series=self.iddoc_series.strip() or None,  # type: ignore[arg-type]
             code=self.iddoc_code.strip() or None,  # type: ignore[arg-type]
+            unzr=self.iddoc_unzr.strip() or None,
             issued_by=self.iddoc_issued_by.strip(),
             date_of_issue=self.iddoc_date_of_issue,
+            date_of_expiry=self.iddoc_date_of_expiry or None,
             id_person=self.entrant_id if self.entrant_id > 0 else 0,
             id_type=self.iddoc_id_type,
         )
