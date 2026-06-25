@@ -64,6 +64,13 @@ app = rx.App(
 app.extra_app_wraps[15, "AppShell"] = app_shell_wrap
 app.extra_app_wraps[10, "ContentArea"] = content_area_wrap
 
+# Коренева сторінка "/" — одразу редіректить на /dashboard (DK-31). Авторизацію
+# далі бере на себе сам dashboard через @require_login.
+app.add_page(
+    rx.center(rx.spinner(size="3"), height="100vh"),
+    route="/",
+    on_load=rx.redirect(routes.DASHBOARD),
+)
 app.add_page(login_page, route=routes.LOGIN, on_load=AuthState.on_load)
 app.add_page(dashboard.dashboard_page, route=routes.DASHBOARD)
 app.add_page(dashboard.base_dashboard_page, route=routes.DASHBOARD_BASE)

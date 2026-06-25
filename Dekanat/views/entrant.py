@@ -527,7 +527,7 @@ def view_page_content() -> rx.Component:
                 rx.tabs.trigger("Паспортні дані", value="tab2"),
                 rx.tabs.trigger("Документи про освіту", value="tab3"),
                 rx.tabs.trigger("Спеціальні умови", value="tab4"),
-                rx.tabs.trigger("Родичі", value="tab5"),
+                rx.tabs.trigger("Контактні особи", value="tab5"),
                 rx.tabs.trigger("Медичні довідки", value="tab6"),
                 rx.tabs.trigger("Військовий облік", value="tab7"),
                 rx.tabs.trigger("Спеціальності", value="tab8"),
@@ -869,7 +869,7 @@ def _f_rel_row(item, idx: int) -> rx.Component:
 def _f_rel_section() -> rx.Component:
     return rx.vstack(
         rx.hstack(
-            rx.heading("Родичі", size="3"),
+            rx.heading("Контактні особи", size="3"),
             rx.spacer(),
             controls.button_image_primary(name_icon="plus", on_click=EntrantFormState.open_rel_add),
             width="100%",
@@ -1099,7 +1099,7 @@ def _dlg_med() -> rx.Component:
 def _dlg_rel() -> rx.Component:
     return rx.dialog.root(
         rx.dialog.content(
-            rx.dialog.title("Родич"),
+            rx.dialog.title("Контактна особа"),
             rx.vstack(
                 rx.text("*Тип родинного зв'язку:"),
                 _select(EntrantFormState.kinship_options, EntrantFormState.rel_id_kinship_str, EntrantFormState.set_rel_id_kinship, width="100%"),
@@ -1203,7 +1203,7 @@ def _form_content() -> rx.Component:
             rx.tabs.trigger("Паспортні дані", value="tab2"),
             rx.tabs.trigger("Документи про освіту", value="tab3"),
             rx.tabs.trigger("Спеціальні умови", value="tab4"),
-            rx.tabs.trigger("Родичі", value="tab5"),
+            rx.tabs.trigger("Контактні особи", value="tab5"),
             rx.tabs.trigger("Медичні довідки", value="tab6"),
             rx.tabs.trigger("Військовий облік", value="tab7"),
             rx.tabs.trigger("Спеціальності", value="tab8"),
