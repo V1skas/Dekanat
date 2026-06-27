@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13.12"
 dependencies = [
     "aiosqlite>=0.22.1",
+    "docxtpl>=0.20.2",
     "reflex==0.8.28.post1",
 ]
 
