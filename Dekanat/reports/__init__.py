@@ -22,9 +22,12 @@ from typing import Dict, Type
 
 from Dekanat.reports.base import BaseReport
 from Dekanat.reports.engine import render_docx, TEMPLATES_DIR
+from Dekanat.reports.rating import RatingReport, RatingApplicant
 
-# Реєстр «ключ з UI → клас звіту». Поки порожній — звіти підключаються пізніше.
-REPORTS: Dict[str, Type[BaseReport]] = {}
+# Реєстр «ключ з UI → клас звіту».
+REPORTS: Dict[str, Type[BaseReport]] = {
+    "rating": RatingReport,
+}
 
 
 def get_report_class(key: str) -> Type[BaseReport]:
@@ -43,4 +46,6 @@ __all__ = [
     "TEMPLATES_DIR",
     "REPORTS",
     "get_report_class",
+    "RatingReport",
+    "RatingApplicant",
 ]

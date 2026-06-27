@@ -26,6 +26,7 @@ def _spec_key(code: str, dept: int) -> str:
 class ListRatingState(AppState):
     in_progress: bool = True
     generating: bool = False
+    downloading: bool = False
 
     campaigns: List[AdmissionCampaignModel] = []
     selected_campaign_id: int = 0
@@ -257,3 +258,94 @@ class ListRatingState(AppState):
             yield rx.toast.error("Під час формування рейтингу сталася помилка. Спробуйте ще раз.")
         finally:
             self.generating = False
+
+    @rx.event
+    def on_click_download_group(self, group_key: str):
+        """Завантажити DOCX одного потоку (спеціальність+база+форма)."""
+        if not self.has_permission(Actions.RATING_DOCX):
+            yield rx.toast.error("У Вас немає дозволу на завантаження рейтингу!")
+            return
+        parts = group_key.split("|")
+        if len(parts) != 4 or not self.selected_campaign_id:
+            yield rx.toast.error("Не вдалося визначити потік для завантаження.")
+            return
+        spec_key = f"{parts[0]}|{parts[1]}"
+        base_key, form_key = parts[2], parts[3]
+
+        self.downloading = True
+        yield
+        try:
+            from Dekanat.reports import RatingReport
+
+            payloads, _ = RatingService().get_documents_payload(
+                self.selected_campaign_id, spec_key, base_key, form_key
+            )
+            if not payloads:
+                yield rx.toast.warning("Немає даних для формування документа.")
+                return
+            report = RatingReport(**payloads[0])
+            yield rx.download(data=report.render_bytes(), filename=report.filename)
+        except Exception:
+            yield rx.toast.error("Під час формування документа сталася помилка. Спробуйте ще раз.")
+        finally:
+            self.downloading = False
+
+    def _build_current_download(self):
+        """Формує DOCX по всіх потоках поточної вибірки (з урахуванням фільтрів).
+        Один потік → окремий .docx, декілька → zip (по файлу на потік).
+        Повертає event `rx.download` або None, якщо даних немає."""
+        from Dekanat.reports import RatingReport
+
+        payloads, _ = RatingService().get_documents_payload(
+            self.selected_campaign_id,
+            self.selected_spec_key,
+            self.selected_base_key,
+            self.selected_form_key,
+        )
+        if not payloads:
+            return None
+        if len(payloads) == 1:
+            report = RatingReport(**payloads[0])
+            return rx.download(data=report.render_bytes(), filename=report.filename)
+
+        import io
+        import zipfile
+
+        buf = io.BytesIO()
+        counts: Dict[str, int] = {}
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for p in payloads:
+                report = RatingReport(**p)
+                base_name = report.filename
+                n = counts.get(base_name, 0)
+                counts[base_name] = n + 1
+                # Захист від однакових імен потоків у межах архіву.
+                name = base_name if n == 0 else f"{report.file_stem} ({n + 1}).docx"
+                zf.writestr(name, report.render_bytes())
+        buf.seek(0)
+        return rx.download(data=buf.getvalue(), filename="rating_list.zip")
+
+    @rx.event
+    def on_click_download_all(self):
+        """Масове завантаження: по файлу на кожен потік поточної вибірки.
+        Один потік — окремий .docx, декілька — zip-архів."""
+        if not self.has_permission(Actions.RATING_DOCX):
+            yield rx.toast.error("У Вас немає дозволу на завантаження рейтингу!")
+            return
+        if not self.selected_campaign_id:
+            yield rx.toast.warning("Оберіть вступну кампанію!")
+            return
+
+        self.downloading = True
+        yield
+        try:
+            event = self._build_current_download()
+            if event is None:
+                yield rx.toast.warning("Немає сформованого рейтингу для завантаження.")
+                return
+            yield event
+        except Exception:
+            yield rx.toast.error("Під час формування документів сталася помилка. Спробуйте ще раз.")
+        finally:
+            self.downloading = False
+

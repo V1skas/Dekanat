@@ -27,6 +27,9 @@ dist/
 *.sqlite
 *.csv
 
+# macOS
+.DS_Store
+
 # Разное
 .idea/
 *.swp

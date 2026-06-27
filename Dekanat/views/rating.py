@@ -64,7 +64,19 @@ def _rating_row(item: Dict[str, str]) -> rx.Component:
 
 def _group_table(group: RatingGroup) -> rx.Component:
     return rx.vstack(
-        rx.heading(group.spec_label, size="4"),
+        rx.hstack(
+            rx.heading(group.spec_label, size="4"),
+            rx.spacer(),
+            rx.cond(
+                ListRatingState.get_user_actions.contains(Actions.RATING_DOCX),
+                controls.button_image_secondary(
+                    name_icon="file-down",
+                    on_click=ListRatingState.on_click_download_group(group.spec_key),
+                ),
+            ),
+            width="100%",
+            align="center",
+        ),
         rx.table.root(
             rx.table.header(
                 rx.table.row(
@@ -145,6 +157,20 @@ def _generate_button() -> rx.Component:
     )
 
 
+def _download_all_button() -> rx.Component:
+    # Завантаження доступне лише коли є що завантажувати (рейтинг сформовано).
+    return rx.cond(
+        ListRatingState.get_user_actions.contains(Actions.RATING_DOCX)
+        & (ListRatingState.groups.length() > 0),
+        controls.button_secondary(
+            rx.icon("file-down", size=18),
+            "Завантажити DOCX",
+            on_click=ListRatingState.on_click_download_all,
+            loading=ListRatingState.downloading,
+        ),
+    )
+
+
 def _filters_grid() -> rx.Component:
     """Поля фільтрів у сітці 2×2."""
     return rx.grid(
@@ -194,7 +220,9 @@ def _controls_panel_expanded() -> rx.Component:
         rx.hstack(
             _generated_text(),
             rx.spacer(),
+            _download_all_button(),
             _generate_button(),
+            spacing="3",
             width="100%",
             align="center",
             wrap="wrap",

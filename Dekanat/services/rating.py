@@ -196,3 +196,150 @@ class RatingService:
         except Exception as e:
             print(f"[RatingService][generate][ERROR] {e}")
             raise
+
+    def get_documents_payload(
+        self,
+        id_campaign: int,
+        spec_key: str = "__all__",
+        base_key: str = "__all__",
+        form_key: str = "__all__",
+    ) -> Tuple[List[Dict], Optional[str]]:
+        """Збирає дані для DOCX-рейтингу по кожному потоку (спеціальність+база+форма)
+        з останнього знімка кампанії. Один елемент списку = один потік = один файл.
+
+        Фільтри `spec_key`/`base_key`/`form_key` ("__all__" — без фільтра) дозволяють
+        обмежити вибірку (наприклад, для завантаження одного потоку). Повертає
+        `(payloads, generated_at_iso)`; кожен payload готовий до `RatingReport(**p)`.
+        """
+        try:
+            with rx.session() as session:
+                campaign = session.get(AdmissionCampaignModel, id_campaign)
+                if campaign is None:
+                    raise ValueError(f"Кампанію #{id_campaign} не знайдено")
+
+                snapshot = RatingDao.get_latest_for_campaign(id_campaign, session)
+                if snapshot is None:
+                    return [], None
+                entries = list(RatingDao.get_entries(snapshot.id, session))
+                if not entries:
+                    return [], snapshot.generated_at.isoformat()
+
+                # Рік кампанії у вигляді двох цифр — як у назві групи (DK-24).
+                try:
+                    yy = f"{int(campaign.start_date[:4]) % 100:02d}"
+                except (ValueError, TypeError):
+                    yy = ""
+
+                # Квоти кампанії: місця + довідники (tag спеціальності, префікси).
+                quotas = session.exec(
+                    select(AdmissionCampaignSpecialityModel)
+                    .options(
+                        selectinload(AdmissionCampaignSpecialityModel.speciality),
+                        selectinload(AdmissionCampaignSpecialityModel.entry_base),
+                        selectinload(AdmissionCampaignSpecialityModel.form_of_study),
+                    )
+                    .where(AdmissionCampaignSpecialityModel.id_admission_campaign == id_campaign)
+                ).all()
+                quota_map = {
+                    (q.id_speciality_code, q.id_speciality_department, q.id_entry_base, q.id_form_of_study): q
+                    for q in quotas
+                }
+
+                # Оцінки по іспитах: results_zno для всіх осіб знімка (person.id == entrant.id).
+                entrant_ids = [e.id_entrant for e in entries]
+                grades_by_person: Dict[int, Dict[int, int]] = {}
+                item_titles: Dict[int, str] = {}
+                if entrant_ids:
+                    results = session.exec(
+                        select(ResultZnoModel)
+                        .options(selectinload(ResultZnoModel.item_zno))
+                        .where(ResultZnoModel.id_person.in_(entrant_ids))  # type: ignore[attr-defined]
+                    ).all()
+                    for r in results:
+                        grades_by_person.setdefault(r.id_person, {})[r.id_items_zno] = r.points
+                        if r.item_zno is not None:
+                            item_titles[r.id_items_zno] = r.item_zno.title
+
+                # Групуємо записи знімка за потоком (спеціальність+база+форма),
+                # зберігаючи порядок появи.
+                groups: Dict[Tuple[str, int, int, int], List[RatingEntryModel]] = {}
+                order: List[Tuple[str, int, int, int]] = []
+                for e in entries:
+                    key = (e.id_speciality_code, e.id_speciality_department, e.id_entry_base, e.id_form_of_study)
+                    if key not in groups:
+                        groups[key] = []
+                        order.append(key)
+                    groups[key].append(e)
+
+                payloads: List[Dict] = []
+                for key in order:
+                    code, dept, base_id, form_id = key
+                    spec_only = f"{code}|{dept}"
+                    if spec_key != "__all__" and spec_only != spec_key:
+                        continue
+                    if base_key != "__all__" and str(base_id) != base_key:
+                        continue
+                    if form_key != "__all__" and str(form_id) != form_key:
+                        continue
+
+                    group_entries = groups[key]
+                    q = quota_map.get(key)
+                    spec = q.speciality if q is not None else group_entries[0].speciality
+                    base = q.entry_base if q is not None else None
+                    form = q.form_of_study if q is not None else None
+
+                    # Колонки іспитів — об'єднання предметів, за якими є оцінки у цьому
+                    # потоці, впорядковане за id предмета (стабільний порядок колонок).
+                    item_ids = set()
+                    for e in group_entries:
+                        item_ids.update(grades_by_person.get(e.id_entrant, {}).keys())
+                    ordered_items = sorted(item_ids)
+                    exams = [item_titles.get(i, f"#{i}") for i in ordered_items]
+
+                    budget_places = q.budget_places if q is not None else 0
+                    contract_places = q.contract_places if q is not None else 0
+
+                    applicants: List[Dict] = []
+                    for e in sorted(group_entries, key=lambda x: x.position):
+                        pgrades = grades_by_person.get(e.id_entrant, {})
+                        grades = [pgrades.get(i, 0) for i in ordered_items]
+                        pib = (
+                            e.entrant.person.pib
+                            if e.entrant is not None and e.entrant.person is not None and e.entrant.person.pib
+                            else f"#{e.id_entrant}"
+                        )
+                        applicants.append(
+                            {
+                                "pib": pib,
+                                "grades": grades,
+                                # Квота проходить на бюджет → budget=True; контракт окремо.
+                                "budget": e.status in (STATUS_BUDGET, STATUS_KVOTA),
+                                "contract": e.status == STATUS_CONTRACT,
+                            }
+                        )
+
+                    base_prefix = base.prefix if base is not None else ""
+                    form_prefix = form.prefix if form is not None else ""
+                    tag = spec.tag if spec is not None else code
+                    file_stem = f"{tag}-{yy}{base_prefix}{form_prefix}"
+
+                    spec_title = f"{spec.code} {spec.title}" if spec is not None else code
+                    base_title = base.title if base is not None else "—"
+
+                    payloads.append(
+                        {
+                            "file_stem": file_stem,
+                            "specialty": spec_title,
+                            "admission_base": base_title,
+                            "budget_places": budget_places,
+                            "total_places": budget_places + contract_places,
+                            "report_date": snapshot.generated_at.date(),
+                            "exams": exams,
+                            "applicants": applicants,
+                        }
+                    )
+
+                return payloads, snapshot.generated_at.isoformat()
+        except Exception as e:
+            print(f"[RatingService][get_documents_payload][ERROR] {e}")
+            raise
