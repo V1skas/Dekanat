@@ -424,6 +424,7 @@ class EditEntrantsGroupState(AppState):
 class ViewEntrantsGroupState(AppState):
     item: EntrantGroupModel = EntrantGroupModel()
     in_process: bool = True
+    downloading: bool = False
 
     entrants_in_group: List[EntrantModel] = []
     exams: List[EntrantExamModel] = []
@@ -477,6 +478,57 @@ class ViewEntrantsGroupState(AppState):
         if self.item is None or self.item.id is None:
             return rx.toast.warning("Запис не завантажено.")
         return rx.redirect(f"{routes.ENTRANTS_GROUP_PRINT}?ids={self.item.id}")
+
+    @rx.event
+    def on_click_sheet(self, kind: str):
+        """Сформувати екзаменаційну відомість групи у XLSX і віддати на
+        завантаження (DK-29). kind: 'vidomist' | 'vykladacham' | 'telefony'.
+        Перевірка права — і на сервері (back-end)."""
+        if not self.has_permission(Actions.ENTRANTS_GROUP_SHEETS):
+            yield rx.toast.error("У Вас немає дозволу на формування відомостей!")
+            return
+        if self.item is None or self.item.id is None:
+            yield rx.toast.warning("Групу не завантажено.")
+            return
+
+        self.downloading = True
+        yield
+        try:
+            from datetime import date
+            from Dekanat.reports import (
+                ExamApplicant,
+                VidomistReport,
+                VykladachamReport,
+                TelefonyReport,
+            )
+
+            payload = EntrantsGroupService().get_exam_sheet_payload(self.item.id)
+            applicants = [ExamApplicant(**a) for a in payload["applicants"]]
+            if not applicants:
+                yield rx.toast.warning("У групі немає абітурієнтів.")
+                return
+
+            if kind == "vidomist":
+                report = VidomistReport(
+                    specialty=payload["specialty"],
+                    subject=payload["subject"],
+                    report_date=date.today(),
+                    applicants=applicants,
+                )
+            elif kind == "vykladacham":
+                report = VykladachamReport(applicants=applicants)
+            elif kind == "telefony":
+                report = TelefonyReport(applicants=applicants)
+            else:
+                yield rx.toast.error("Невідомий тип відомості.")
+                return
+
+            filename = f"{payload['group_title']}_{report.file_basename}.xlsx"
+            yield rx.download(data=report.render_bytes(), filename=filename)
+        except Exception:
+            yield rx.toast.error("Під час формування відомості сталася помилка. Спробуйте ще раз.")
+        finally:
+            self.downloading = False
 
     @rx.event
     def on_click_delete(self):

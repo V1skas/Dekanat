@@ -1,13 +1,16 @@
-"""Тонкий рушій рендерингу DOCX за шаблоном (DK-27).
+"""Тонкий рушій рендерингу документів за шаблоном (DK-27, DK-29).
 
-Знає тільки про `docxtpl`, директорію шаблонів, формат виводу та спільні
-Jinja-фільтри (гроші, дати). НЕ знає нічого про конкретні звіти — stateless.
-Бізнес-логіку та схему даних тримають класи-звіти у `reports/base.py` і далі.
+`render_docx` (поверх `docxtpl`) та `render_xlsx` (поверх `xlsxtpl`) — обидва
+повертають `BytesIO` і ділять спільні Jinja-фільтри (гроші, дати, оцінки).
+Знає лише про директорію шаблонів і фільтри — stateless. Бізнес-логіку та схему
+даних тримають класи-звіти у `reports/base.py`, `reports/rating.py`,
+`reports/xlsx_reports.py`.
 
 Шар навмисно не залежить від Reflex: повертаємо `BytesIO`, а вже state-шар
 загортає байти у `rx.download(...)`.
 """
 
+import math
 from io import BytesIO
 from pathlib import Path
 from datetime import date, datetime
@@ -16,8 +19,11 @@ from typing import Any
 
 from docxtpl import DocxTemplate
 from jinja2 import Environment, StrictUndefined
+from xlsxtpl.writerx import BookWriter
+from openpyxl import load_workbook as _load_xlsx
+from openpyxl.utils import get_column_letter as _col_letter
 
-# Усі шаблони лежать поряд, у `reports/templates/*.docx`.
+# Усі шаблони лежать поряд, у `reports/templates/` (.docx та .xlsx).
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
@@ -136,4 +142,93 @@ def render_docx(template_name: str, context: dict) -> BytesIO:
         return buffer
     except Exception as e:
         print(f"[reports.engine][render_docx][ERROR] {template_name}: {e}")
+        raise
+
+
+# Параметри авто-підбору висоти рядків (для клітинок з переносом слів).
+_DEFAULT_COL_WIDTH = 8.43   # дефолтна ширина стовпця openpyxl, у «символах»
+_LINE_HEIGHT_PT = 15.0      # висота одного рядка тексту у пунктах (шрифт ~11pt)
+
+
+def _autofit_row_heights(ws) -> None:
+    """Підганяє висоту рядків під вміст клітинок із `wrap_text` (включно з
+    об'єднаними) — Excel сам не рахує висоту для merged-клітинок. Оцінка: явні
+    переноси `\\n` + орієнтовне перенесення за шириною стовпця(ів)."""
+    # Однорядкові горизонтальні merge: (рядок, перший стовпець) -> останній стовпець.
+    h_merges = {
+        (m.min_row, m.min_col): m.max_col
+        for m in ws.merged_cells.ranges
+        if m.min_row == m.max_row
+    }
+    for row in ws.iter_rows():
+        max_lines = 1
+        has_wrap = False
+        for cell in row:
+            val = cell.value
+            if not isinstance(val, str) or not val:
+                continue
+            al = cell.alignment
+            if al is None or not al.wrap_text:
+                continue
+            has_wrap = True
+            col_max = h_merges.get((cell.row, cell.column), cell.column)
+            width = 0.0
+            for ci in range(cell.column, col_max + 1):
+                w = ws.column_dimensions[_col_letter(ci)].width
+                width += w if w else _DEFAULT_COL_WIDTH
+            chars = max(1, int(width))
+            lines = 0
+            for seg in val.split("\n"):
+                lines += max(1, math.ceil(len(seg.rstrip("\r")) / chars))
+            max_lines = max(max_lines, lines)
+        if has_wrap and max_lines > 1:
+            needed = max_lines * _LINE_HEIGHT_PT
+            rd = ws.row_dimensions[row[0].row]
+            if rd.height is None or rd.height < needed:
+                rd.height = needed
+
+
+def render_xlsx(template_name: str, context: dict) -> BytesIO:
+    """Відрендерити xlsx-шаблон `template_name` з `context` → `BytesIO` (.xlsx).
+
+    Поверх `xlsxtpl` (BookWriter/xltpl): Jinja2 прямо в клітинках, таблиця росте
+    за даними, підвал зі своїми merge/стилями зсувається вниз сам. Кожен шаблон —
+    одна сторінка, тож `render_book` отримує список з одного payload'а.
+
+    Ті самі Jinja-фільтри, що й для docx (`date_uk`, `grade`, `money`, ...), —
+    реєструються через `add_filter`. Кидає `FileNotFoundError`, якщо шаблону немає.
+
+    Після рендеру висота рядків підганяється під вміст клітинок із переносом слів
+    (`_autofit_row_heights`) — окремим проходом через openpyxl, бо merged-клітинки
+    Excel сам не авто-підганяє.
+
+    Особливість xlsx-рушія: директиви циклу (`for`/`endfor`) живуть у коментарях
+    клітинок шаблону, а не у значеннях (закладено у самих шаблонах, DK-29).
+    """
+    path = TEMPLATES_DIR / template_name
+    if not path.exists():
+        raise FileNotFoundError(f"Шаблон не знайдено: {template_name}")
+    try:
+        writer = BookWriter(str(path))
+        env = _jinja_env()
+        for name, fn in env.filters.items():
+            # Переносимо лише наші кастомні фільтри (вбудовані xltpl має свої).
+            if name in ("date_uk", "grade", "money", "date", "datetime"):
+                writer.add_filter(name, fn)
+        writer.render_book([context])
+
+        rendered = BytesIO()
+        writer.save(rendered)
+        rendered.seek(0)
+
+        # Пост-обробка: авто-висота рядків під wrap_text-клітинки.
+        wb = _load_xlsx(rendered)
+        for ws in wb.worksheets:
+            _autofit_row_heights(ws)
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        return buffer
+    except Exception as e:
+        print(f"[reports.engine][render_xlsx][ERROR] {template_name}: {e}")
         raise

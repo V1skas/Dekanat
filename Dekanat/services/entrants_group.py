@@ -15,6 +15,7 @@ from Dekanat.models import (
     PersonModel,
     SpecialtieEntrantModel,
     SpecialityModel,
+    InformationAboutRelativesModel,
 )
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 
@@ -324,4 +325,85 @@ class EntrantsGroupService:
                 return EntrantsGroupDao.get_exams_by_group(group_id, session)
         except Exception as e:
             print(f"[EntrantsGroupService][get_exams][ERROR] {e}")
+            raise
+
+    def get_exam_sheet_payload(self, group_id: int) -> Dict:
+        """Збирає дані для екзаменаційних відомостей по групі (DK-29).
+
+        Повертає `{group_title, specialty, subject, applicants}`, де applicants —
+        список `{name, phone, relatives}`. specialty береться з пріоритетної
+        специальності абітурієнтів групи (вони з однієї специальності), subject —
+        з предметів запланованих іспитів групи. Один запит за абітурієнтами
+        (з особою, родичами, специальностями) і один — за іспитами.
+        """
+        try:
+            with rx.session() as session:
+                group = session.get(EntrantGroupModel, group_id)
+                if group is None:
+                    raise ValueError(f"Групу #{group_id} не знайдено")
+
+                entrants = list(session.exec(
+                    select(EntrantModel)
+                    .options(
+                        selectinload(EntrantModel.person)
+                        .selectinload(PersonModel.information_about_relatives)
+                        .selectinload(InformationAboutRelativesModel.kinship),
+                        selectinload(EntrantModel.specialties)
+                        .selectinload(SpecialtieEntrantModel.speciality),
+                    )
+                    .where(EntrantModel.id_entrant_group == group_id)
+                    .where(EntrantModel.is_deleted == False)
+                ).all())
+
+                # Предмети (форма контролю) — з запланованих іспитів групи.
+                exams = session.exec(
+                    select(EntrantExamModel)
+                    .options(selectinload(EntrantExamModel.item_zno))
+                    .where(EntrantExamModel.id_group == group_id)
+                    .where(EntrantExamModel.is_deleted == False)
+                ).all()
+                subjects: List[str] = []
+                for ex in exams:
+                    t = ex.item_zno.title if ex.item_zno is not None else None
+                    if t and t not in subjects:
+                        subjects.append(t)
+                subject = ", ".join(subjects)
+
+                specialty = ""
+                applicants: List[Dict] = []
+                for e in entrants:
+                    p = e.person
+                    pib = p.pib if p is not None and p.pib else f"#{e.id}"
+                    phone = p.phone_number if p is not None and p.phone_number else ""
+                    rel_parts: List[str] = []
+                    for r in (p.information_about_relatives or []) if p is not None else []:
+                        label = r.pib or ""
+                        kin = r.kinship.title if r.kinship is not None else ""
+                        if kin:
+                            label = f"{label} ({kin})"
+                        if r.phone_number:
+                            label = f"{label} — {r.phone_number}"
+                        if label.strip():
+                            rel_parts.append(label)
+                    applicants.append({
+                        "name": pib,
+                        "phone": phone,
+                        "relatives": "\n".join(rel_parts),
+                    })
+                    if not specialty:
+                        top = next((s for s in (e.specialties or []) if s.priority == 1), None)
+                        if top is None and e.specialties:
+                            top = e.specialties[0]
+                        if top is not None and top.speciality is not None:
+                            specialty = f"{top.speciality.code} {top.speciality.title}"
+
+                applicants.sort(key=lambda a: a["name"].lower())
+                return {
+                    "group_title": group.title or f"#{group_id}",
+                    "specialty": specialty,
+                    "subject": subject,
+                    "applicants": applicants,
+                }
+        except Exception as e:
+            print(f"[EntrantsGroupService][get_exam_sheet_payload][ERROR] {e}")
             raise

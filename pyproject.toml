@@ -9,6 +9,7 @@ dependencies = [
     "docxtpl>=0.20.2",
     "pymysql[rsa]>=1.2.0",
     "reflex==0.8.28.post1",
+    "xlsxtpl>=0.3.1",
 ]
 
 [dependency-groups]

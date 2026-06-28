@@ -655,6 +655,26 @@ def view_page() -> rx.Component:
     return page_wrapper(
         header_subpage(
             "Перегляд",
+            rx.cond(
+                ViewEntrantsGroupState.get_user_actions.contains(Actions.ENTRANTS_GROUP_SHEETS),
+                rx.fragment(
+                    controls.button_secondary(
+                        rx.icon("file-spreadsheet", size=18), "Відомість",
+                        on_click=ViewEntrantsGroupState.on_click_sheet("vidomist"),
+                        loading=ViewEntrantsGroupState.downloading,
+                    ),
+                    controls.button_secondary(
+                        rx.icon("file-spreadsheet", size=18), "Викладачі",
+                        on_click=ViewEntrantsGroupState.on_click_sheet("vykladacham"),
+                        loading=ViewEntrantsGroupState.downloading,
+                    ),
+                    controls.button_secondary(
+                        rx.icon("file-spreadsheet", size=18), "Телефони",
+                        on_click=ViewEntrantsGroupState.on_click_sheet("telefony"),
+                        loading=ViewEntrantsGroupState.downloading,
+                    ),
+                ),
+            ),
             controls.button_image_secondary(name_icon="printer", on_click=ViewEntrantsGroupState.on_click_print),
             rx.cond(ViewEntrantsGroupState.get_user_actions.contains(Actions.ENTRANTS_GROUP_DELETE),
                     controls.delete_with_confirm(on_confirm=ViewEntrantsGroupState.on_click_delete)),
