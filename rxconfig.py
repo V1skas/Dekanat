@@ -14,6 +14,7 @@ config = rx.Config(
     # у відповідних State-класах — це дозволяє наочно знати, які поля «прив'язані»
     # до інпутів, і не плодити мовчазні сетери на кожне поле state.
     state_auto_setters=False,
+    show_built_with_reflex=False,
     plugins=[
         rx.plugins.SitemapPlugin(),
         rx.plugins.TailwindV4Plugin(),
