@@ -1,8 +1,8 @@
-"""empty message
+"""initial schema
 
-Revision ID: d102644d06c2
+Revision ID: 7b30051fe9f0
 Revises: 
-Create Date: 2026-04-30 08:14:20.100553
+Create Date: 2026-06-28 16:41:56.683954
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 import sqlmodel
 
 # revision identifiers, used by Alembic.
-revision: str = 'd102644d06c2'
+revision: str = '7b30051fe9f0'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -25,14 +25,31 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('code', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('code')
+    )
+    op.create_table('admission_campaigns',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('start_date', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('end_date', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('is_deleted', sa.Boolean(), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('app_settings',
+    sa.Column('key', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('category', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('value', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('value_type', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.PrimaryKeyConstraint('key')
     )
     op.create_table('application_statuses',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
@@ -45,13 +62,28 @@ def upgrade() -> None:
     op.create_table('entrants_groups',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('is_deleted', sa.Boolean(), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('entry_base',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('prefix', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('is_deleted', sa.Boolean(), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('forms_of_study',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('prefix', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('identity_document_type',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
@@ -70,7 +102,8 @@ def upgrade() -> None:
     op.create_table('roles',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('source_of_funding',
@@ -82,7 +115,7 @@ def upgrade() -> None:
     op.create_table('special_conditions',
     sa.Column('subcategory_code', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
     sa.Column('is_kvota', sa.Boolean(), nullable=False),
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.PrimaryKeyConstraint('subcategory_code')
@@ -96,49 +129,75 @@ def upgrade() -> None:
     sa.Column('login', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('password', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('password_salt', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('permissions_version', sa.Integer(), nullable=False),
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('login')
+    )
+    op.create_table('admission_campaign_reports',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('id_campaign', sa.Integer(), nullable=False),
+    sa.Column('generated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('payload', sa.Text(), nullable=False),
+    sa.ForeignKeyConstraint(['id_campaign'], ['admission_campaigns.id'], ),
+    sa.PrimaryKeyConstraint('id')
     )
     op.create_table('auth_tokens',
     sa.Column('id', sa.Integer(), nullable=True),
     sa.Column('token', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('id_worker', sa.Integer(), nullable=False),
+    sa.Column('expires_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('last_activity_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.ForeignKeyConstraint(['id_worker'], ['workers.id'], ),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('token')
     )
     op.create_table('entrants_exams',
+    sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('id_group', sa.Integer(), nullable=False),
     sa.Column('id_item_zno', sa.Integer(), nullable=False),
-    sa.Column('date_time', sa.DateTime(), nullable=False),
+    sa.Column('date', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('time_start', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('time_end', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.ForeignKeyConstraint(['id_group'], ['entrants_groups.id'], ),
     sa.ForeignKeyConstraint(['id_item_zno'], ['item_zno.id'], ),
-    sa.PrimaryKeyConstraint('id_group', 'id_item_zno')
+    sa.PrimaryKeyConstraint('id')
     )
     op.create_table('persons',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('edbo', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('edbo', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('pib', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('photo', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('photo', sa.LargeBinary(), nullable=True),
+    sa.Column('photo_mime_type', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('citizenship', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('sex', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('date_of_birth', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('place_of_registration_city', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('place_of_registration', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('place_of_registration_city', sa.Text(), nullable=True),
+    sa.Column('place_of_registration', sa.Text(), nullable=False),
     sa.Column('mokpp', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('email', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('phone_number', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('the_need_for_a_dormitory', sa.Boolean(), nullable=False),
     sa.Column('id_source_of_funding', sa.Integer(), nullable=False),
-    sa.Column('entry_base', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('id_entry_base', sa.Integer(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
+    sa.ForeignKeyConstraint(['id_entry_base'], ['entry_base.id'], ),
     sa.ForeignKeyConstraint(['id_source_of_funding'], ['source_of_funding.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('rating_snapshots',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('id_campaign', sa.Integer(), nullable=False),
+    sa.Column('generated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.ForeignKeyConstraint(['id_campaign'], ['admission_campaigns.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('roles_actions',
     sa.Column('id_role', sa.Integer(), nullable=False),
-    sa.Column('id_action', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('id_action', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['id_action'], ['actions.id'], ),
     sa.ForeignKeyConstraint(['id_role'], ['roles.id'], ),
     sa.PrimaryKeyConstraint('id_role', 'id_action')
@@ -147,15 +206,15 @@ def upgrade() -> None:
     sa.Column('code', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('id_department', sa.Integer(), nullable=False),
     sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('educational_and_professional_program', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('educational_and_professional_program', sa.Text(), nullable=True),
     sa.Column('tag', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.ForeignKeyConstraint(['id_department'], ['departments.id'], ),
     sa.PrimaryKeyConstraint('code', 'id_department')
     )
     op.create_table('workers_actions',
-    sa.Column('id_worker', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('id_action', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('id_worker', sa.Integer(), nullable=False),
+    sa.Column('id_action', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['id_action'], ['actions.id'], ),
     sa.ForeignKeyConstraint(['id_worker'], ['workers.id'], ),
     sa.PrimaryKeyConstraint('id_worker', 'id_action')
@@ -167,11 +226,25 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['id_worker'], ['workers.id'], ),
     sa.PrimaryKeyConstraint('id_worker', 'id_role')
     )
+    op.create_table('admission_campaigns_specialties',
+    sa.Column('id_admission_campaign', sa.Integer(), nullable=False),
+    sa.Column('id_speciality_code', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('id_speciality_department', sa.Integer(), nullable=False),
+    sa.Column('id_entry_base', sa.Integer(), nullable=False),
+    sa.Column('id_form_of_study', sa.Integer(), nullable=False),
+    sa.Column('budget_places', sa.Integer(), nullable=False),
+    sa.Column('contract_places', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['id_admission_campaign'], ['admission_campaigns.id'], ),
+    sa.ForeignKeyConstraint(['id_entry_base'], ['entry_base.id'], ),
+    sa.ForeignKeyConstraint(['id_form_of_study'], ['forms_of_study.id'], ),
+    sa.ForeignKeyConstraint(['id_speciality_code', 'id_speciality_department'], ['specialties.code', 'specialties.id_department'], ),
+    sa.PrimaryKeyConstraint('id_admission_campaign', 'id_speciality_code', 'id_speciality_department', 'id_entry_base', 'id_form_of_study')
+    )
     op.create_table('document_about_education',
     sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('number', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('series', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('issued_by', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('issued_by', sa.Text(), nullable=True),
     sa.Column('date_of_issue', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('id_person', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['id_person'], ['persons.id'], ),
@@ -180,17 +253,30 @@ def upgrade() -> None:
     op.create_table('entrants',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('id_application_status', sa.Integer(), nullable=False),
-    sa.Column('comment', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('id_entrant_group', sa.Integer(), nullable=True),
+    sa.Column('comment', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('application_status_changed_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.ForeignKeyConstraint(['id'], ['persons.id'], ),
     sa.ForeignKeyConstraint(['id_application_status'], ['application_statuses.id'], ),
+    sa.ForeignKeyConstraint(['id_entrant_group'], ['entrants_groups.id'], ),
     sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('entrants_exams_workers',
+    sa.Column('id_exam', sa.Integer(), nullable=False),
+    sa.Column('id_worker', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['id_exam'], ['entrants_exams.id'], ),
+    sa.ForeignKeyConstraint(['id_worker'], ['workers.id'], ),
+    sa.PrimaryKeyConstraint('id_exam', 'id_worker')
     )
     op.create_table('identity_document',
     sa.Column('number', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('series', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('code', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('issued_by', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('unzr', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('date_of_expiry', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('issued_by', sa.Text(), nullable=False),
     sa.Column('date_of_issue', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('id_person', sa.Integer(), nullable=False),
     sa.Column('id_type', sa.Integer(), nullable=False),
@@ -219,7 +305,7 @@ def upgrade() -> None:
     op.create_table('military_accounting',
     sa.Column('number', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('series', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('issued_by', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('issued_by', sa.Text(), nullable=True),
     sa.Column('date_of_issue', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('id_person', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['id_person'], ['persons.id'], ),
@@ -239,19 +325,38 @@ def upgrade() -> None:
     sa.Column('id_special_condition', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('number', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
     sa.Column('date_of_issue', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.ForeignKeyConstraint(['id_person'], ['persons.id'], ),
     sa.ForeignKeyConstraint(['id_special_condition'], ['special_conditions.subcategory_code'], ),
     sa.PrimaryKeyConstraint('id_person', 'id_special_condition')
     )
+    op.create_table('rating_entries',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('id_snapshot', sa.Integer(), nullable=False),
+    sa.Column('id_speciality_code', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('id_speciality_department', sa.Integer(), nullable=False),
+    sa.Column('id_entry_base', sa.Integer(), nullable=False),
+    sa.Column('id_form_of_study', sa.Integer(), nullable=False),
+    sa.Column('id_entrant', sa.Integer(), nullable=False),
+    sa.Column('position', sa.Integer(), nullable=False),
+    sa.Column('total_points', sa.Integer(), nullable=False),
+    sa.Column('status', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.ForeignKeyConstraint(['id_entrant'], ['entrants.id'], ),
+    sa.ForeignKeyConstraint(['id_snapshot'], ['rating_snapshots.id'], ),
+    sa.ForeignKeyConstraint(['id_speciality_code', 'id_speciality_department'], ['specialties.code', 'specialties.id_department'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('specialties_entrants',
     sa.Column('id_entrant', sa.Integer(), nullable=False),
-    sa.Column('id_specialties', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('id_speciality_code', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('id_speciality_department', sa.Integer(), nullable=False),
+    sa.Column('id_form_of_study', sa.Integer(), nullable=False),
     sa.Column('priority', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['id_entrant'], ['entrants.id'], ),
-    sa.ForeignKeyConstraint(['id_specialties'], ['specialties.code'], ),
-    sa.PrimaryKeyConstraint('id_entrant', 'id_specialties')
+    sa.ForeignKeyConstraint(['id_form_of_study'], ['forms_of_study.id'], ),
+    sa.ForeignKeyConstraint(['id_speciality_code', 'id_speciality_department'], ['specialties.code', 'specialties.id_department'], ),
+    sa.PrimaryKeyConstraint('id_entrant', 'id_speciality_code', 'id_speciality_department', 'id_form_of_study')
     )
     # ### end Alembic commands ###
 
@@ -260,21 +365,26 @@ def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
     op.drop_table('specialties_entrants')
+    op.drop_table('rating_entries')
     op.drop_table('special_conditions_person')
     op.drop_table('results_zno')
     op.drop_table('military_accounting')
     op.drop_table('medical_reference')
     op.drop_table('information_about_relatives')
     op.drop_table('identity_document')
+    op.drop_table('entrants_exams_workers')
     op.drop_table('entrants')
     op.drop_table('document_about_education')
+    op.drop_table('admission_campaigns_specialties')
     op.drop_table('workers_roles')
     op.drop_table('workers_actions')
     op.drop_table('specialties')
     op.drop_table('roles_actions')
+    op.drop_table('rating_snapshots')
     op.drop_table('persons')
     op.drop_table('entrants_exams')
     op.drop_table('auth_tokens')
+    op.drop_table('admission_campaign_reports')
     op.drop_table('workers')
     op.drop_table('special_conditions')
     op.drop_table('source_of_funding')
@@ -282,8 +392,12 @@ def downgrade() -> None:
     op.drop_table('kinship')
     op.drop_table('item_zno')
     op.drop_table('identity_document_type')
+    op.drop_table('forms_of_study')
+    op.drop_table('entry_base')
     op.drop_table('entrants_groups')
     op.drop_table('departments')
     op.drop_table('application_statuses')
+    op.drop_table('app_settings')
+    op.drop_table('admission_campaigns')
     op.drop_table('actions')
     # ### end Alembic commands ###

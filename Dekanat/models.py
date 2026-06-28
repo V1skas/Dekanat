@@ -1,5 +1,5 @@
 from sqlmodel import Field, Relationship
-from sqlalchemy import ForeignKeyConstraint, Column, LargeBinary, DateTime, func
+from sqlalchemy import ForeignKeyConstraint, Column, LargeBinary, DateTime, Text, func
 from typing import Optional, List
 from datetime import datetime
 
@@ -39,7 +39,7 @@ class RoleModel(rx.Model, table=True):
     # Table columns
     id: int = Field(primary_key=True)
     title: str
-    description: Optional[str]
+    description: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     is_deleted: bool = False
     # ad_tag: Optional[str]
 
@@ -56,7 +56,7 @@ class ActionModel(rx.Model, table=True):
     id: int = Field(primary_key=True) # type: ignore
     code: str = Field(default=None, nullable=False, unique=True)
     title: str = Field(default=None, nullable=False)
-    description: Optional[str] = Field(nullable=True)
+    description: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
 
     # Relationships
     # roles: Optional[List['Role']] = Relationship(back_populates="actions", link_model=RolesActions)
@@ -192,7 +192,7 @@ class SpecialConditionModel(rx.Model, table=True):
     # Table columns
     subcategory_code: str = Field(primary_key=True)
     title: str = Field()
-    description: Optional[str]
+    description: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     is_kvota: bool = Field(default=False)
     is_deleted: bool = Field(default=False)
 
@@ -206,7 +206,7 @@ class SpecialConditionPersonModel(rx.Model, table=True):
     id_special_condition: str = Field(primary_key=True, foreign_key="special_conditions.subcategory_code")
     title: Optional[str] = Field(default=None, nullable=True)
     number: Optional[str] = Field(default=None, nullable=True)
-    description: Optional[str] = Field(default=None, nullable=True)
+    description: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     date_of_issue: str = Field(default=None, nullable=False)
 
     # Relationships
@@ -227,8 +227,8 @@ class PersonModel(rx.Model, table=True):
     citizenship: str = Field(nullable=False)
     sex: str = Field(nullable=False)
     date_of_birth: str = Field(nullable=False)
-    place_of_registration_city: Optional[str] = Field(nullable=True)
-    place_of_registration: str = Field(nullable=False)
+    place_of_registration_city: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
+    place_of_registration: str = Field(sa_type=Text, nullable=False)
     mokpp: str = Field(nullable=False)
     email: Optional[str] = Field(nullable=True)
     phone_number: str = Field(nullable=False)
@@ -277,7 +277,7 @@ class ApplicationStatusModel(rx.Model, table=True):
     # Table colums
     id: int = Field(primary_key=True)
     title: str
-    description: Optional[str]
+    description: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     is_deleted: bool = False
 
 
@@ -289,7 +289,7 @@ class EntrantModel(rx.Model, table=True):
     id: int = Field(primary_key=True, foreign_key="persons.id")
     id_application_status: int = Field(foreign_key="application_statuses.id")
     id_entrant_group: Optional[int] = Field(default=None, foreign_key="entrants_groups.id", nullable=True)
-    comment: Optional[str] = Field(default=None, nullable=True)
+    comment: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     created_at: datetime = Field(
         default_factory=datetime.now,
         sa_column=Column("created_at", DateTime, nullable=False, server_default=func.current_timestamp()),
@@ -315,7 +315,7 @@ class DocumentAboutEducationModel(rx.Model, table=True):
     title: str = Field(primary_key=True)
     number: str = Field(primary_key=True)
     series: str = Field(nullable=True)
-    issued_by: str = Field(nullable=True)
+    issued_by: str = Field(default=None, sa_type=Text, nullable=True)
     date_of_issue: str
     id_person: int = Field(foreign_key="persons.id")
 
@@ -330,7 +330,7 @@ class MilitaryAccountingModel(rx.Model, table=True):
     # Table columns
     number: str = Field(primary_key=True)
     series: str = Field(primary_key=True)
-    issued_by: str = Field(nullable=True)
+    issued_by: str = Field(default=None, sa_type=Text, nullable=True)
     date_of_issue: str
     id_person: int = Field(foreign_key="persons.id")
 
@@ -359,7 +359,7 @@ class IdentityDocumentTypeModel(rx.Model, table=True):
     # Table columns
     id: int = Field(primary_key=True) #type: ignore
     title: str = ""
-    description: Optional[str] = None
+    description: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     is_deleted: bool = False
 
 
@@ -374,7 +374,7 @@ class IdentityDocumentModel(rx.Model, table=True):
     # УНЗР та дата закінчення строку дії — необов'язкові (DK-33).
     unzr: Optional[str] = Field(default=None, nullable=True)
     date_of_expiry: Optional[str] = Field(default=None, nullable=True)
-    issued_by: str
+    issued_by: str = Field(sa_type=Text, nullable=False)
     date_of_issue: str
     id_person: int = Field(foreign_key="persons.id")
     id_type: int = Field(primary_key=True, foreign_key="identity_document_type.id")
@@ -405,7 +405,7 @@ class SpecialityModel(rx.Model, table=True):
     code: str = Field(primary_key=True)
     id_department: int = Field(primary_key=True, foreign_key="departments.id")
     title: str
-    educational_and_professional_program: Optional[str] = Field(default=None, nullable=True)
+    educational_and_professional_program: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     tag: str
     is_deleted: bool = False
 
@@ -509,7 +509,7 @@ class EntrantExamModel(rx.Model, table=True):
     date: str = Field(nullable=False)        # ISO date YYYY-MM-DD
     time_start: str = Field(nullable=False)  # HH:MM
     time_end: str = Field(nullable=False)    # HH:MM
-    description: Optional[str] = Field(default=None, nullable=True)
+    description: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     is_deleted: bool = False
 
     # Relationships
@@ -531,8 +531,9 @@ class AdmissionCampaignReportModel(rx.Model, table=True):
     )
     # JSON payload зі звітом (числа за день/тиждень/період, серії, розподіл по
     # специальностях). Зберігаємо як рядок, щоб не плодити окремих таблиць —
-    # звіт відображається цілком як знімок (DK-25).
-    payload: str = Field(nullable=False)
+    # звіт відображається цілком як знімок (DK-25). Тип Text (а не VARCHAR(255)),
+    # бо JSON завідомо довший за 255 символів — на MySQL інакше «Data too long».
+    payload: str = Field(sa_column=Column("payload", Text, nullable=False))
 
 
 @rx.ModelRegistry.register
@@ -543,7 +544,7 @@ class AppSettingModel(rx.Model, table=True):
     key: str = Field(primary_key=True)
     category: str = Field(nullable=False)
     title: str = Field(nullable=False)
-    description: Optional[str] = Field(default=None, nullable=True)
+    description: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     value: str = Field(nullable=False)
     # "int" | "str" | "bool"
     value_type: str = Field(nullable=False)
