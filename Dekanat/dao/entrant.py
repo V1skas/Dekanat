@@ -20,6 +20,7 @@ from Dekanat.models import (
     SpecialConditionPersonModel,
     ResultZnoModel,
 )
+from Dekanat.utils.db import ua_collate
 
 
 # Поля, доступні для сортування. Маппинг ключа з UI → spec для побудови ORDER BY.
@@ -57,10 +58,10 @@ def _entrant_loaders():
 def _apply_sort(statement, sort_field: Optional[str], sort_dir: str):
     """Додає ORDER BY до запиту з урахуванням outerjoin'ів зі справочниками.
 
-    Для текстових полів використовуємо `COLLATE UA_CI` — кастомний SQLite
-    collation, зареєстрований у `Dekanat/utils/db.py`. Він сортує кирилицю
-    за українським алфавітом (`І` між `И` та `Ї`, а не на самому початку,
-    як у стандартному BINARY).
+    Для текстових полів використовуємо collation для коректного сортування
+    кирилиці (`Dekanat/utils/db.py:ua_collate`): на SQLite — кастомний `UA_CI`
+    (`І` між `И` та `Ї`, а не на початку, як у BINARY), на MySQL — нативний
+    `utf8mb4_unicode_ci`.
     """
     direction = (sort_dir or "asc").lower()
     if direction not in ("asc", "desc"):
@@ -71,7 +72,7 @@ def _apply_sort(statement, sort_field: Optional[str], sort_dir: str):
 
     def _txt(col):
         # collation у SQLAlchemy чіпляємо саме на колонку, не на функцію.
-        return col.collate("UA_CI")
+        return ua_collate(col)
 
     if sort_field == "pib":
         return statement.order_by(_dir(_txt(PersonModel.pib)))

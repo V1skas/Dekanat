@@ -52,14 +52,52 @@ def register_ua_collation() -> None:
     """Підписує listener на SQLAlchemy engine, який реєструє collation `UA_CI`
     при кожному новому DBAPI-зʼєднанні. Викликати треба один раз при старті
     застосунку — до першого використання rx.session().
+
+    Кастомний collation через `create_collation` — це API лише SQLite. Для
+    інших СУБД (MySQL у проді) listener не реєструється, а сортування кирилиці
+    забезпечує нативний collation (див. `ua_collate`).
     """
     global _registered
     if _registered:
         return
     engine = get_engine()
+    if engine.dialect.name != "sqlite":
+        # Нема чого реєструвати — не SQLite. Позначаємо як виконане (ідемпотентно).
+        _registered = True
+        return
 
     @event.listens_for(engine, "connect")
     def _setup_collation(dbapi_connection, connection_record):  # noqa: ARG001
         dbapi_connection.create_collation("UA_CI", _ua_compare)
 
     _registered = True
+
+
+# Назва collation для сортування кирилиці, залежно від СУБД. Резолвиться лениво
+# (один раз), бо движок може ще не існувати на момент імпорту модуля.
+_UA_COLLATION_NAME: Optional[str] = None
+
+
+def _resolve_collation_name() -> str:
+    global _UA_COLLATION_NAME
+    if _UA_COLLATION_NAME is None:
+        try:
+            dialect = get_engine().dialect.name
+        except Exception:
+            dialect = ""
+        if dialect == "sqlite":
+            _UA_COLLATION_NAME = "UA_CI"               # кастомний, реєструється на connect
+        elif dialect == "mysql":
+            _UA_COLLATION_NAME = "utf8mb4_unicode_ci"  # нативний Unicode-collation MySQL
+        else:
+            _UA_COLLATION_NAME = ""                    # без collation — сортування «як є»
+    return _UA_COLLATION_NAME
+
+
+def ua_collate(col):
+    """Обгортає текстову колонку потрібним для поточної СУБД collation для
+    коректного сортування кирилиці. Для невідомих діалектів повертає колонку
+    без collation. Використовувати у DAO замість прямого `col.collate("UA_CI")`.
+    """
+    name = _resolve_collation_name()
+    return col.collate(name) if name else col
