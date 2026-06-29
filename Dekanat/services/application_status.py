@@ -23,10 +23,23 @@ class ApplicationStatusService:
             print(f"[ApplicationStatusService][get_by_id][ERROR] {e}")
             raise
 
+    def get_default(self) -> Optional[ApplicationStatusModel]:
+        """Дефолтний статус для нових карток абітурієнтів (DK-36)."""
+        try:
+            with rx.session() as session:
+                return ApplicationStatusDao.get_default(session)
+        except Exception as e:
+            print(f"[ApplicationStatusService][get_default][ERROR] {e}")
+            raise
+
     def add_one(self, item: ApplicationStatusModel) -> ApplicationStatusModel:
         try:
             with rx.session() as session:
                 ApplicationStatusDao.add_one(item, session)
+                session.flush()
+                # Якщо новий статус — дефолтний, знімаємо прапорець з решти (інваріант).
+                if item.is_default:
+                    ApplicationStatusDao.clear_default_except(item.id, session)
                 session.commit()
                 session.refresh(item)
             return item
@@ -38,6 +51,9 @@ class ApplicationStatusService:
         try:
             with rx.session() as session:
                 managed = ApplicationStatusDao.edit_one(item, session)
+                session.flush()
+                if managed.is_default:
+                    ApplicationStatusDao.clear_default_except(managed.id, session)
                 session.commit()
                 session.refresh(managed)
             return managed

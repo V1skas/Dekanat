@@ -5,6 +5,7 @@ from sqlmodel import select
 from sqlalchemy.orm import selectinload
 
 from Dekanat.dao.rating import RatingDao
+from Dekanat.utils.display import disambiguate_pib
 from Dekanat.models import (
     RatingSnapshotModel,
     RatingEntryModel,
@@ -308,15 +309,26 @@ class RatingService:
                             if e.entrant is not None and e.entrant.person is not None and e.entrant.person.pib
                             else f"#{e.id_entrant}"
                         )
+                        phone = (
+                            e.entrant.person.phone_number
+                            if e.entrant is not None and e.entrant.person is not None and e.entrant.person.phone_number
+                            else ""
+                        )
                         applicants.append(
                             {
                                 "pib": pib,
+                                "phone": phone,
                                 "grades": grades,
                                 # Квота проходить на бюджет → budget=True; контракт окремо.
                                 "budget": e.status in (STATUS_BUDGET, STATUS_KVOTA),
                                 "contract": e.status == STATUS_CONTRACT,
                             }
                         )
+
+                    # Повні тезки в межах потоку — розрізняємо телефоном (DK-36).
+                    disp = disambiguate_pib((a["pib"], a["phone"]) for a in applicants)
+                    for a, shown in zip(applicants, disp):
+                        a["pib"] = shown
 
                     base_prefix = base.prefix if base is not None else ""
                     form_prefix = form.prefix if form is not None else ""

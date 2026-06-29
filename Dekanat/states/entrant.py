@@ -44,11 +44,19 @@ class ListEntrantState(AppState):
     # Стан панелі фільтрів
     filter_open: bool = False
     filter_pib: str = ""
+    filter_phone: str = ""
     filter_status_id: int = 0
     filter_entry_base_id: int = 0
     filter_campaign_id: int = 0  # 0 — без фільтра по кампанії
     # "code|id_department"; "__all__" — без фільтра (Radix забороняє value="" в rx.select.item).
+    # filter_speciality_key — будь-який пріоритет; filter_top_speciality_key — лише пріоритет №1 (DK-36).
     filter_speciality_key: str = "__all__"
+    filter_top_speciality_key: str = "__all__"
+    # Фільтр по даті створення (DK-34). Режим "day" — конкретний день; "period" — діапазон.
+    filter_date_mode: str = "day"  # "day" | "period"
+    filter_date_day: str = ""  # YYYY-MM-DD; порожньо — без фільтра
+    filter_date_from: str = ""  # YYYY-MM-DD; порожньо — відкрита нижня межа
+    filter_date_to: str = ""  # YYYY-MM-DD; порожньо — відкрита верхня межа
     application_status_options: List[Dict[str, str]] = []
     entry_base_options: List[Dict[str, str]] = []
     # Опции спеціальностей — обмежені квотами активної кампанії (як у формі абітурієнта).
@@ -72,25 +80,63 @@ class ListEntrantState(AppState):
         except (ValueError, TypeError):
             return None
 
-    def _parse_speciality_key(self):
-        if not self.filter_speciality_key or self.filter_speciality_key == "__all__":
+    def _date_range(self):
+        """Діапазон created_at з фільтра по даті (DK-34). У режимі "day" — межі обраного
+        дня; у режимі "period" — [from 00:00, to 23:59:59] з відкритими кінцями
+        (datetime.min/max), якщо одна з меж не задана. Повертає None, коли фільтр порожній."""
+        if self.filter_date_mode == "day":
+            if not self.filter_date_day:
+                return None
+            try:
+                day = datetime.strptime(self.filter_date_day, "%Y-%m-%d")
+            except (ValueError, TypeError):
+                return None
+            return (
+                day.replace(hour=0, minute=0, second=0),
+                day.replace(hour=23, minute=59, second=59),
+            )
+        # period
+        if not self.filter_date_from and not self.filter_date_to:
+            return None
+        start_dt = datetime.min
+        end_dt = datetime.max
+        if self.filter_date_from:
+            try:
+                start_dt = datetime.strptime(self.filter_date_from, "%Y-%m-%d").replace(hour=0, minute=0, second=0)
+            except (ValueError, TypeError):
+                pass
+        if self.filter_date_to:
+            try:
+                end_dt = datetime.strptime(self.filter_date_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            except (ValueError, TypeError):
+                pass
+        return (start_dt, end_dt)
+
+    @staticmethod
+    def _parse_spec_key(key: str):
+        if not key or key == "__all__":
             return (None, None)
         try:
-            code, dept = self.filter_speciality_key.split("|", 1)
+            code, dept = key.split("|", 1)
             return (code, int(dept))
         except (ValueError, TypeError):
             return (None, None)
 
     def _reload_items(self):
         service = EntrantService()
-        spec_code, spec_dept = self._parse_speciality_key()
+        spec_code, spec_dept = self._parse_spec_key(self.filter_speciality_key)
+        top_code, top_dept = self._parse_spec_key(self.filter_top_speciality_key)
         self.items = service.get_list_items(
             pib=self.filter_pib.strip() or None,
+            phone=self.filter_phone.strip() or None,
             status_id=self.filter_status_id or None,
             entry_base_id=self.filter_entry_base_id or None,
             created_between=self._campaign_range(),
+            created_date_between=self._date_range(),
             priority_speciality_code=spec_code,
             priority_speciality_department=spec_dept,
+            top_priority_speciality_code=top_code,
+            top_priority_speciality_department=top_dept,
             sort_field=self.sort_field or None,
             sort_dir=self.sort_dir,
         )
@@ -137,6 +183,16 @@ class ListEntrantState(AppState):
     @rx.event
     def set_filter_pib(self, value: str):
         self.filter_pib = value
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_filter_phone(self, value: str):
+        self.filter_phone = value
         self.in_progress = True
         yield
         try:
@@ -204,16 +260,73 @@ class ListEntrantState(AppState):
     @rx.event
     def clear_filters(self):
         self.filter_pib = ""
+        self.filter_phone = ""
         self.filter_status_id = 0
         self.filter_entry_base_id = 0
         self.filter_campaign_id = 0
         self.filter_speciality_key = "__all__"
+        self.filter_top_speciality_key = "__all__"
+        self.filter_date_mode = "day"
+        self.filter_date_day = ""
+        self.filter_date_from = ""
+        self.filter_date_to = ""
         self.in_progress = True
         yield
         try:
             self._reload_items()
         finally:
             self.in_progress = False
+
+    # --- date filter (DK-34) ---
+
+    @rx.event
+    def set_filter_date_mode(self, value: str):
+        # value приходить як мітка радіо ("День"/"Період") або як код ("day"/"period").
+        # Зміна режиму скидає поля іншого режиму, щоб не лишати "прихований" фільтр.
+        self.filter_date_mode = "period" if value in ("period", "Період") else "day"
+        self.filter_date_day = ""
+        self.filter_date_from = ""
+        self.filter_date_to = ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_filter_date_day(self, value: str):
+        self.filter_date_day = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_filter_date_from(self, value: str):
+        self.filter_date_from = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_filter_date_to(self, value: str):
+        self.filter_date_to = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.var
+    def is_date_mode_period(self) -> bool:
+        return self.filter_date_mode == "period"
 
     # --- speciality filter ---
 
@@ -255,6 +368,16 @@ class ListEntrantState(AppState):
         finally:
             self.in_progress = False
 
+    @rx.event
+    def set_filter_top_speciality_key(self, value: str):
+        self.filter_top_speciality_key = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
     # --- sorting ---
 
     @rx.event
@@ -279,6 +402,7 @@ class ListEntrantState(AppState):
         arrow = " ↑" if self.sort_dir == "asc" else " ↓"
         return {
             "pib": arrow if self.sort_field == "pib" else "",
+            "created_at": arrow if self.sort_field == "created_at" else "",
             "phone_number": arrow if self.sort_field == "phone_number" else "",
             "email": arrow if self.sort_field == "email" else "",
             "entry_base": arrow if self.sort_field == "entry_base" else "",
@@ -403,6 +527,10 @@ class EntrantFormState(AppState):
     mode: str = "add"  # "add" | "edit"
     entrant_id: int = -1
     in_process: bool = True
+    # Лічильник для key= на date-інпутах діалогів: змінюється при кожному відкритті
+    # діалогу, форсуючи ремоунт інпута, щоб порожнє значення стейту реально показувало
+    # пусте поле (нативний <input type=date> інакше може лишати попередню дату). DK-36.
+    date_nonce: int = 0
 
     # ---- Photo (kept as separate bytes/mime; persisted into PersonModel on save) ----
     photo_bytes: Optional[bytes] = None
@@ -425,6 +553,9 @@ class EntrantFormState(AppState):
 
     # ---- Entrant fields ----
     id_application_status: int = 0
+    # Статус, з яким картку завантажено (edit) — для серверного захисту від зміни
+    # без права ENTRANT_EDIT_STATUS (DK-36).
+    loaded_status_id: int = 0
     id_entrant_group: int = 0  # 0 means "not assigned"
     comment: str = ""
 
@@ -586,6 +717,7 @@ class EntrantFormState(AppState):
         self.id_source_of_funding = 0
         self.id_entry_base = 0
         self.id_application_status = 0
+        self.loaded_status_id = 0
         self.id_entrant_group = 0
         self.comment = ""
         self.identity_documents = []
@@ -609,6 +741,11 @@ class EntrantFormState(AppState):
         try:
             self._reset_form()
             self._load_dropdowns()
+            # При створенні картки статус виставляється автоматично з дефолтного (DK-36).
+            default_status = ApplicationStatusService().get_default()
+            if default_status is not None and default_status.id is not None:
+                self.id_application_status = default_status.id
+                self.loaded_status_id = default_status.id
             self.in_process = False
         except Exception:
             yield rx.toast.error("Під час завантаження даних виникла помилка. Спробуйте ще раз.")
@@ -651,6 +788,7 @@ class EntrantFormState(AppState):
             self.id_source_of_funding = person.id_source_of_funding or 0
             self.id_entry_base = person.id_entry_base or 0
             self.id_application_status = entrant.id_application_status or 0
+            self.loaded_status_id = entrant.id_application_status or 0
             self.id_entrant_group = entrant.id_entrant_group or 0
             self.comment = entrant.comment or ""
 
@@ -1027,6 +1165,7 @@ class EntrantFormState(AppState):
     @rx.event
     def open_iddoc_add(self):
         self._reset_iddoc_dialog()
+        self.date_nonce += 1
         self.iddoc_open = True
 
     @rx.event
@@ -1043,6 +1182,7 @@ class EntrantFormState(AppState):
         self.iddoc_issued_by = item.issued_by or ""
         self.iddoc_date_of_issue = item.date_of_issue or ""
         self.iddoc_date_of_expiry = item.date_of_expiry or ""
+        self.date_nonce += 1
         self.iddoc_open = True
 
     @rx.event
@@ -1115,6 +1255,7 @@ class EntrantFormState(AppState):
     @rx.event
     def open_docedu_add(self):
         self._reset_docedu_dialog()
+        self.date_nonce += 1
         self.docedu_open = True
 
     @rx.event
@@ -1128,6 +1269,7 @@ class EntrantFormState(AppState):
         self.docedu_series = item.series or ""
         self.docedu_issued_by = item.issued_by or ""
         self.docedu_date_of_issue = item.date_of_issue or ""
+        self.date_nonce += 1
         self.docedu_open = True
 
     @rx.event
@@ -1181,6 +1323,7 @@ class EntrantFormState(AppState):
     @rx.event
     def open_mil_add(self):
         self._reset_mil_dialog()
+        self.date_nonce += 1
         self.mil_open = True
 
     @rx.event
@@ -1193,6 +1336,7 @@ class EntrantFormState(AppState):
         self.mil_series = item.series or ""
         self.mil_issued_by = item.issued_by or ""
         self.mil_date_of_issue = item.date_of_issue or ""
+        self.date_nonce += 1
         self.mil_open = True
 
     @rx.event
@@ -1243,6 +1387,7 @@ class EntrantFormState(AppState):
     @rx.event
     def open_med_add(self):
         self._reset_med_dialog()
+        self.date_nonce += 1
         self.med_open = True
 
     @rx.event
@@ -1253,6 +1398,7 @@ class EntrantFormState(AppState):
         self.med_index = index
         self.med_number = item.number or ""
         self.med_date_of_issue = item.date_of_issue or ""
+        self.date_nonce += 1
         self.med_open = True
 
     @rx.event
@@ -1373,6 +1519,7 @@ class EntrantFormState(AppState):
     @rx.event
     def open_scp_add(self):
         self._reset_scp_dialog()
+        self.date_nonce += 1
         self.scp_open = True
 
     @rx.event
@@ -1386,6 +1533,7 @@ class EntrantFormState(AppState):
         self.scp_number = item.number or ""
         self.scp_description = item.description or ""
         self.scp_date_of_issue = item.date_of_issue or ""
+        self.date_nonce += 1
         self.scp_open = True
 
     @rx.event
@@ -1666,6 +1814,12 @@ class EntrantFormState(AppState):
 
     @rx.event
     def on_save(self):
+        # Серверний захист статусу: без права ENTRANT_EDIT_STATUS поле статусу
+        # недоступне в UI, але клієнт міг би надіслати інше значення — відкидаємо його
+        # і повертаємо вихідний статус (для edit) або дефолтний (для add). DK-36.
+        if not self.has_permission(Actions.ENTRANT_EDIT_STATUS):
+            self.id_application_status = self.loaded_status_id
+
         err = self._validate_main()
         if err:
             yield rx.toast.warning(err)

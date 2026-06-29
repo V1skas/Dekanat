@@ -61,6 +61,9 @@ def _list_table_row(item: EntrantModel) -> rx.Component:
             ),
             align="left",
         ),
+        rx.table.cell(
+            rx.cond(item.created_at, item.created_at.to_string()[0:10], "—")
+        ),
         rx.table.cell(rx.cond(item.person, item.person.phone_number, "—")),
         rx.table.cell(rx.cond(item.person, rx.cond(item.person.email, item.person.email, "—"), "—")),
         rx.table.cell(
@@ -120,6 +123,7 @@ def _list_table() -> rx.Component:
         rx.table.header(
             rx.table.row(
                 _sortable_header("ПІБ", "pib"),
+                _sortable_header("Дата створення", "created_at"),
                 _sortable_header("Номер телефону", "phone_number"),
                 _sortable_header("Електронна пошта", "email"),
                 _sortable_header("База вступу", "entry_base"),
@@ -151,74 +155,152 @@ def list_page_content() -> rx.Component:
     )
 
 
+def _filter_field(label: str, control: rx.Component) -> rx.Component:
+    """Одна клітинка сітки фільтрів: підпис + контрол."""
+    return rx.vstack(
+        rx.text(label, weight="medium"),
+        control,
+        spacing="1",
+        align="stretch",
+        width="100%",
+    )
+
+
 def _list_filter_panel() -> rx.Component:
+    # Контроли розкладені сіткою (1/2/3 колонки за шириною екрана), щоб картка
+    # фільтрів займала менше місця по вертикалі.
     return controls.filter_panel(
         ListEntrantState.filter_open,
-        rx.vstack(
-            rx.text("Вступна кампанія:", weight="medium"),
-            _select(
-                ListEntrantState.campaign_options,
-                ListEntrantState.filter_campaign_id_str,
-                ListEntrantState.set_filter_campaign_id,
-                placeholder="— Без фільтра —",
-                width="100%",
+        rx.grid(
+            _filter_field(
+                "Вступна кампанія:",
+                _select(
+                    ListEntrantState.campaign_options,
+                    ListEntrantState.filter_campaign_id_str,
+                    ListEntrantState.set_filter_campaign_id,
+                    placeholder="— Без фільтра —",
+                    width="100%",
+                ),
             ),
-            spacing="1",
-            align="stretch",
-            width="100%",
-        ),
-        rx.vstack(
-            rx.text("ПІБ містить:", weight="medium"),
-            rx.input(
-                value=ListEntrantState.filter_pib,
-                on_change=ListEntrantState.set_filter_pib,
-                placeholder="Пошук по ПІБ…",
-                width="100%",
+            _filter_field(
+                "ПІБ містить:",
+                rx.input(
+                    value=ListEntrantState.filter_pib,
+                    on_change=ListEntrantState.set_filter_pib,
+                    placeholder="Пошук по ПІБ…",
+                    width="100%",
+                ),
             ),
-            spacing="1",
-            align="stretch",
-            width="100%",
-        ),
-        rx.vstack(
-            rx.text("Статус заяви:", weight="medium"),
-            _select(
-                ListEntrantState.application_status_options,
-                ListEntrantState.filter_status_id_str,
-                ListEntrantState.set_filter_status_id,
-                placeholder="Будь-який",
-                width="100%",
+            _filter_field(
+                "Номер телефону містить:",
+                rx.input(
+                    value=ListEntrantState.filter_phone,
+                    on_change=ListEntrantState.set_filter_phone,
+                    placeholder="Пошук по телефону…",
+                    width="100%",
+                ),
             ),
-            spacing="1",
-            align="stretch",
-            width="100%",
-        ),
-        rx.vstack(
-            rx.text("База вступу:", weight="medium"),
-            _select(
-                ListEntrantState.entry_base_options,
-                ListEntrantState.filter_entry_base_id_str,
-                ListEntrantState.set_filter_entry_base_id,
-                placeholder="Будь-яка",
-                width="100%",
+            _filter_field(
+                "Статус заяви:",
+                _select(
+                    ListEntrantState.application_status_options,
+                    ListEntrantState.filter_status_id_str,
+                    ListEntrantState.set_filter_status_id,
+                    placeholder="Будь-який",
+                    width="100%",
+                ),
             ),
-            spacing="1",
-            align="stretch",
-            width="100%",
-        ),
-        rx.vstack(
-            rx.text("Спеціальність у пріоритетах:", weight="medium"),
-            _select(
-                ListEntrantState.speciality_options,
-                ListEntrantState.filter_speciality_key,
-                ListEntrantState.set_filter_speciality_key,
-                placeholder="Будь-яка",
-                width="100%",
+            _filter_field(
+                "База вступу:",
+                _select(
+                    ListEntrantState.entry_base_options,
+                    ListEntrantState.filter_entry_base_id_str,
+                    ListEntrantState.set_filter_entry_base_id,
+                    placeholder="Будь-яка",
+                    width="100%",
+                ),
             ),
-            spacing="1",
-            align="stretch",
+            _filter_field(
+                "Спеціальність у пріоритетах:",
+                _select(
+                    ListEntrantState.speciality_options,
+                    ListEntrantState.filter_speciality_key,
+                    ListEntrantState.set_filter_speciality_key,
+                    placeholder="Будь-яка",
+                    width="100%",
+                ),
+            ),
+            _filter_field(
+                "Пріоритетна спеціальність (№1):",
+                _select(
+                    ListEntrantState.speciality_options,
+                    ListEntrantState.filter_top_speciality_key,
+                    ListEntrantState.set_filter_top_speciality_key,
+                    placeholder="Будь-яка",
+                    width="100%",
+                ),
+            ),
+            _date_filter(),
+            columns=rx.breakpoints(initial="1", sm="2", lg="3"),
+            spacing="3",
             width="100%",
+            align="start",
         ),
         on_clear=ListEntrantState.clear_filters,
+    )
+
+
+def _date_filter() -> rx.Component:
+    """Фільтр по даті створення (DK-34): перемикач «день / період» + відповідні поля."""
+    return rx.vstack(
+        rx.text("Дата створення:", weight="medium"),
+        rx.radio(
+            ["День", "Період"],
+            value=rx.cond(ListEntrantState.is_date_mode_period, "Період", "День"),
+            on_change=ListEntrantState.set_filter_date_mode,
+            direction="row",
+            spacing="4",
+        ),
+        rx.cond(
+            ListEntrantState.is_date_mode_period,
+            rx.hstack(
+                rx.vstack(
+                    rx.text("З:", size="2"),
+                    rx.input(
+                        type="date",
+                        value=ListEntrantState.filter_date_from,
+                        on_change=ListEntrantState.set_filter_date_from,
+                        width="100%",
+                    ),
+                    spacing="1",
+                    align="stretch",
+                    width="100%",
+                ),
+                rx.vstack(
+                    rx.text("По:", size="2"),
+                    rx.input(
+                        type="date",
+                        value=ListEntrantState.filter_date_to,
+                        on_change=ListEntrantState.set_filter_date_to,
+                        width="100%",
+                    ),
+                    spacing="1",
+                    align="stretch",
+                    width="100%",
+                ),
+                spacing="2",
+                width="100%",
+            ),
+            rx.input(
+                type="date",
+                value=ListEntrantState.filter_date_day,
+                on_change=ListEntrantState.set_filter_date_day,
+                width="100%",
+            ),
+        ),
+        spacing="1",
+        align="stretch",
+        width="100%",
     )
 
 
@@ -682,7 +764,21 @@ def _personal_fields() -> rx.Component:
         rx.text("*База вступу:"),
         _select(EntrantFormState.entry_base_options, EntrantFormState.id_entry_base_str, EntrantFormState.set_id_entry_base, width="100%"),
         rx.text("*Статус заяви:"),
-        _select(EntrantFormState.application_status_options, EntrantFormState.id_application_status_str, EntrantFormState.set_id_application_status, width="100%"),
+        _select(
+            EntrantFormState.application_status_options,
+            EntrantFormState.id_application_status_str,
+            EntrantFormState.set_id_application_status,
+            disabled=~EntrantFormState.get_user_actions.contains(Actions.ENTRANT_EDIT_STATUS),
+            width="100%",
+        ),
+        rx.cond(
+            ~EntrantFormState.get_user_actions.contains(Actions.ENTRANT_EDIT_STATUS),
+            rx.text(
+                "Зміна статусу недоступна — потрібне право «Зміна статусу картки абітурієнта».",
+                size="1",
+                color="gray",
+            ),
+        ),
         rx.text("Група ЗНО:"),
         _select(EntrantFormState.entrant_group_options, EntrantFormState.id_entrant_group_str, EntrantFormState.set_id_entrant_group, width="100%"),
         rx.text("Коментар:"),
@@ -1029,14 +1125,14 @@ def _dlg_iddoc() -> rx.Component:
                 rx.hstack(
                     rx.vstack(
                         rx.text("*Дата видачі:"),
-                        rx.input(type="date", value=EntrantFormState.iddoc_date_of_issue, on_change=EntrantFormState.set_iddoc_date_of_issue, width="100%"),
+                        rx.input(type="date", value=EntrantFormState.iddoc_date_of_issue, on_change=EntrantFormState.set_iddoc_date_of_issue, key="iddoc_doi_" + EntrantFormState.date_nonce.to_string(), width="100%"),
                         spacing="1",
                         align="stretch",
                         width="100%",
                     ),
                     rx.vstack(
                         rx.text("Дійсний до:"),
-                        rx.input(type="date", value=EntrantFormState.iddoc_date_of_expiry, on_change=EntrantFormState.set_iddoc_date_of_expiry, width="100%"),
+                        rx.input(type="date", value=EntrantFormState.iddoc_date_of_expiry, on_change=EntrantFormState.set_iddoc_date_of_expiry, key="iddoc_doe_" + EntrantFormState.date_nonce.to_string(), width="100%"),
                         spacing="1",
                         align="stretch",
                         width="100%",
@@ -1068,7 +1164,7 @@ def _dlg_docedu() -> rx.Component:
                 rx.text("Ким видано:"),
                 rx.input(value=EntrantFormState.docedu_issued_by, on_change=EntrantFormState.set_docedu_issued_by, width="100%"),
                 rx.text("*Дата видачі:"),
-                rx.input(type="date", value=EntrantFormState.docedu_date_of_issue, on_change=EntrantFormState.set_docedu_date_of_issue, width="100%"),
+                rx.input(type="date", value=EntrantFormState.docedu_date_of_issue, on_change=EntrantFormState.set_docedu_date_of_issue, key="docedu_doi_" + EntrantFormState.date_nonce.to_string(), width="100%"),
                 _dialog_buttons(EntrantFormState.save_docedu, EntrantFormState.close_docedu),
                 spacing="2",
                 align="stretch",
@@ -1091,7 +1187,7 @@ def _dlg_mil() -> rx.Component:
                 rx.text("Ким видано:"),
                 rx.input(value=EntrantFormState.mil_issued_by, on_change=EntrantFormState.set_mil_issued_by, width="100%"),
                 rx.text("*Дата видачі:"),
-                rx.input(type="date", value=EntrantFormState.mil_date_of_issue, on_change=EntrantFormState.set_mil_date_of_issue, width="100%"),
+                rx.input(type="date", value=EntrantFormState.mil_date_of_issue, on_change=EntrantFormState.set_mil_date_of_issue, key="mil_doi_" + EntrantFormState.date_nonce.to_string(), width="100%"),
                 _dialog_buttons(EntrantFormState.save_mil, EntrantFormState.close_mil),
                 spacing="2",
                 align="stretch",
@@ -1110,7 +1206,7 @@ def _dlg_med() -> rx.Component:
                 rx.text("*Номер:"),
                 rx.input(value=EntrantFormState.med_number, on_change=EntrantFormState.set_med_number, width="100%"),
                 rx.text("*Дата видачі:"),
-                rx.input(type="date", value=EntrantFormState.med_date_of_issue, on_change=EntrantFormState.set_med_date_of_issue, width="100%"),
+                rx.input(type="date", value=EntrantFormState.med_date_of_issue, on_change=EntrantFormState.set_med_date_of_issue, key="med_doi_" + EntrantFormState.date_nonce.to_string(), width="100%"),
                 _dialog_buttons(EntrantFormState.save_med, EntrantFormState.close_med),
                 spacing="2",
                 align="stretch",
@@ -1156,7 +1252,7 @@ def _dlg_scp() -> rx.Component:
                 rx.text("Опис:"),
                 rx.text_area(value=EntrantFormState.scp_description, on_change=EntrantFormState.set_scp_description, width="100%"),
                 rx.text("*Дата видачі:"),
-                rx.input(type="date", value=EntrantFormState.scp_date_of_issue, on_change=EntrantFormState.set_scp_date_of_issue, width="100%"),
+                rx.input(type="date", value=EntrantFormState.scp_date_of_issue, on_change=EntrantFormState.set_scp_date_of_issue, key="scp_doi_" + EntrantFormState.date_nonce.to_string(), width="100%"),
                 _dialog_buttons(EntrantFormState.save_scp, EntrantFormState.close_scp),
                 spacing="2",
                 align="stretch",

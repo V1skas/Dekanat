@@ -17,6 +17,7 @@ from Dekanat.states.app import AppState
 from Dekanat.models import AdmissionCampaignModel
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.services.rating import RatingService
+from Dekanat.utils.display import disambiguate_pib
 
 
 def _spec_key(code: str, dept: int) -> str:
@@ -176,6 +177,11 @@ class ListRatingState(AppState):
                 if e.entrant is not None and e.entrant.person is not None and e.entrant.person.pib
                 else f"#{e.id_entrant}"
             )
+            phone = (
+                e.entrant.person.phone_number
+                if e.entrant is not None and e.entrant.person is not None and e.entrant.person.phone_number
+                else ""
+            )
             if group_key not in groups_by_key:
                 groups_by_key[group_key] = RatingGroup(spec_key=group_key, spec_label=spec_label, rows=[])
                 order.append(group_key)
@@ -183,10 +189,17 @@ class ListRatingState(AppState):
                 {
                     "position": str(e.position),
                     "pib": pib,
+                    "phone": phone,
                     "total": str(e.total_points),
                     "status": e.status,
                 }
             )
+
+        # Тезки в межах однієї таблиці (спеціальність+база+форма) розрізняємо телефоном (DK-36).
+        for group in groups_by_key.values():
+            display = disambiguate_pib((r["pib"], r["phone"]) for r in group.rows)
+            for row, shown in zip(group.rows, display):
+                row["pib"] = shown
 
         self.groups = [groups_by_key[k] for k in order]
 

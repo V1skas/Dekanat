@@ -25,6 +25,10 @@ def table_row(item: ApplicationStatusModel) -> rx.Component:
             rx.text(rx.cond(item.description, item.description, "—")),
             align="left"
         ),
+        rx.table.cell(
+            rx.cond(item.is_default, rx.icon("check", color=rx.color("accent", 9)), rx.text("—")),
+            align="center"
+        ),
     )
 
 def table() -> rx.Component:
@@ -33,6 +37,7 @@ def table() -> rx.Component:
             rx.table.row(
                 rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
                 rx.table.column_header_cell("Опис", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("За замовчуванням", color=rx.color("accent", 2)),
             ),
 
             background_color=rx.color("accent", 9),
@@ -64,6 +69,10 @@ def view_page_content() -> rx.Component:
             ViewApplicationStatusState.description,
             rx.text(ViewApplicationStatusState.description),
         ),
+        rx.cond(
+            ViewApplicationStatusState.is_default,
+            rx.badge("Статус за замовчуванням для нових карток абітурієнтів", color_scheme="brown"),
+        ),
 
         spacing="3",
         align="stretch",
@@ -84,6 +93,15 @@ def add_page_content() -> rx.Component:
             value=AddApplicationStatusState.description,
             on_change=AddApplicationStatusState.set_description,
         ),
+        rx.hstack(
+            rx.switch(
+                checked=AddApplicationStatusState.is_default,
+                on_change=AddApplicationStatusState.set_is_default,
+            ),
+            rx.text("Використовувати за замовчуванням для нових карток абітурієнтів"),
+            align="center",
+            spacing="2",
+        ),
 
         align="stretch",
         spacing="3",
@@ -102,6 +120,15 @@ def edit_page_content() -> rx.Component:
         rx.text_area(
             value=EditApplicationStatusState.description,
             on_change=EditApplicationStatusState.set_description,
+        ),
+        rx.hstack(
+            rx.switch(
+                checked=EditApplicationStatusState.is_default,
+                on_change=EditApplicationStatusState.set_is_default,
+            ),
+            rx.text("Використовувати за замовчуванням для нових карток абітурієнтів"),
+            align="center",
+            spacing="2",
         ),
 
         align="stretch",

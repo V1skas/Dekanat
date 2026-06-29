@@ -32,11 +32,15 @@ class EntrantService:
     def get_list_items(
         self,
         pib: Optional[str] = None,
+        phone: Optional[str] = None,
         status_id: Optional[int] = None,
         entry_base_id: Optional[int] = None,
         created_between: Optional[Tuple[datetime, datetime]] = None,
+        created_date_between: Optional[Tuple[datetime, datetime]] = None,
         priority_speciality_code: Optional[str] = None,
         priority_speciality_department: Optional[int] = None,
+        top_priority_speciality_code: Optional[str] = None,
+        top_priority_speciality_department: Optional[int] = None,
         sort_field: Optional[str] = None,
         sort_dir: str = "asc",
     ) -> Sequence[EntrantModel]:
@@ -46,11 +50,15 @@ class EntrantService:
                 return EntrantDao.get_all(
                     session,
                     pib_substring=pib,
+                    phone_substring=phone,
                     application_status_id=status_id,
                     entry_base_id=entry_base_id,
                     created_between=created_between,
+                    created_date_between=created_date_between,
                     priority_speciality_code=priority_speciality_code,
                     priority_speciality_department=priority_speciality_department,
+                    top_priority_speciality_code=top_priority_speciality_code,
+                    top_priority_speciality_department=top_priority_speciality_department,
                     sort_field=sort_field,
                     sort_dir=sort_dir,
                 )
@@ -112,6 +120,10 @@ class EntrantService:
         try:
             self._validate_specialties(person, specialties)
             with rx.session() as session:
+                # Перевірка дублікатів по ІПН (mokpp): двох абітурієнтів з одним ІПН бути
+                # не може. По ПІБ не перевіряємо — можливі повні тезки (DK-36).
+                if person.mokpp and EntrantDao.get_person_by_mokpp(person.mokpp, session) is not None:
+                    raise ValueError(f"Абітурієнт з ІПН {person.mokpp} вже існує.")
                 person.id = None  # type: ignore[assignment]
                 saved_person = EntrantDao.add_person(person, session)
                 person_id = saved_person.id
@@ -151,6 +163,9 @@ class EntrantService:
         try:
             self._validate_specialties(person, specialties)
             with rx.session() as session:
+                # Дублікат по ІПН (виключаючи саму картку, що редагується) — DK-36.
+                if person.mokpp and EntrantDao.get_person_by_mokpp(person.mokpp, session, exclude_id=person.id) is not None:
+                    raise ValueError(f"Абітурієнт з ІПН {person.mokpp} вже існує.")
                 # Preserve timestamps from existing rows and bump status_changed_at only if status really changed.
                 existing_person = session.get(PersonModel, person.id)
                 if existing_person is not None:

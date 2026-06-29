@@ -20,13 +20,14 @@ from Dekanat.models import (
     SpecialConditionPersonModel,
     ResultZnoModel,
 )
-from Dekanat.utils.db import ua_collate
+from Dekanat.utils.db import ua_collate, ua_lower
 
 
 # Поля, доступні для сортування. Маппинг ключа з UI → spec для побудови ORDER BY.
 # Реалізація join'ів — у самому get_all (щоб уникнути дублювання таблиць).
 SORT_FIELDS = {
     "pib",
+    "created_at",
     "phone_number",
     "email",
     "entry_base",
@@ -76,6 +77,8 @@ def _apply_sort(statement, sort_field: Optional[str], sort_dir: str):
 
     if sort_field == "pib":
         return statement.order_by(_dir(_txt(PersonModel.pib)))
+    if sort_field == "created_at":
+        return statement.order_by(_dir(EntrantModel.created_at))
     if sort_field == "phone_number":
         return statement.order_by(_dir(PersonModel.phone_number))
     if sort_field == "email":
@@ -115,11 +118,15 @@ class EntrantDao:
         session: Session,
         with_del: bool = False,
         created_between: Optional[Tuple[datetime, datetime]] = None,
+        created_date_between: Optional[Tuple[datetime, datetime]] = None,
         pib_substring: Optional[str] = None,
+        phone_substring: Optional[str] = None,
         application_status_id: Optional[int] = None,
         entry_base_id: Optional[int] = None,
         priority_speciality_code: Optional[str] = None,
         priority_speciality_department: Optional[int] = None,
+        top_priority_speciality_code: Optional[str] = None,
+        top_priority_speciality_department: Optional[int] = None,
         sort_field: Optional[str] = None,
         sort_dir: str = "asc",
     ) -> Sequence[EntrantModel]:
@@ -132,8 +139,12 @@ class EntrantDao:
         if not with_del:
             statement = statement.where(EntrantModel.is_deleted == False)
         if pib_substring:
-            q = pib_substring.lower()
-            statement = statement.where(func.lower(PersonModel.pib).like(f"%{q}%"))
+            # ua_lower — кирилиця-aware нижній регістр (SQLite lower() її не бере), DK-36.
+            q = pib_substring.strip().lower()
+            statement = statement.where(ua_lower(PersonModel.pib).like(f"%{q}%"))
+        if phone_substring:
+            qp = phone_substring.strip().lower()
+            statement = statement.where(func.lower(PersonModel.phone_number).like(f"%{qp}%"))
         if entry_base_id:
             statement = statement.where(PersonModel.id_entry_base == entry_base_id)
         if application_status_id:
@@ -141,6 +152,11 @@ class EntrantDao:
         if created_between is not None:
             start_dt, end_dt = created_between
             statement = statement.where(EntrantModel.created_at >= start_dt).where(EntrantModel.created_at <= end_dt)
+        # Окремий фільтр по даті створення (конкретний день / період) — DK-34.
+        # AND'иться з фільтром кампанії: обидва обмежують created_at незалежно.
+        if created_date_between is not None:
+            date_start, date_end = created_date_between
+            statement = statement.where(EntrantModel.created_at >= date_start).where(EntrantModel.created_at <= date_end)
 
         # Фільтр по специальності з пріоритетів — будь-який пріоритет, не лише перший.
         if priority_speciality_code and priority_speciality_department is not None:
@@ -150,6 +166,18 @@ class EntrantDao:
                 .where(spec_filter.id_entrant == EntrantModel.id)
                 .where(spec_filter.id_speciality_code == priority_speciality_code)
                 .where(spec_filter.id_speciality_department == priority_speciality_department)
+                .exists()
+            )
+
+        # Фільтр по пріоритетній (перший пріоритет) специальності — DK-36.
+        if top_priority_speciality_code and top_priority_speciality_department is not None:
+            top_filter = aliased(SpecialtieEntrantModel)
+            statement = statement.where(
+                select(top_filter.id_entrant)
+                .where(top_filter.id_entrant == EntrantModel.id)
+                .where(top_filter.id_speciality_code == top_priority_speciality_code)
+                .where(top_filter.id_speciality_department == top_priority_speciality_department)
+                .where(top_filter.priority == 1)
                 .exists()
             )
 
@@ -164,6 +192,19 @@ class EntrantDao:
         if not with_del:
             statement = statement.where(EntrantModel.is_deleted == False)
         return session.exec(statement).one_or_none()
+
+    @staticmethod
+    def get_person_by_mokpp(mokpp: str, session: Session, exclude_id: Optional[int] = None) -> Optional[PersonModel]:
+        """Шукає не видалену особу за ІПН (mokpp) — для перевірки дублікатів карток
+        абітурієнтів (DK-36). `exclude_id` дозволяє не зачепити саму себе при edit."""
+        statement = (
+            select(PersonModel)
+            .where(PersonModel.mokpp == mokpp)
+            .where(PersonModel.is_deleted == False)
+        )
+        if exclude_id is not None:
+            statement = statement.where(PersonModel.id != exclude_id)
+        return session.exec(statement).first()
 
     @staticmethod
     def add_person(person: PersonModel, session: Session) -> PersonModel:
