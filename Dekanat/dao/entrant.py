@@ -1,0 +1,276 @@
+from datetime import datetime
+from typing import Sequence, Optional, Tuple
+from sqlmodel import Session, select
+from sqlalchemy import func
+from sqlalchemy.orm import selectinload, aliased, make_transient
+
+from Dekanat.models import (
+    EntrantModel,
+    PersonModel,
+    SpecialtieEntrantModel,
+    SpecialityModel,
+    SourceOfFundingModel,
+    EntryBaseModel,
+    ApplicationStatusModel,
+    IdentityDocumentModel,
+    DocumentAboutEducationModel,
+    MilitaryAccountingModel,
+    MedicalReferenceModel,
+    InformationAboutRelativesModel,
+    SpecialConditionPersonModel,
+    ResultZnoModel,
+)
+from Dekanat.utils.db import ua_collate
+
+
+# Поля, доступні для сортування. Маппинг ключа з UI → spec для побудови ORDER BY.
+# Реалізація join'ів — у самому get_all (щоб уникнути дублювання таблиць).
+SORT_FIELDS = {
+    "pib",
+    "phone_number",
+    "email",
+    "entry_base",
+    "source_of_funding",
+    "speciality",
+    "application_status",
+}
+
+
+def _entrant_loaders():
+    """Eager-load all relationships needed to render an entrant page."""
+    return [
+        selectinload(EntrantModel.application_status),
+        selectinload(EntrantModel.entrant_group),
+        selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.speciality),
+        selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.form_of_study),
+        selectinload(EntrantModel.person).selectinload(PersonModel.source_of_funding),
+        selectinload(EntrantModel.person).selectinload(PersonModel.entry_base),
+        selectinload(EntrantModel.person).selectinload(PersonModel.identity_document).selectinload(IdentityDocumentModel.type),
+        selectinload(EntrantModel.person).selectinload(PersonModel.document_about_education),
+        selectinload(EntrantModel.person).selectinload(PersonModel.military_accounting),
+        selectinload(EntrantModel.person).selectinload(PersonModel.medical_reference),
+        selectinload(EntrantModel.person).selectinload(PersonModel.information_about_relatives).selectinload(InformationAboutRelativesModel.kinship),
+        selectinload(EntrantModel.person).selectinload(PersonModel.special_conditions),
+        selectinload(EntrantModel.person).selectinload(PersonModel.results_zno).selectinload(ResultZnoModel.item_zno),
+    ]
+
+
+def _apply_sort(statement, sort_field: Optional[str], sort_dir: str):
+    """Додає ORDER BY до запиту з урахуванням outerjoin'ів зі справочниками.
+
+    Для текстових полів використовуємо collation для коректного сортування
+    кирилиці (`Dekanat/utils/db.py:ua_collate`): на SQLite — кастомний `UA_CI`
+    (`І` між `И` та `Ї`, а не на початку, як у BINARY), на MySQL — нативний
+    `utf8mb4_unicode_ci`.
+    """
+    direction = (sort_dir or "asc").lower()
+    if direction not in ("asc", "desc"):
+        direction = "asc"
+
+    def _dir(col):
+        return col.desc() if direction == "desc" else col.asc()
+
+    def _txt(col):
+        # collation у SQLAlchemy чіпляємо саме на колонку, не на функцію.
+        return ua_collate(col)
+
+    if sort_field == "pib":
+        return statement.order_by(_dir(_txt(PersonModel.pib)))
+    if sort_field == "phone_number":
+        return statement.order_by(_dir(PersonModel.phone_number))
+    if sort_field == "email":
+        return statement.order_by(_dir(func.coalesce(PersonModel.email, "")))
+    if sort_field == "entry_base":
+        eb = aliased(EntryBaseModel)
+        return statement.outerjoin(eb, PersonModel.id_entry_base == eb.id).order_by(_dir(_txt(eb.title)))
+    if sort_field == "source_of_funding":
+        sof = aliased(SourceOfFundingModel)
+        return statement.outerjoin(sof, PersonModel.id_source_of_funding == sof.id).order_by(_dir(_txt(sof.title)))
+    if sort_field == "application_status":
+        ast = aliased(ApplicationStatusModel)
+        return statement.outerjoin(ast, EntrantModel.id_application_status == ast.id).order_by(_dir(_txt(ast.title)))
+    if sort_field == "speciality":
+        # Сортуємо по специальності з першим пріоритетом (та, що відображається у таблиці).
+        sp_link = aliased(SpecialtieEntrantModel)
+        sp = aliased(SpecialityModel)
+        statement = (
+            statement
+            .outerjoin(
+                sp_link,
+                (sp_link.id_entrant == EntrantModel.id) & (sp_link.priority == 1),
+            )
+            .outerjoin(
+                sp,
+                (sp.code == sp_link.id_speciality_code) & (sp.id_department == sp_link.id_speciality_department),
+            )
+        )
+        return statement.order_by(_dir(sp.code), _dir(_txt(sp.title)))
+    # Дефолт — за датою створення (новіші вгорі).
+    return statement.order_by(EntrantModel.created_at.desc())
+
+
+class EntrantDao:
+    @staticmethod
+    def get_all(
+        session: Session,
+        with_del: bool = False,
+        created_between: Optional[Tuple[datetime, datetime]] = None,
+        pib_substring: Optional[str] = None,
+        application_status_id: Optional[int] = None,
+        entry_base_id: Optional[int] = None,
+        priority_speciality_code: Optional[str] = None,
+        priority_speciality_department: Optional[int] = None,
+        sort_field: Optional[str] = None,
+        sort_dir: str = "asc",
+    ) -> Sequence[EntrantModel]:
+        # Завжди джойнимо PersonModel — він потрібен і для більшості сортувань, і для пошуку по ПІБ.
+        statement = (
+            select(EntrantModel)
+            .options(*_entrant_loaders())
+            .join(PersonModel, EntrantModel.id == PersonModel.id)
+        )
+        if not with_del:
+            statement = statement.where(EntrantModel.is_deleted == False)
+        if pib_substring:
+            q = pib_substring.lower()
+            statement = statement.where(func.lower(PersonModel.pib).like(f"%{q}%"))
+        if entry_base_id:
+            statement = statement.where(PersonModel.id_entry_base == entry_base_id)
+        if application_status_id:
+            statement = statement.where(EntrantModel.id_application_status == application_status_id)
+        if created_between is not None:
+            start_dt, end_dt = created_between
+            statement = statement.where(EntrantModel.created_at >= start_dt).where(EntrantModel.created_at <= end_dt)
+
+        # Фільтр по специальності з пріоритетів — будь-який пріоритет, не лише перший.
+        if priority_speciality_code and priority_speciality_department is not None:
+            spec_filter = aliased(SpecialtieEntrantModel)
+            statement = statement.where(
+                select(spec_filter.id_entrant)
+                .where(spec_filter.id_entrant == EntrantModel.id)
+                .where(spec_filter.id_speciality_code == priority_speciality_code)
+                .where(spec_filter.id_speciality_department == priority_speciality_department)
+                .exists()
+            )
+
+        # Сортування. Для полів зі звʼязаних таблиць — окремі outerjoin'и з аліасами,
+        # щоб не зачепити інші where'и (ProcessingOrder/Status могли б бути уже додані).
+        statement = _apply_sort(statement, sort_field, sort_dir)
+        return session.exec(statement).all()
+
+    @staticmethod
+    def get_by_id(id: int, session: Session, with_del: bool = False) -> Optional[EntrantModel]:
+        statement = select(EntrantModel).options(*_entrant_loaders()).where(EntrantModel.id == id)
+        if not with_del:
+            statement = statement.where(EntrantModel.is_deleted == False)
+        return session.exec(statement).one_or_none()
+
+    @staticmethod
+    def add_person(person: PersonModel, session: Session) -> PersonModel:
+        session.add(person)
+        session.flush()
+        return person
+
+    @staticmethod
+    def add_entrant(entrant: EntrantModel, session: Session) -> EntrantModel:
+        session.add(entrant)
+        session.flush()
+        return entrant
+
+    @staticmethod
+    def edit_person(person: PersonModel, session: Session) -> PersonModel:
+        return session.merge(person)
+
+    @staticmethod
+    def edit_entrant(entrant: EntrantModel, session: Session) -> EntrantModel:
+        return session.merge(entrant)
+
+    # --- child collection sync helpers ---
+
+    # Note on `make_transient`: items приходять із попередньої (вже закритої) сесії і
+    # SQLAlchemy зберігає для них identity-key. На session.add() це породжує UPDATE,
+    # який не знаходить рядка (бо ми тільки що видалили оригінали). make_transient
+    # знімає identity, і add() робить чистий INSERT.
+
+    @staticmethod
+    def replace_identity_documents(person_id: int, items: list[IdentityDocumentModel], session: Session) -> None:
+        for old in session.exec(select(IdentityDocumentModel).where(IdentityDocumentModel.id_person == person_id)).all():
+            session.delete(old)
+        session.flush()
+        for item in items:
+            make_transient(item)
+            item.id_person = person_id
+            session.add(item)
+
+    @staticmethod
+    def replace_documents_about_education(person_id: int, items: list[DocumentAboutEducationModel], session: Session) -> None:
+        for old in session.exec(select(DocumentAboutEducationModel).where(DocumentAboutEducationModel.id_person == person_id)).all():
+            session.delete(old)
+        session.flush()
+        for item in items:
+            make_transient(item)
+            item.id_person = person_id
+            session.add(item)
+
+    @staticmethod
+    def replace_military_accountings(person_id: int, items: list[MilitaryAccountingModel], session: Session) -> None:
+        for old in session.exec(select(MilitaryAccountingModel).where(MilitaryAccountingModel.id_person == person_id)).all():
+            session.delete(old)
+        session.flush()
+        for item in items:
+            make_transient(item)
+            item.id_person = person_id
+            session.add(item)
+
+    @staticmethod
+    def replace_medical_references(person_id: int, items: list[MedicalReferenceModel], session: Session) -> None:
+        for old in session.exec(select(MedicalReferenceModel).where(MedicalReferenceModel.id_person == person_id)).all():
+            session.delete(old)
+        session.flush()
+        for item in items:
+            make_transient(item)
+            item.id = None
+            item.id_person = person_id
+            session.add(item)
+
+    @staticmethod
+    def replace_information_about_relatives(person_id: int, items: list[InformationAboutRelativesModel], session: Session) -> None:
+        for old in session.exec(select(InformationAboutRelativesModel).where(InformationAboutRelativesModel.id_person == person_id)).all():
+            session.delete(old)
+        session.flush()
+        for item in items:
+            make_transient(item)
+            item.id = None
+            item.id_person = person_id
+            session.add(item)
+
+    @staticmethod
+    def replace_special_conditions(person_id: int, items: list[SpecialConditionPersonModel], session: Session) -> None:
+        for old in session.exec(select(SpecialConditionPersonModel).where(SpecialConditionPersonModel.id_person == person_id)).all():
+            session.delete(old)
+        session.flush()
+        for item in items:
+            make_transient(item)
+            item.id_person = person_id
+            session.add(item)
+
+    @staticmethod
+    def replace_results_zno(person_id: int, items: list[ResultZnoModel], session: Session) -> None:
+        for old in session.exec(select(ResultZnoModel).where(ResultZnoModel.id_person == person_id)).all():
+            session.delete(old)
+        session.flush()
+        for item in items:
+            make_transient(item)
+            item.id = None
+            item.id_person = person_id
+            session.add(item)
+
+    @staticmethod
+    def replace_specialties(entrant_id: int, items: list[SpecialtieEntrantModel], session: Session) -> None:
+        for old in session.exec(select(SpecialtieEntrantModel).where(SpecialtieEntrantModel.id_entrant == entrant_id)).all():
+            session.delete(old)
+        session.flush()
+        for item in items:
+            make_transient(item)
+            item.id_entrant = entrant_id
+            session.add(item)

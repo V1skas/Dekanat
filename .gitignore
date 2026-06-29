@@ -27,6 +27,9 @@ dist/
 *.sqlite
 *.csv
 
+# macOS
+.DS_Store
+
 # Разное
 .idea/
 *.swp
@@ -34,3 +37,6 @@ dist/
 tmp/
 temp/
 /tmp
+
+# Старі версії проєкту — лежать локально для довідки, не комітимо.
+example/
