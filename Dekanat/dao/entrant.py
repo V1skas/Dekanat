@@ -115,6 +115,7 @@ class EntrantDao:
         session: Session,
         with_del: bool = False,
         created_between: Optional[Tuple[datetime, datetime]] = None,
+        created_date_between: Optional[Tuple[datetime, datetime]] = None,
         pib_substring: Optional[str] = None,
         application_status_id: Optional[int] = None,
         entry_base_id: Optional[int] = None,
@@ -141,6 +142,11 @@ class EntrantDao:
         if created_between is not None:
             start_dt, end_dt = created_between
             statement = statement.where(EntrantModel.created_at >= start_dt).where(EntrantModel.created_at <= end_dt)
+        # Окремий фільтр по даті створення (конкретний день / період) — DK-34.
+        # AND'иться з фільтром кампанії: обидва обмежують created_at незалежно.
+        if created_date_between is not None:
+            date_start, date_end = created_date_between
+            statement = statement.where(EntrantModel.created_at >= date_start).where(EntrantModel.created_at <= date_end)
 
         # Фільтр по специальності з пріоритетів — будь-який пріоритет, не лише перший.
         if priority_speciality_code and priority_speciality_department is not None:

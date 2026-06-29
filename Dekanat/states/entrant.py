@@ -49,6 +49,11 @@ class ListEntrantState(AppState):
     filter_campaign_id: int = 0  # 0 — без фільтра по кампанії
     # "code|id_department"; "__all__" — без фільтра (Radix забороняє value="" в rx.select.item).
     filter_speciality_key: str = "__all__"
+    # Фільтр по даті створення (DK-34). Режим "day" — конкретний день; "period" — діапазон.
+    filter_date_mode: str = "day"  # "day" | "period"
+    filter_date_day: str = ""  # YYYY-MM-DD; порожньо — без фільтра
+    filter_date_from: str = ""  # YYYY-MM-DD; порожньо — відкрита нижня межа
+    filter_date_to: str = ""  # YYYY-MM-DD; порожньо — відкрита верхня межа
     application_status_options: List[Dict[str, str]] = []
     entry_base_options: List[Dict[str, str]] = []
     # Опции спеціальностей — обмежені квотами активної кампанії (як у формі абітурієнта).
@@ -72,6 +77,38 @@ class ListEntrantState(AppState):
         except (ValueError, TypeError):
             return None
 
+    def _date_range(self):
+        """Діапазон created_at з фільтра по даті (DK-34). У режимі "day" — межі обраного
+        дня; у режимі "period" — [from 00:00, to 23:59:59] з відкритими кінцями
+        (datetime.min/max), якщо одна з меж не задана. Повертає None, коли фільтр порожній."""
+        if self.filter_date_mode == "day":
+            if not self.filter_date_day:
+                return None
+            try:
+                day = datetime.strptime(self.filter_date_day, "%Y-%m-%d")
+            except (ValueError, TypeError):
+                return None
+            return (
+                day.replace(hour=0, minute=0, second=0),
+                day.replace(hour=23, minute=59, second=59),
+            )
+        # period
+        if not self.filter_date_from and not self.filter_date_to:
+            return None
+        start_dt = datetime.min
+        end_dt = datetime.max
+        if self.filter_date_from:
+            try:
+                start_dt = datetime.strptime(self.filter_date_from, "%Y-%m-%d").replace(hour=0, minute=0, second=0)
+            except (ValueError, TypeError):
+                pass
+        if self.filter_date_to:
+            try:
+                end_dt = datetime.strptime(self.filter_date_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            except (ValueError, TypeError):
+                pass
+        return (start_dt, end_dt)
+
     def _parse_speciality_key(self):
         if not self.filter_speciality_key or self.filter_speciality_key == "__all__":
             return (None, None)
@@ -89,6 +126,7 @@ class ListEntrantState(AppState):
             status_id=self.filter_status_id or None,
             entry_base_id=self.filter_entry_base_id or None,
             created_between=self._campaign_range(),
+            created_date_between=self._date_range(),
             priority_speciality_code=spec_code,
             priority_speciality_department=spec_dept,
             sort_field=self.sort_field or None,
@@ -208,12 +246,67 @@ class ListEntrantState(AppState):
         self.filter_entry_base_id = 0
         self.filter_campaign_id = 0
         self.filter_speciality_key = "__all__"
+        self.filter_date_mode = "day"
+        self.filter_date_day = ""
+        self.filter_date_from = ""
+        self.filter_date_to = ""
         self.in_progress = True
         yield
         try:
             self._reload_items()
         finally:
             self.in_progress = False
+
+    # --- date filter (DK-34) ---
+
+    @rx.event
+    def set_filter_date_mode(self, value: str):
+        # value приходить як мітка радіо ("День"/"Період") або як код ("day"/"period").
+        # Зміна режиму скидає поля іншого режиму, щоб не лишати "прихований" фільтр.
+        self.filter_date_mode = "period" if value in ("period", "Період") else "day"
+        self.filter_date_day = ""
+        self.filter_date_from = ""
+        self.filter_date_to = ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_filter_date_day(self, value: str):
+        self.filter_date_day = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_filter_date_from(self, value: str):
+        self.filter_date_from = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_filter_date_to(self, value: str):
+        self.filter_date_to = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.var
+    def is_date_mode_period(self) -> bool:
+        return self.filter_date_mode == "period"
 
     # --- speciality filter ---
 

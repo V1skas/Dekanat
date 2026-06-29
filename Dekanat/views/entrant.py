@@ -218,7 +218,62 @@ def _list_filter_panel() -> rx.Component:
             align="stretch",
             width="100%",
         ),
+        _date_filter(),
         on_clear=ListEntrantState.clear_filters,
+    )
+
+
+def _date_filter() -> rx.Component:
+    """Фільтр по даті створення (DK-34): перемикач «день / період» + відповідні поля."""
+    return rx.vstack(
+        rx.text("Дата створення:", weight="medium"),
+        rx.radio(
+            ["День", "Період"],
+            value=rx.cond(ListEntrantState.is_date_mode_period, "Період", "День"),
+            on_change=ListEntrantState.set_filter_date_mode,
+            direction="row",
+            spacing="4",
+        ),
+        rx.cond(
+            ListEntrantState.is_date_mode_period,
+            rx.hstack(
+                rx.vstack(
+                    rx.text("З:", size="2"),
+                    rx.input(
+                        type="date",
+                        value=ListEntrantState.filter_date_from,
+                        on_change=ListEntrantState.set_filter_date_from,
+                        width="100%",
+                    ),
+                    spacing="1",
+                    align="stretch",
+                    width="100%",
+                ),
+                rx.vstack(
+                    rx.text("По:", size="2"),
+                    rx.input(
+                        type="date",
+                        value=ListEntrantState.filter_date_to,
+                        on_change=ListEntrantState.set_filter_date_to,
+                        width="100%",
+                    ),
+                    spacing="1",
+                    align="stretch",
+                    width="100%",
+                ),
+                spacing="2",
+                width="100%",
+            ),
+            rx.input(
+                type="date",
+                value=ListEntrantState.filter_date_day,
+                on_change=ListEntrantState.set_filter_date_day,
+                width="100%",
+            ),
+        ),
+        spacing="1",
+        align="stretch",
+        width="100%",
     )
 
 
