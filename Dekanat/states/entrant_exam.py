@@ -19,6 +19,7 @@ from Dekanat.services.item_zno import ItemZnoService
 from Dekanat.services.worker import WorkerService
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.services.result_zno import ResultZnoService
+from Dekanat.utils.display import disambiguate_pib
 
 
 # ============================================================
@@ -529,13 +530,15 @@ class ViewEntrantExamState(AppState):
     g_grade_original: str = ""
 
     def _reload_grading_rows(self):
+        # Повні тезки в групі розрізняємо телефоном (DK-36).
+        display = disambiguate_pib((row["pib"], row.get("phone", "")) for row in self._raw_entrants)
         self.grading_rows = [
             {
                 "id": str(row["id"]),
-                "pib": row["pib"],
+                "pib": shown,
                 "grade": self.grades_by_entrant.get(str(row["id"]), ""),
             }
-            for row in self._raw_entrants
+            for row, shown in zip(self._raw_entrants, display)
         ]
 
     def _reload_item(self):
@@ -553,6 +556,7 @@ class ViewEntrantExamState(AppState):
                 {
                     "id": str(e.id),
                     "pib": e.person.pib if e.person is not None else f"Абітурієнт #{e.id}",
+                    "phone": (e.person.phone_number or "") if e.person is not None else "",
                 }
                 for e in entrants
             ]

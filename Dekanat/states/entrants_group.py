@@ -10,6 +10,7 @@ from Dekanat.states.app import AppState
 from Dekanat.models import EntrantGroupModel, EntrantModel, EntrantExamModel, AdmissionCampaignModel
 from Dekanat.services.entrants_group import EntrantsGroupService
 from Dekanat.services.admission_campaign import AdmissionCampaignService
+from Dekanat.utils.display import disambiguate_pib
 
 
 # ---------- List page ----------
@@ -874,13 +875,16 @@ class PrintEntrantsGroupState(AppState):
                 if group is None:
                     continue
                 entrants = service.get_entrants(gid)
-                rows: List[PrintEntrantRow] = []
+                # Збираємо (pib, phone), сортуємо за ПІБ, потім розрізняємо тезок телефоном (DK-36).
+                raw: List[tuple] = []
                 for e in entrants:
                     person = e.person
-                    rows.append(PrintEntrantRow(
-                        pib=person.pib if person and person.pib else f"#{e.id}",
-                    ))
-                rows.sort(key=lambda r: r.pib.lower())
+                    pib = person.pib if person and person.pib else f"#{e.id}"
+                    phone = (person.phone_number or "") if person else ""
+                    raw.append((pib, phone))
+                raw.sort(key=lambda t: t[0].lower())
+                display = disambiguate_pib(raw)
+                rows = [PrintEntrantRow(pib=shown) for shown in display]
                 collected.append(PrintGroup(id=group.id, title=group.title or f"#{group.id}", entrants=rows))
             self.groups = collected
             self.in_progress = False

@@ -1,5 +1,6 @@
 from sqlmodel import Field, Relationship
-from sqlalchemy import ForeignKeyConstraint, Column, LargeBinary, DateTime, Text, func
+from sqlalchemy import ForeignKeyConstraint, Column, LargeBinary, DateTime, Text, Boolean, func
+from sqlalchemy.sql import expression
 from typing import Optional, List
 from datetime import datetime
 
@@ -278,6 +279,12 @@ class ApplicationStatusModel(rx.Model, table=True):
     id: int = Field(primary_key=True)
     title: str
     description: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
+    # Маркер «статус за замовчуванням для нових карток абітурієнтів» — може бути
+    # лише в одного статусу (інваріант підтримується в сервісі). DK-36.
+    is_default: bool = Field(
+        default=False,
+        sa_column=Column("is_default", Boolean, nullable=False, server_default=expression.false()),
+    )
     is_deleted: bool = False
 
 

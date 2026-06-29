@@ -20,6 +20,27 @@ class ApplicationStatusDao:
         return session.exec(statement).one_or_none()
 
     @staticmethod
+    def get_default(session: Session) -> Optional[ApplicationStatusModel]:
+        """Статус, позначений як дефолтний для нових карток абітурієнтів (DK-36)."""
+        statement = (
+            select(ApplicationStatusModel)
+            .where(ApplicationStatusModel.is_deleted == False)
+            .where(ApplicationStatusModel.is_default == True)
+        )
+        return session.exec(statement).first()
+
+    @staticmethod
+    def clear_default_except(except_id: Optional[int], session: Session) -> None:
+        """Знімає прапорець is_default з усіх статусів, окрім вказаного. Підтримує
+        інваріант «дефолтним може бути лише один статус» (DK-36)."""
+        statement = select(ApplicationStatusModel).where(ApplicationStatusModel.is_default == True)
+        for row in session.exec(statement).all():
+            if except_id is not None and row.id == except_id:
+                continue
+            row.is_default = False
+            session.add(row)
+
+    @staticmethod
     def add_one(item: ApplicationStatusModel, session: Session):
         session.add(item)
 
