@@ -187,7 +187,8 @@ def list_page() -> rx.Component:
             rx.cond(ListRoleState.get_user_actions.contains(Actions.ROLE_ADD), controls.button_image_primary(name_icon="plus", on_click=ListRoleState.on_click_add)),
             width="100%"
         ),
-        rx.skeleton(list_page_content(), loading=ListRoleState.in_progress, height="100%")
+        rx.skeleton(list_page_content(), loading=ListRoleState.in_progress, height="100%"),
+        on_mount=ListRoleState.on_load,
     )
 
 @require_login

@@ -121,7 +121,8 @@ def list_page() -> rx.Component:
             ),
             width="100%"
         ),
-        rx.skeleton(list_page_content(), loading=ListApplicationStatusState.in_progress, height="100%")
+        rx.skeleton(list_page_content(), loading=ListApplicationStatusState.in_progress, height="100%"),
+        on_mount=ListApplicationStatusState.on_load,
     )
 
 @require_login

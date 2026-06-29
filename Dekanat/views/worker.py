@@ -291,7 +291,8 @@ def list_page() -> rx.Component:
             rx.cond(ListWorkerState.get_user_actions.contains(Actions.WORKER_ADD), controls.button_image_primary(name_icon="plus", on_click=ListWorkerState.on_click_add)),
             width="100%"
         ),
-        rx.skeleton(list_page_content(), loading=ListWorkerState.in_progress, height="100%")
+        rx.skeleton(list_page_content(), loading=ListWorkerState.in_progress, height="100%"),
+        on_mount=ListWorkerState.on_load,
     )
 
 @require_login

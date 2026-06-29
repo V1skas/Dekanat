@@ -467,4 +467,5 @@ def list_page() -> rx.Component:
         header_subpage("Звіт приймальної кампанії", width="100%"),
         rx.skeleton(list_page_content(), loading=ListAdmissionReportState.in_progress, height="100%"),
         filter_panel=_controls_panel(),
+        on_mount=ListAdmissionReportState.on_load,
     )

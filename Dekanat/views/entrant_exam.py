@@ -568,6 +568,7 @@ def list_page() -> rx.Component:
         ),
         rx.skeleton(list_page_content(), loading=ListEntrantExamState.in_progress, height="100%"),
         filter_panel=_filter_panel(),
+        on_mount=ListEntrantExamState.on_load,
     )
 
 

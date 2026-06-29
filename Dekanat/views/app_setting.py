@@ -79,4 +79,5 @@ def list_page() -> rx.Component:
             width="100%",
         ),
         rx.skeleton(list_page_content(), loading=ListAppSettingState.in_progress, height="100%"),
+        on_mount=ListAppSettingState.on_load,
     )

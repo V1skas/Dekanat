@@ -91,7 +91,8 @@ def list_page() -> rx.Component:
             rx.cond(ListKinshipState.get_user_actions.contains(Actions.KINSHIP_ADD), controls.button_image_primary(name_icon="plus", on_click=ListKinshipState.on_click_add)),
             width="100%"
         ),
-        rx.skeleton(list_page_content(), loading=ListKinshipState.in_progress, height="100%")
+        rx.skeleton(list_page_content(), loading=ListKinshipState.in_progress, height="100%"),
+        on_mount=ListKinshipState.on_load,
     )
 
 @require_login

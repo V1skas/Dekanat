@@ -102,7 +102,8 @@ def list_page() -> rx.Component:
             ),
             width="100%"
         ),
-        rx.skeleton(list_page_content(), loading=ListSourceOfFundingState.in_progress, height="100%")
+        rx.skeleton(list_page_content(), loading=ListSourceOfFundingState.in_progress, height="100%"),
+        on_mount=ListSourceOfFundingState.on_load,
     )
 
 @require_login

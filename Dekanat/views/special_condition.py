@@ -154,7 +154,8 @@ def list_page() -> rx.Component:
             ),
             width="100%"
         ),
-        rx.skeleton(list_page_content(), loading=ListSpecialConditionState.in_progress, height="100%")
+        rx.skeleton(list_page_content(), loading=ListSpecialConditionState.in_progress, height="100%"),
+        on_mount=ListSpecialConditionState.on_load,
     )
 
 @require_login

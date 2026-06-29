@@ -86,7 +86,8 @@ def list_page() -> rx.Component:
             rx.cond(ListIdentityDocumentTypeState.get_user_actions.contains(Actions.IDENTITY_DOCUMENT_TYPE_ADD), controls.button_image_primary(name_icon="plus", on_click=ListIdentityDocumentTypeState.on_click_add)),
             width="100%"
         ),
-        rx.skeleton(list_page_content(), loading=ListIdentityDocumentTypeState.process_items, height="100%")
+        rx.skeleton(list_page_content(), loading=ListIdentityDocumentTypeState.process_items, height="100%"),
+        on_mount=ListIdentityDocumentTypeState.on_load,
     )
 
 @require_login

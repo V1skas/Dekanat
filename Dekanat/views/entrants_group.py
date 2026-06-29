@@ -419,6 +419,7 @@ def list_page() -> rx.Component:
         ),
         rx.skeleton(list_page_content(), loading=ListEntrantsGroupState.in_progress, height="100%"),
         filter_panel=_list_filter_panel(),
+        on_mount=ListEntrantsGroupState.on_load,
     )
 
 

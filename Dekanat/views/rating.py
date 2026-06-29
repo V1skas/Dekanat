@@ -295,4 +295,5 @@ def list_page() -> rx.Component:
         ),
         rx.skeleton(list_page_content(), loading=ListRatingState.in_progress, height="100%"),
         filter_panel=_controls_panel(),
+        on_mount=ListRatingState.on_load,
     )

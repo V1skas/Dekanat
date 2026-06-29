@@ -84,7 +84,8 @@ def list_page() -> rx.Component:
                     controls.button_image_primary(name_icon="plus", on_click=ListEntryBaseState.on_click_add)),
             width="100%"
         ),
-        rx.skeleton(list_page_content(), loading=ListEntryBaseState.in_progress, height="100%")
+        rx.skeleton(list_page_content(), loading=ListEntryBaseState.in_progress, height="100%"),
+        on_mount=ListEntryBaseState.on_load,
     )
 
 @require_login

@@ -295,12 +295,19 @@ def page_wrapper(
     page_header: rx.Component,
     page_content: rx.Component,
     filter_panel: Optional[rx.Component] = None,
+    on_mount=None,
 ) -> rx.Component:
     """Каркас отдельной страницы.
 
     Внешний chrome (шапка/сайдбар) приходит из app_wraps и не пересоздаётся при навигации.
     Если передан `filter_panel`, он рендерится между шапкой и контентом — собственную видимость
     (`rx.cond` на state.<filter_open>`) панель должна обеспечить сама.
+
+    `on_mount` — событие, выполняемое при каждом монтировании страницы. Списочные
+    страницы передают сюда свой `on_load`: Reflex не всегда повторно запускает
+    `on_load` при внутренней навигации через `rx.redirect` (см. DK-37), из-за чего
+    список оставался устаревшим после add/edit/delete. `on_mount` срабатывает
+    надёжно на каждый монтаж компонента и перечитывает данные.
     """
     children: List[rx.Component] = [page_header]
     if filter_panel is not None:
@@ -314,12 +321,14 @@ def page_wrapper(
             overflow_y="auto",
         )
     )
+    extra = {"on_mount": on_mount} if on_mount is not None else {}
     return rx.vstack(
         *children,
         flex="1",
         width="100%",
         height="100%",
         spacing="3",
+        **extra,
     )
 
 def header_subpage(title: str, *args, left: Optional[rx.Component] = None, **prop) -> rx.Component:
