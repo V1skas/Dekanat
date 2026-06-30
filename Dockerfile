@@ -23,5 +23,8 @@ ENV DB_URL="sqlite:///data/reflex.db"
 
 ENTRYPOINT [ "sh", "entrypoint.sh" ]
 
-# Запускаем Reflex. В режиме prod он сам будет раздавать и статику, и логику.
-CMD ["uv", "run", "reflex", "run", "--env", "prod"]
+# Запускаем ТОЛЬКО бекенд Reflex (Python/uvicorn на :8000). Фронт собирается
+# отдельно (Dockerfile.frontend) и раздаётся nginx'ом — это нужно, чтобы на
+# проде не запускался bun (ему требуются инструкции AVX, которых нет на сервере).
+# В режиме --backend-only Reflex не трогает frontend-сборку и bun вообще.
+CMD ["uv", "run", "reflex", "run", "--env", "prod", "--backend-only", "--backend-host", "0.0.0.0"]

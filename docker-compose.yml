@@ -14,21 +14,38 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-  web:
-    build: 
+
+  # Бекенд: только Python-сервер Reflex (uvicorn на :8000). Без bun → стартует
+  # на процессорах без AVX. Наружу порт не публикуем — к нему ходит только nginx.
+  backend:
+    build:
       context: .
       dockerfile: Dockerfile
-    volumes:
-      - app_data:/Dekanat/data
-    ports:
-      - "80:3000"
-      - "8000:8000"
+    expose:
+      - "8000"
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - app_data:/Dekanat/data
     environment:
       DB_URL: mysql+pymysql://${DB_USER}:${DB_PASSWORD}@db:3306/${DB_NAME}
+      API_URL: ${API_URL}
+      DEPLOY_URL: ${DEPLOY_URL}
+
+  # Фронт: nginx с готовой статикой из ./frontend_dist (её собирает локально
+  # build_frontend.sh — там работает bun/AVX). Здесь сборки нет, образ собирается
+  # на проде. Раздаёт страницы на :80 и проксирует вебсокет/загрузки на backend.
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "80:80"
+    restart: unless-stopped
+    depends_on:
+      - backend
 
 volumes:
   mysql_data:

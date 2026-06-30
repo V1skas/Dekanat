@@ -1,0 +1,13 @@
+# Фронт собирается ЗАРАНЕЕ локально (на компьютере с AVX) скриптом
+# ./build_frontend.sh — он кладёт готовую статику в ./frontend_dist.
+# Здесь мы только заворачиваем её в nginx: ни Python, ни bun, поэтому
+# `docker build` спокойно идёт на прод-сервере без инструкций AVX.
+#
+# Если получаете ошибку «frontend_dist not found» — сначала соберите фронт:
+#   ./build_frontend.sh http://your-prod-host
+FROM nginx:1.27-alpine
+
+COPY frontend_dist/ /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
