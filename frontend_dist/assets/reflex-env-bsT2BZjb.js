@@ -1,0 +1,1 @@
+var e={PING:`http://0.0.0.0/ping`,EVENT:`ws://0.0.0.0/_event`,UPLOAD:`http://0.0.0.0/_upload`,AUTH_CODESPACE:`http://0.0.0.0/auth-codespace`,HEALTH:`http://0.0.0.0/_health`,ALL_ROUTES:`http://0.0.0.0/_all_routes`,TRANSPORT:`websocket`,TEST_MODE:!1};export{e as t};

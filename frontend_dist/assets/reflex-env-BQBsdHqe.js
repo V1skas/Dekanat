@@ -1,1 +1,0 @@
-var e={PING:`http://dekanat.dkrkm.edu.ua/ping`,EVENT:`ws://dekanat.dkrkm.edu.ua/_event`,UPLOAD:`http://dekanat.dkrkm.edu.ua/_upload`,AUTH_CODESPACE:`http://dekanat.dkrkm.edu.ua/auth-codespace`,HEALTH:`http://dekanat.dkrkm.edu.ua/_health`,ALL_ROUTES:`http://dekanat.dkrkm.edu.ua/_all_routes`,TRANSPORT:`websocket`,TEST_MODE:!1};export{e as t};
