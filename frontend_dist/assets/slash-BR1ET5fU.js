@@ -1,0 +1,1 @@
+import"./react-DemXi45S.js";import{t as e}from"./createLucideIcon-CkHeeWdg.js";var t=[[`path`,{d:`M22 2 2 22`,key:`y4kqgn`}]],n=e(`slash`,t);export{t as __iconNode,n as default};
