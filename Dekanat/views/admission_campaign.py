@@ -142,9 +142,7 @@ def _form_quota_row_factory(form_state):
     def _row(item: AdmissionCampaignSpecialityModel, idx: int) -> rx.Component:
         return rx.table.row(
             rx.table.row_header_cell(
-                form_state.speciality_labels[
-                    item.id_speciality_code + "|" + item.id_speciality_department.to_string()
-                ],
+                form_state.speciality_labels[item.id_speciality.to_string()],
                 align="left",
             ),
             rx.table.cell(form_state.entry_base_labels[item.id_entry_base.to_string()]),

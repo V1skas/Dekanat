@@ -113,19 +113,19 @@ class ListEntrantState(AppState):
         return (start_dt, end_dt)
 
     @staticmethod
-    def _parse_spec_key(key: str):
+    def _parse_spec_key(key: str) -> Optional[int]:
+        # Ключ спеціальності — тепер сурогатний id (DK-38). "__all__" — без фільтра.
         if not key or key == "__all__":
-            return (None, None)
+            return None
         try:
-            code, dept = key.split("|", 1)
-            return (code, int(dept))
+            return int(key)
         except (ValueError, TypeError):
-            return (None, None)
+            return None
 
     def _reload_items(self):
         service = EntrantService()
-        spec_code, spec_dept = self._parse_spec_key(self.filter_speciality_key)
-        top_code, top_dept = self._parse_spec_key(self.filter_top_speciality_key)
+        spec_id = self._parse_spec_key(self.filter_speciality_key)
+        top_id = self._parse_spec_key(self.filter_top_speciality_key)
         self.items = service.get_list_items(
             pib=self.filter_pib.strip() or None,
             phone=self.filter_phone.strip() or None,
@@ -133,10 +133,8 @@ class ListEntrantState(AppState):
             entry_base_id=self.filter_entry_base_id or None,
             created_between=self._campaign_range(),
             created_date_between=self._date_range(),
-            priority_speciality_code=spec_code,
-            priority_speciality_department=spec_dept,
-            top_priority_speciality_code=top_code,
-            top_priority_speciality_department=top_dept,
+            priority_speciality_id=spec_id,
+            top_priority_speciality_id=top_id,
             sort_field=self.sort_field or None,
             sort_dir=self.sort_dir,
         )
@@ -342,7 +340,7 @@ class ListEntrantState(AppState):
             for q in quotas:
                 if q.speciality is None:
                     continue
-                key = f"{q.id_speciality_code}|{q.id_speciality_department}"
+                key = str(q.id_speciality)
                 if key in seen_keys:
                     continue
                 seen_keys.add(key)
@@ -353,7 +351,7 @@ class ListEntrantState(AppState):
         if len(opts) == 1:
             for s in SpecialityService().get_list_items():
                 opts.append({
-                    "value": f"{s.code}|{s.id_department}",
+                    "value": str(s.id),
                     "label": f"{s.code} {s.title} ({s.tag})",
                 })
         self.speciality_options = opts
@@ -671,7 +669,7 @@ class EntrantFormState(AppState):
         self.entrant_group_options = [{"value": str(g.id), "label": g.title} for g in eg]
         sp = SpecialityService().get_list_items()
         sp_by_key: Dict[str, str] = {
-            f"{s.code}|{s.id_department}": f"{s.code} {s.title} ({s.tag})" for s in sp
+            str(s.id): f"{s.code} {s.title} ({s.tag})" for s in sp
         }
         self.all_speciality_options = [
             {"value": k, "label": v} for k, v in sp_by_key.items()
@@ -688,7 +686,7 @@ class EntrantFormState(AppState):
             quotas = AdmissionCampaignSpecialityService().get_by_campaign(active_campaign.id)
             for q in quotas:
                 rows.append({
-                    "spec_key": f"{q.id_speciality_code}|{q.id_speciality_department}",
+                    "spec_key": str(q.id_speciality),
                     "base_id": str(q.id_entry_base),
                     "form_id": str(q.id_form_of_study),
                 })
@@ -1608,7 +1606,7 @@ class EntrantFormState(AppState):
             return
         item = self.specialties[index]
         self.sp_index = index
-        self.sp_combined = f"{item.id_speciality_code}|{item.id_speciality_department}"
+        self.sp_combined = str(item.id_speciality) if item.id_speciality else ""
         self.sp_id_form_of_study = item.id_form_of_study or 0
         self.sp_priority = item.priority or 1
         self.sp_open = True
@@ -1649,10 +1647,8 @@ class EntrantFormState(AppState):
             yield rx.toast.warning("Оберіть спеціальність!")
             return
         try:
-            code, dept = self.sp_combined.split("|", 1)
-            id_speciality_code = code
-            id_speciality_department = int(dept)
-        except Exception:
+            id_speciality = int(self.sp_combined)
+        except (ValueError, TypeError):
             yield rx.toast.warning("Некоректна спеціальність!")
             return
         if not self.sp_id_form_of_study:
@@ -1666,8 +1662,7 @@ class EntrantFormState(AppState):
         # з однаковою формою (це порушило б ключ specialties_entrants) — DK-26.
         for i, sp in enumerate(self.specialties):
             if (
-                sp.id_speciality_code == id_speciality_code
-                and sp.id_speciality_department == id_speciality_department
+                sp.id_speciality == id_speciality
                 and sp.id_form_of_study == self.sp_id_form_of_study
                 and i != self.sp_index
             ):
@@ -1676,8 +1671,7 @@ class EntrantFormState(AppState):
 
         item = SpecialtieEntrantModel(
             id_entrant=self.entrant_id if self.entrant_id > 0 else 0,
-            id_speciality_code=id_speciality_code,
-            id_speciality_department=id_speciality_department,
+            id_speciality=id_speciality,
             id_form_of_study=self.sp_id_form_of_study,
             priority=self.sp_priority,
         )

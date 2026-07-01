@@ -104,7 +104,7 @@ def _apply_sort(statement, sort_field: Optional[str], sort_dir: str):
             )
             .outerjoin(
                 sp,
-                (sp.code == sp_link.id_speciality_code) & (sp.id_department == sp_link.id_speciality_department),
+                sp.id == sp_link.id_speciality,
             )
         )
         return statement.order_by(_dir(sp.code), _dir(_txt(sp.title)))
@@ -123,10 +123,8 @@ class EntrantDao:
         phone_substring: Optional[str] = None,
         application_status_id: Optional[int] = None,
         entry_base_id: Optional[int] = None,
-        priority_speciality_code: Optional[str] = None,
-        priority_speciality_department: Optional[int] = None,
-        top_priority_speciality_code: Optional[str] = None,
-        top_priority_speciality_department: Optional[int] = None,
+        priority_speciality_id: Optional[int] = None,
+        top_priority_speciality_id: Optional[int] = None,
         sort_field: Optional[str] = None,
         sort_dir: str = "asc",
     ) -> Sequence[EntrantModel]:
@@ -159,24 +157,22 @@ class EntrantDao:
             statement = statement.where(EntrantModel.created_at >= date_start).where(EntrantModel.created_at <= date_end)
 
         # Фільтр по специальності з пріоритетів — будь-який пріоритет, не лише перший.
-        if priority_speciality_code and priority_speciality_department is not None:
+        if priority_speciality_id:
             spec_filter = aliased(SpecialtieEntrantModel)
             statement = statement.where(
                 select(spec_filter.id_entrant)
                 .where(spec_filter.id_entrant == EntrantModel.id)
-                .where(spec_filter.id_speciality_code == priority_speciality_code)
-                .where(spec_filter.id_speciality_department == priority_speciality_department)
+                .where(spec_filter.id_speciality == priority_speciality_id)
                 .exists()
             )
 
         # Фільтр по пріоритетній (перший пріоритет) специальності — DK-36.
-        if top_priority_speciality_code and top_priority_speciality_department is not None:
+        if top_priority_speciality_id:
             top_filter = aliased(SpecialtieEntrantModel)
             statement = statement.where(
                 select(top_filter.id_entrant)
                 .where(top_filter.id_entrant == EntrantModel.id)
-                .where(top_filter.id_speciality_code == top_priority_speciality_code)
-                .where(top_filter.id_speciality_department == top_priority_speciality_department)
+                .where(top_filter.id_speciality == top_priority_speciality_id)
                 .where(top_filter.priority == 1)
                 .exists()
             )

@@ -37,10 +37,8 @@ class EntrantService:
         entry_base_id: Optional[int] = None,
         created_between: Optional[Tuple[datetime, datetime]] = None,
         created_date_between: Optional[Tuple[datetime, datetime]] = None,
-        priority_speciality_code: Optional[str] = None,
-        priority_speciality_department: Optional[int] = None,
-        top_priority_speciality_code: Optional[str] = None,
-        top_priority_speciality_department: Optional[int] = None,
+        priority_speciality_id: Optional[int] = None,
+        top_priority_speciality_id: Optional[int] = None,
         sort_field: Optional[str] = None,
         sort_dir: str = "asc",
     ) -> Sequence[EntrantModel]:
@@ -55,10 +53,8 @@ class EntrantService:
                     entry_base_id=entry_base_id,
                     created_between=created_between,
                     created_date_between=created_date_between,
-                    priority_speciality_code=priority_speciality_code,
-                    priority_speciality_department=priority_speciality_department,
-                    top_priority_speciality_code=top_priority_speciality_code,
-                    top_priority_speciality_department=top_priority_speciality_department,
+                    priority_speciality_id=priority_speciality_id,
+                    top_priority_speciality_id=top_priority_speciality_id,
                     sort_field=sort_field,
                     sort_dir=sort_dir,
                 )
@@ -100,12 +96,12 @@ class EntrantService:
             return  # немає активної кампанії — немає з чим звіряти
         quotas = AdmissionCampaignSpecialityService().get_by_campaign(campaign.id)
         valid = {
-            (q.id_speciality_code, q.id_speciality_department, q.id_entry_base, q.id_form_of_study)
+            (q.id_speciality, q.id_entry_base, q.id_form_of_study)
             for q in quotas
         }
         base = person.id_entry_base
         for sp in specialties:
-            key = (sp.id_speciality_code, sp.id_speciality_department, base, sp.id_form_of_study)
+            key = (sp.id_speciality, base, sp.id_form_of_study)
             if key not in valid:
                 raise ValueError(
                     "Обрана спеціальність недоступна для цієї бази вступу та форми "

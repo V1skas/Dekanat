@@ -17,10 +17,6 @@ from Dekanat.services.entry_base import EntryBaseService
 from Dekanat.services.form_of_study import FormOfStudyService
 
 
-def _quota_key(code: str, id_department: int) -> str:
-    return f"{code}|{id_department}"
-
-
 class ListAdmissionCampaignState(AppState):
     items: Optional[Sequence[AdmissionCampaignModel]] = None
     in_progress: bool = True
@@ -110,7 +106,7 @@ class _CampaignFormBase(AppState):
     def _load_speciality_options(self):
         sp = SpecialityService().get_list_items()
         self.speciality_options = [
-            {"value": _quota_key(s.code, s.id_department), "label": f"{s.code} {s.title} ({s.tag})"}
+            {"value": str(s.id), "label": f"{s.code} {s.title} ({s.tag})"}
             for s in sp
         ]
         self.entry_base_options = [
@@ -152,7 +148,7 @@ class _CampaignFormBase(AppState):
             return
         item = self.quotas[index]
         self.q_index = index
-        self.q_speciality_combined = _quota_key(item.id_speciality_code, item.id_speciality_department)
+        self.q_speciality_combined = str(item.id_speciality) if item.id_speciality else ""
         self.q_id_entry_base = item.id_entry_base or 0
         self.q_id_form_of_study = item.id_form_of_study or 0
         self.q_budget_places = item.budget_places or 0
@@ -216,10 +212,8 @@ class _CampaignFormBase(AppState):
             yield rx.toast.warning("Оберіть спеціальність!")
             return
         try:
-            code, dept = self.q_speciality_combined.split("|", 1)
-            id_speciality_code = code
-            id_speciality_department = int(dept)
-        except Exception:
+            id_speciality = int(self.q_speciality_combined)
+        except (ValueError, TypeError):
             yield rx.toast.warning("Некоректна спеціальність!")
             return
         if not self.q_id_entry_base:
@@ -235,8 +229,7 @@ class _CampaignFormBase(AppState):
         # Заборона дублікатів у межах однієї кампанії: ключ — спеціальність + база + форма
         for i, q in enumerate(self.quotas):
             if (
-                q.id_speciality_code == id_speciality_code
-                and q.id_speciality_department == id_speciality_department
+                q.id_speciality == id_speciality
                 and q.id_entry_base == self.q_id_entry_base
                 and q.id_form_of_study == self.q_id_form_of_study
                 and i != self.q_index
@@ -246,8 +239,7 @@ class _CampaignFormBase(AppState):
 
         item = AdmissionCampaignSpecialityModel(
             id_admission_campaign=self.item.id if self.item is not None and self.item.id is not None else 0,
-            id_speciality_code=id_speciality_code,
-            id_speciality_department=id_speciality_department,
+            id_speciality=id_speciality,
             id_entry_base=self.q_id_entry_base,
             id_form_of_study=self.q_id_form_of_study,
             budget_places=self.q_budget_places,
@@ -334,8 +326,7 @@ class EditAdmissionCampaignState(_CampaignFormBase):
         self.quotas = [
             AdmissionCampaignSpecialityModel(
                 id_admission_campaign=q.id_admission_campaign,
-                id_speciality_code=q.id_speciality_code,
-                id_speciality_department=q.id_speciality_department,
+                id_speciality=q.id_speciality,
                 id_entry_base=q.id_entry_base,
                 id_form_of_study=q.id_form_of_study,
                 budget_places=q.budget_places,

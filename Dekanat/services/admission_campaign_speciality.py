@@ -26,8 +26,7 @@ class AdmissionCampaignSpecialityService:
                 for it in items:
                     new_item = AdmissionCampaignSpecialityModel(
                         id_admission_campaign=id_campaign,
-                        id_speciality_code=it.id_speciality_code,
-                        id_speciality_department=it.id_speciality_department,
+                        id_speciality=it.id_speciality,
                         id_entry_base=it.id_entry_base,
                         id_form_of_study=it.id_form_of_study,
                         budget_places=it.budget_places,

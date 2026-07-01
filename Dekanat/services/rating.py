@@ -103,7 +103,7 @@ class RatingService:
                         for sc in (ent.person.special_conditions or [])
                     )
                     spec_keys = [
-                        (s.id_speciality_code, s.id_speciality_department, s.id_form_of_study)
+                        (s.id_speciality, s.id_form_of_study)
                         for s in (ent.specialties or [])
                     ]
                     entrant_info[ent.id] = {
@@ -121,7 +121,7 @@ class RatingService:
                         info
                         for info in entrant_info.values()
                         if info["base"] == q.id_entry_base
-                        and (q.id_speciality_code, q.id_speciality_department, q.id_form_of_study)
+                        and (q.id_speciality, q.id_form_of_study)
                         in info["specs"]
                     ]
                     # Кандидати з квотою — нагору; в межах груп сортування за балом desc
@@ -141,8 +141,7 @@ class RatingService:
                         entries.append(
                             RatingEntryModel(
                                 id_snapshot=0,  # set later
-                                id_speciality_code=q.id_speciality_code,
-                                id_speciality_department=q.id_speciality_department,
+                                id_speciality=q.id_speciality,
                                 id_entry_base=q.id_entry_base,
                                 id_form_of_study=q.id_form_of_study,
                                 id_entrant=info["id"],
@@ -154,14 +153,14 @@ class RatingService:
 
                 # Виставляємо статуси не-квота-абітурієнтам за лічильниками місць.
                 # Групуємо вже сформовані entries за кортежем квоти (спеціальність+база+форма).
-                by_spec: Dict[Tuple[str, int, int, int], List[RatingEntryModel]] = {}
+                by_spec: Dict[Tuple[int, int, int], List[RatingEntryModel]] = {}
                 for e in entries:
                     by_spec.setdefault(
-                        (e.id_speciality_code, e.id_speciality_department, e.id_entry_base, e.id_form_of_study),
+                        (e.id_speciality, e.id_entry_base, e.id_form_of_study),
                         [],
                     ).append(e)
                 for q in quotas:
-                    key = (q.id_speciality_code, q.id_speciality_department, q.id_entry_base, q.id_form_of_study)
+                    key = (q.id_speciality, q.id_entry_base, q.id_form_of_study)
                     spec_entries = by_spec.get(key, [])
                     budget_left = q.budget_places or 0
                     contract_left = q.contract_places or 0
@@ -242,7 +241,7 @@ class RatingService:
                     .where(AdmissionCampaignSpecialityModel.id_admission_campaign == id_campaign)
                 ).all()
                 quota_map = {
-                    (q.id_speciality_code, q.id_speciality_department, q.id_entry_base, q.id_form_of_study): q
+                    (q.id_speciality, q.id_entry_base, q.id_form_of_study): q
                     for q in quotas
                 }
 
@@ -263,10 +262,10 @@ class RatingService:
 
                 # Групуємо записи знімка за потоком (спеціальність+база+форма),
                 # зберігаючи порядок появи.
-                groups: Dict[Tuple[str, int, int, int], List[RatingEntryModel]] = {}
-                order: List[Tuple[str, int, int, int]] = []
+                groups: Dict[Tuple[int, int, int], List[RatingEntryModel]] = {}
+                order: List[Tuple[int, int, int]] = []
                 for e in entries:
-                    key = (e.id_speciality_code, e.id_speciality_department, e.id_entry_base, e.id_form_of_study)
+                    key = (e.id_speciality, e.id_entry_base, e.id_form_of_study)
                     if key not in groups:
                         groups[key] = []
                         order.append(key)
@@ -274,8 +273,8 @@ class RatingService:
 
                 payloads: List[Dict] = []
                 for key in order:
-                    code, dept, base_id, form_id = key
-                    spec_only = f"{code}|{dept}"
+                    speciality_id, base_id, form_id = key
+                    spec_only = str(speciality_id)
                     if spec_key != "__all__" and spec_only != spec_key:
                         continue
                     if base_key != "__all__" and str(base_id) != base_key:
@@ -332,10 +331,10 @@ class RatingService:
 
                     base_prefix = base.prefix if base is not None else ""
                     form_prefix = form.prefix if form is not None else ""
-                    tag = spec.tag if spec is not None else code
+                    tag = spec.tag if spec is not None else str(speciality_id)
                     file_stem = f"{tag}-{yy}{base_prefix}{form_prefix}"
 
-                    spec_title = f"{spec.code} {spec.title} ({spec.tag})" if spec is not None else code
+                    spec_title = f"{spec.code} {spec.title} ({spec.tag})" if spec is not None else str(speciality_id)
                     base_title = base.title if base is not None else "—"
 
                     payloads.append(

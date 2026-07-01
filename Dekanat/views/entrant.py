@@ -1053,7 +1053,7 @@ def _f_scp_section() -> rx.Component:
 def _f_sp_row(item, idx: int) -> rx.Component:
     return rx.table.row(
         rx.table.cell(item.priority),
-        rx.table.cell(EntrantFormState.speciality_labels[item.id_speciality_code + "|" + item.id_speciality_department.to_string()]),
+        rx.table.cell(EntrantFormState.speciality_labels[item.id_speciality.to_string()]),
         rx.table.cell(EntrantFormState.form_labels[item.id_form_of_study.to_string()]),
         _action_cell(
             EntrantFormState.open_sp_edit(idx),

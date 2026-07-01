@@ -143,7 +143,9 @@ class AddSpecialityState(AppState):
         try:
             self.item = service.add_one(self.item)
             yield rx.toast.success("Запис додано!")
-            yield rx.redirect(f"{routes.SPECIALITY_VIEW}{self.item.id_department}/{self.item.code}")
+            yield rx.redirect(f"{routes.SPECIALITY_VIEW}{self.item.id}")
+        except ValueError as e:
+            yield rx.toast.error(str(e))
         except Exception:
             yield rx.toast.error("Під час виконання запиту трапилась помилка. Спробуйте ще раз.")
 
@@ -154,18 +156,21 @@ class AddSpecialityState(AppState):
 
 class EditSpecialityState(AppState):
     item: SpecialityModel = SpecialityModel()
+    departments: Optional[Sequence[DepartmentModel]] = None
     in_process: bool = True
 
     def _reload_item(self):
         service = SpecialityService()
-        code = str(self._route_param("spec_code", ""))
         try:
-            id_department = int(self._route_param("dept_id", "-1"))
+            spec_id = int(self._route_param("spec_id", "-1"))
         except (ValueError, TypeError):
-            id_department = -1
-        loaded = service.get_by_pk(code, id_department)
+            spec_id = -1
+        loaded = service.get_by_id(spec_id)
         if loaded is not None:
             self.item = loaded
+
+    def _reload_departments(self):
+        self.departments = DepartmentService().get_list_items()
 
     @rx.event
     def on_load(self):
@@ -177,7 +182,8 @@ class EditSpecialityState(AppState):
         self.in_process = True
         try:
             self._reload_item()
-            if self.item is None:
+            self._reload_departments()
+            if self.item is None or self.item.id is None:
                 yield rx.toast.warning("Запис не знайдено!")
                 yield rx.redirect(routes.SPECIALITY_LIST)
                 return
@@ -187,14 +193,33 @@ class EditSpecialityState(AppState):
         return
 
     @rx.var
+    def department_options(self) -> List[Dict[str, str]]:
+        if self.departments is None:
+            return []
+        return [{"value": str(d.id), "label": d.title} for d in self.departments]
+
+    # З сурогатним PK (DK-38) код, відділення й тег можна редагувати вільно —
+    # посилання на спеціальність йдуть через незмінний id.
+    @rx.var
     def entity_code(self) -> str:
         return self.item.code if self.item is not None and self.item.code is not None else ""
 
+    @rx.event
+    def set_code(self, value: str):
+        self.item.code = value
+
     @rx.var
-    def department_title(self) -> str:
-        if self.item is not None and self.item.department is not None and self.item.department.title is not None:
-            return self.item.department.title
-        return ""
+    def id_department_str(self) -> str:
+        if self.item is None or self.item.id_department is None or self.item.id_department == 0:
+            return ""
+        return str(self.item.id_department)
+
+    @rx.event
+    def set_id_department(self, value: str):
+        try:
+            self.item.id_department = int(value) if value else None  # type: ignore
+        except (ValueError, TypeError):
+            pass
 
     @rx.var
     def title(self) -> str:
@@ -226,6 +251,14 @@ class EditSpecialityState(AppState):
             yield rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
             return
 
+        if not self.item.code or self.item.code == "":
+            yield rx.toast.warning("Поле коду повинно бути заповненим!")
+            return
+
+        if self.item.id_department is None or self.item.id_department <= 0:
+            yield rx.toast.warning("Оберіть відділення!")
+            return
+
         if not self.item.title or self.item.title == "":
             yield rx.toast.warning("Поле назви повинно бути заповненим!")
             return
@@ -238,15 +271,16 @@ class EditSpecialityState(AppState):
         try:
             self.item = service.edit_one(self.item)
             yield rx.toast.success("Запис змінено!")
-            yield rx.redirect(f"{routes.SPECIALITY_VIEW}{self.item.id_department}/{self.item.code}")
+            yield rx.redirect(f"{routes.SPECIALITY_VIEW}{self.item.id}")
+        except ValueError as e:
+            yield rx.toast.error(str(e))
         except Exception:
             yield rx.toast.error("Під час виконання запиту трапилась помилка. Спробуйте ще раз.")
 
     @rx.event
     def on_cancel(self):
-        id_department = self._route_param("dept_id", "")
-        code = self._route_param("spec_code", "")
-        return rx.redirect(f"{routes.SPECIALITY_VIEW}{id_department}/{code}")
+        spec_id = self._route_param("spec_id", "")
+        return rx.redirect(f"{routes.SPECIALITY_VIEW}{spec_id}")
 
 
 class ViewSpecialityState(AppState):
@@ -255,12 +289,11 @@ class ViewSpecialityState(AppState):
 
     def _reload_item(self):
         service = SpecialityService()
-        code = str(self._route_param("spec_code", ""))
         try:
-            id_department = int(self._route_param("dept_id", "-1"))
+            spec_id = int(self._route_param("spec_id", "-1"))
         except (ValueError, TypeError):
-            id_department = -1
-        loaded = service.get_by_pk(code, id_department)
+            spec_id = -1
+        loaded = service.get_by_id(spec_id)
         if loaded is not None:
             self.item = loaded
 
@@ -274,7 +307,7 @@ class ViewSpecialityState(AppState):
         self.in_process = True
         try:
             self._reload_item()
-            if self.item is None:
+            if self.item is None or self.item.id is None:
                 yield rx.toast.warning("Запис не знайдено!")
                 yield rx.redirect(routes.DASHBOARD)
             else:
@@ -287,7 +320,7 @@ class ViewSpecialityState(AppState):
     def on_click_edit(self):
         if not self.has_permission(Actions.SPECIALITY_EDIT):
             return rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
-        return rx.redirect(f"{routes.SPECIALITY_EDIT}{self.item.id_department}/{self.item.code}")
+        return rx.redirect(f"{routes.SPECIALITY_EDIT}{self.item.id}")
 
     @rx.event
     def on_click_delete(self):

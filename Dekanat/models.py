@@ -1,5 +1,5 @@
 from sqlmodel import Field, Relationship
-from sqlalchemy import ForeignKeyConstraint, Column, LargeBinary, DateTime, Text, Boolean, func
+from sqlalchemy import Column, LargeBinary, DateTime, Text, Boolean, func
 from sqlalchemy.dialects.mysql import LONGBLOB
 from sqlalchemy.sql import expression
 from typing import Optional, List
@@ -163,17 +163,11 @@ class AdmissionCampaignModel(rx.Model, table=True):
 @rx.ModelRegistry.register
 class AdmissionCampaignSpecialityModel(rx.Model, table=True):
     __tablename__ = "admission_campaigns_specialties"
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ["id_speciality_code", "id_speciality_department"],
-            ["specialties.code", "specialties.id_department"],
-        ),
-    )
 
     # Table columns
     id_admission_campaign: int = Field(primary_key=True, foreign_key="admission_campaigns.id")
-    id_speciality_code: str = Field(primary_key=True)
-    id_speciality_department: int = Field(primary_key=True)
+    # Сурогатний FK на спеціальність (DK-38).
+    id_speciality: int = Field(primary_key=True, foreign_key="specialties.id")
     # База вступу та форма навчання входять до ключа квоти: для однієї спеціальності
     # може існувати кілька квот з різними базою/формою (DK-26).
     id_entry_base: int = Field(primary_key=True, foreign_key="entry_base.id")
@@ -417,8 +411,12 @@ class SpecialityModel(rx.Model, table=True):
     __tablename__ = "specialties"
 
     # Table columns
-    code: str = Field(primary_key=True)
-    id_department: int = Field(primary_key=True, foreign_key="departments.id")
+    # Сурогатний PK (DK-38): дозволяє однаковий code+відділення з різними ОПП (tag).
+    # Логічна унікальність (code, id_department, tag) перевіряється в сервісі серед
+    # не видалених записів (без DB-констрейнта — гнучкіше з soft-delete).
+    id: int = Field(primary_key=True)
+    code: str
+    id_department: int = Field(foreign_key="departments.id")
     title: str
     educational_and_professional_program: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     tag: str
@@ -431,17 +429,11 @@ class SpecialityModel(rx.Model, table=True):
 @rx.ModelRegistry.register
 class SpecialtieEntrantModel(rx.Model, table=True):
     __tablename__ = "specialties_entrants"
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ["id_speciality_code", "id_speciality_department"],
-            ["specialties.code", "specialties.id_department"],
-        ),
-    )
 
     # Table columns
     id_entrant: int = Field(primary_key=True, foreign_key="entrants.id")
-    id_speciality_code: str = Field(primary_key=True)
-    id_speciality_department: int = Field(primary_key=True)
+    # Сурогатний FK на спеціальність (DK-38).
+    id_speciality: int = Field(primary_key=True, foreign_key="specialties.id")
     # Форма навчання входить до ключа: абітурієнт може подати ту саму спеціальність
     # з різними формами навчання, але не двічі з однаковою (обов'язкова, DK-26).
     id_form_of_study: int = Field(primary_key=True, foreign_key="forms_of_study.id")
@@ -584,18 +576,12 @@ class RatingSnapshotModel(rx.Model, table=True):
 @rx.ModelRegistry.register
 class RatingEntryModel(rx.Model, table=True):
     __tablename__ = "rating_entries"
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ["id_speciality_code", "id_speciality_department"],
-            ["specialties.code", "specialties.id_department"],
-        ),
-    )
 
     # Table columns
     id: Optional[int] = Field(default=None, primary_key=True)
     id_snapshot: int = Field(foreign_key="rating_snapshots.id", nullable=False)
-    id_speciality_code: str = Field(nullable=False)
-    id_speciality_department: int = Field(nullable=False)
+    # Сурогатний FK на спеціальність (DK-38).
+    id_speciality: int = Field(foreign_key="specialties.id", nullable=False)
     # Квота рейтингу — за кортежем (спеціальність, база вступу, форма навчання) (DK-26).
     id_entry_base: int = Field(default=0, nullable=False)
     id_form_of_study: int = Field(default=0, nullable=False)

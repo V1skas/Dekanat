@@ -30,8 +30,7 @@ class RatingDao:
             )
             .where(RatingEntryModel.id_snapshot == id_snapshot)
             .order_by(
-                RatingEntryModel.id_speciality_code,
-                RatingEntryModel.id_speciality_department,
+                RatingEntryModel.id_speciality,
                 RatingEntryModel.position,
             )
         )

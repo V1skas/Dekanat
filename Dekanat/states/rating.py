@@ -20,10 +20,6 @@ from Dekanat.services.rating import RatingService
 from Dekanat.utils.display import disambiguate_pib
 
 
-def _spec_key(code: str, dept: int) -> str:
-    return f"{code}|{dept}"
-
-
 class ListRatingState(AppState):
     in_progress: bool = True
     generating: bool = False
@@ -106,13 +102,13 @@ class ListRatingState(AppState):
         if self.selected_campaign_id:
             quotas = AdmissionCampaignSpecialityService().get_by_campaign(self.selected_campaign_id)
             for q in quotas:
-                sk = _spec_key(q.id_speciality_code, q.id_speciality_department)
+                sk = str(q.id_speciality)
                 if sk not in seen_spec:
                     seen_spec.add(sk)
                     label = (
                         f"{q.speciality.code} {q.speciality.title} ({q.speciality.tag})"
                         if q.speciality is not None
-                        else f"{q.id_speciality_code}"
+                        else sk
                     )
                     spec_opts.append({"value": sk, "label": label})
                 bk = str(q.id_entry_base)
@@ -154,7 +150,7 @@ class ListRatingState(AppState):
         order: List[str] = []
 
         for e in entries:
-            spec_only = _spec_key(e.id_speciality_code, e.id_speciality_department)
+            spec_only = str(e.id_speciality)
             if self.selected_spec_key != "__all__" and spec_only != self.selected_spec_key:
                 continue
             if self.selected_base_key != "__all__" and str(e.id_entry_base) != self.selected_base_key:
@@ -167,7 +163,7 @@ class ListRatingState(AppState):
             spec_name = (
                 f"{e.speciality.code} {e.speciality.title} ({e.speciality.tag})"
                 if e.speciality is not None
-                else f"{e.id_speciality_code}"
+                else str(e.id_speciality)
             )
             base_name = self.entry_base_labels.get(str(e.id_entry_base), "—")
             form_name = self.form_labels.get(str(e.id_form_of_study), "—")
@@ -279,11 +275,11 @@ class ListRatingState(AppState):
             yield rx.toast.error("У Вас немає дозволу на завантаження рейтингу!")
             return
         parts = group_key.split("|")
-        if len(parts) != 4 or not self.selected_campaign_id:
+        if len(parts) != 3 or not self.selected_campaign_id:
             yield rx.toast.error("Не вдалося визначити потік для завантаження.")
             return
-        spec_key = f"{parts[0]}|{parts[1]}"
-        base_key, form_key = parts[2], parts[3]
+        spec_key = parts[0]
+        base_key, form_key = parts[1], parts[2]
 
         self.downloading = True
         yield

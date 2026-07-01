@@ -23,7 +23,7 @@ def table_row(item: SpecialityModel) -> rx.Component:
         rx.table.row_header_cell(
             rx.link(
                 item.title,
-                href=f"{routes.SPECIALITY_VIEW}{item.id_department}/{item.code}",
+                href=f"{routes.SPECIALITY_VIEW}{item.id}",
             ),
             align="left"
         ),
@@ -138,10 +138,21 @@ def add_page_content() -> rx.Component:
 
 def edit_page_content() -> rx.Component:
     return rx.vstack(
-        rx.text("Код:"),
-        rx.input(value=EditSpecialityState.entity_code, disabled=True),
-        rx.text("Відділення:"),
-        rx.input(value=EditSpecialityState.department_title, disabled=True),
+        rx.text("*Код:"),
+        rx.input(
+            required=True,
+            value=EditSpecialityState.entity_code,
+            on_change=EditSpecialityState.set_code,
+        ),
+        rx.text("*Відділення:"),
+        rx.select.root(
+            rx.select.trigger(placeholder="Оберіть відділення"),
+            rx.select.content(
+                rx.foreach(EditSpecialityState.department_options, _department_select_item),
+            ),
+            value=EditSpecialityState.id_department_str,
+            on_change=EditSpecialityState.set_id_department,
+        ),
         rx.text("*Назва:"),
         rx.input(
             required=True,

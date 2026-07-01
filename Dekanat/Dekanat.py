@@ -107,8 +107,8 @@ app.add_page(department.view_page, route=routes.DEPARTMENT_VIEW+"[id]", on_load=
 
 app.add_page(speciality.list_page, route=routes.SPECIALITY_LIST, on_load=speciality_states.ListSpecialityState.on_load)
 app.add_page(speciality.add_page, route=routes.SPECIALITY_ADD, on_load=speciality_states.AddSpecialityState.on_load)
-app.add_page(speciality.edit_page, route=routes.SPECIALITY_EDIT+"[dept_id]/[spec_code]", on_load=speciality_states.EditSpecialityState.on_load)
-app.add_page(speciality.view_page, route=routes.SPECIALITY_VIEW+"[dept_id]/[spec_code]", on_load=speciality_states.ViewSpecialityState.on_load)
+app.add_page(speciality.edit_page, route=routes.SPECIALITY_EDIT+"[spec_id]", on_load=speciality_states.EditSpecialityState.on_load)
+app.add_page(speciality.view_page, route=routes.SPECIALITY_VIEW+"[spec_id]", on_load=speciality_states.ViewSpecialityState.on_load)
 
 app.add_page(application_status.list_page, route=routes.APPLICATION_STATUS_LIST, on_load=application_status_states.ListApplicationStatusState.on_load)
 app.add_page(application_status.add_page, route=routes.APPLICATION_STATUS_ADD, on_load=application_status_states.AddApplicationStatusState.on_load)

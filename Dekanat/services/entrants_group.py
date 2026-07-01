@@ -161,7 +161,7 @@ class EntrantsGroupService:
 
             # Згрупуємо за кортежем (приоритетная специальность, база вступу, форма
             # навчання) — назва групи тепер враховує префікси бази та форми (DK-26).
-            by_spec: Dict[Tuple[str, int, int, int], Dict] = {}
+            by_spec: Dict[Tuple[int, int, int], Dict] = {}
             for e in candidates:
                 top = next((s for s in (e.specialties or []) if s.priority == 1), None)
                 if top is None or top.speciality is None or top.form_of_study is None:
@@ -170,7 +170,7 @@ class EntrantsGroupService:
                     continue
                 base = e.person.entry_base
                 form = top.form_of_study
-                key = (top.id_speciality_code, top.id_speciality_department, base.id, form.id)
+                key = (top.id_speciality, base.id, form.id)
                 bucket = by_spec.setdefault(key, {
                     "spec": top.speciality,
                     "base": base,
@@ -197,7 +197,7 @@ class EntrantsGroupService:
                 return max_n + 1
 
             result: List[Dict] = []
-            for (code, dept, base_id, form_id), bucket in by_spec.items():
+            for (speciality_id, base_id, form_id), bucket in by_spec.items():
                 spec: SpecialityModel = bucket["spec"]
                 base = bucket["base"]
                 form = bucket["form"]
@@ -236,8 +236,8 @@ class EntrantsGroupService:
                     existing_titles.add(title)
                     result.append({
                         "title": title,
-                        "spec_code": code,
-                        "spec_dept": dept,
+                        "spec_code": spec.code,
+                        "spec_dept": spec.id_department,
                         "spec_label": spec_label,
                         "entrants": [
                             {
