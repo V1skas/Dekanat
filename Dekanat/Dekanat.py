@@ -57,7 +57,17 @@ app = rx.App(
             has_background=True,
             radius="large",
             accent_color="brown",
-        )
+        ),
+    # Мова інтерфейсу — українська. Забороняємо авто-переклад браузера (Chrome
+    # Translate / Gemini): він переписує текстові вузли DOM, а React/Radix при
+    # оновленні rx.select падає з `NotFoundError: removeChild ... not a child`
+    # (напр. при виборі джерела фінансування в анкеті абітурієнта). translate="no"
+    # + notranslate-мета вимикають переклад і прибирають цей краш.
+    html_lang="uk",
+    html_custom_attrs={"translate": "no"},
+    head_components=[
+        rx.el.meta(name="google", content="notranslate"),
+    ],
 )
 
 # Persistent layout: шапка и сайдбар живут в app_wraps над <Outlet/> и не пересоздаются при навигации.
