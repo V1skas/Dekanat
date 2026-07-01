@@ -85,7 +85,7 @@ def _list_table_row(item: EntrantModel) -> rx.Component:
                 item.specialties,
                 rx.cond(
                     item.specialties[0],
-                    f"{item.specialties[0].speciality.code} {item.specialties[0].speciality.title}",
+                    f"{item.specialties[0].speciality.code} {item.specialties[0].speciality.title} ({item.specialties[0].speciality.tag})",
                     "—",
                 ),
                 "—",
@@ -554,6 +554,7 @@ def _v_sp_row(item: SpecialtieEntrantModel) -> rx.Component:
         rx.table.cell(item.priority),
         rx.table.cell(rx.cond(item.speciality, item.speciality.code, "—")),
         rx.table.cell(rx.cond(item.speciality, item.speciality.title, "—")),
+        rx.table.cell(rx.cond(item.speciality, item.speciality.tag, "—")),
         rx.table.cell(rx.cond(item.form_of_study, item.form_of_study.title, "—")),
     )
 
@@ -567,6 +568,7 @@ def _v_sp_table() -> rx.Component:
                     rx.table.column_header_cell("Пріоритет", color=rx.color("accent", 2)),
                     rx.table.column_header_cell("Код", color=rx.color("accent", 2)),
                     rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Тег", color=rx.color("accent", 2)),
                     rx.table.column_header_cell("Форма навчання", color=rx.color("accent", 2)),
                 ),
                 background_color=rx.color("accent", 9),
@@ -631,7 +633,7 @@ def view_page_content() -> rx.Component:
                         _v_kv("Дата народження", ViewEntrantState.item.person.date_of_birth),
                         _v_kv("Область, район, місто", rx.cond(ViewEntrantState.item.person.place_of_registration_city, ViewEntrantState.item.person.place_of_registration_city, "—")),
                         _v_kv("Адреса реєстрації", ViewEntrantState.item.person.place_of_registration),
-                        _v_kv("МОКПП", ViewEntrantState.item.person.mokpp),
+                        _v_kv("ІПН", ViewEntrantState.item.person.mokpp),
                         _v_kv("Телефон", ViewEntrantState.item.person.phone_number),
                         _v_kv("E-mail", rx.cond(ViewEntrantState.item.person.email, ViewEntrantState.item.person.email, "—")),
                         _v_kv("Потреба в гуртожитку", rx.cond(ViewEntrantState.item.person.the_need_for_a_dormitory, "Так", "Ні")),
@@ -735,8 +737,21 @@ def _photo_block() -> rx.Component:
 
 def _personal_fields() -> rx.Component:
     return rx.vstack(
-        rx.text("*Код ЄДБО:"),
-        rx.input(required=True, value=EntrantFormState.edbo, on_change=EntrantFormState.set_edbo, width="100%"),
+        rx.text("Код ЄДБО:"),
+        rx.input(
+            value=EntrantFormState.edbo,
+            on_change=EntrantFormState.set_edbo,
+            disabled=~EntrantFormState.get_user_actions.contains(Actions.ENTRANT_EDIT_EDBO),
+            width="100%",
+        ),
+        rx.cond(
+            ~EntrantFormState.get_user_actions.contains(Actions.ENTRANT_EDIT_EDBO),
+            rx.text(
+                "Редагування ЄДБО недоступне — потрібне право «Редагування коду ЄДБО».",
+                size="1",
+                color="gray",
+            ),
+        ),
         rx.text("*ПІБ:"),
         rx.input(required=True, value=EntrantFormState.pib, on_change=EntrantFormState.set_pib, width="100%"),
         rx.text("Громадянство:"),
@@ -749,8 +764,17 @@ def _personal_fields() -> rx.Component:
         rx.input(value=EntrantFormState.place_of_registration_city, on_change=EntrantFormState.set_place_of_registration_city, width="100%"),
         rx.text("*Адреса:"),
         rx.input(required=True, value=EntrantFormState.place_of_registration, on_change=EntrantFormState.set_place_of_registration, width="100%"),
-        rx.text("*МОКПП:"),
-        rx.input(required=True, value=EntrantFormState.mokpp, on_change=EntrantFormState.set_mokpp, width="100%"),
+        rx.text("*ІПН:"),
+        rx.input(
+            required=True,
+            value=EntrantFormState.mokpp,
+            on_change=EntrantFormState.set_mokpp,
+            max_length=10,
+            input_mode="numeric",
+            pattern=r"\d*",
+            placeholder="10 цифр",
+            width="100%",
+        ),
         rx.text("E-mail:"),
         rx.input(type="email", value=EntrantFormState.email, on_change=EntrantFormState.set_email, width="100%"),
         rx.text("*Номер телефону:"),

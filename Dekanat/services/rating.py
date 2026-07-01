@@ -335,7 +335,7 @@ class RatingService:
                     tag = spec.tag if spec is not None else code
                     file_stem = f"{tag}-{yy}{base_prefix}{form_prefix}"
 
-                    spec_title = f"{spec.code} {spec.title}" if spec is not None else code
+                    spec_title = f"{spec.code} {spec.title} ({spec.tag})" if spec is not None else code
                     base_title = base.title if base is not None else "—"
 
                     payloads.append(

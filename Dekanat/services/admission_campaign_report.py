@@ -21,7 +21,7 @@ from Dekanat.models import (
 def _spec_label(s: Optional[SpecialityModel]) -> str:
     if s is None:
         return "—"
-    return f"{s.code} {s.title}"
+    return f"{s.code} {s.title} ({s.tag})"
 
 
 class AdmissionCampaignReportService:

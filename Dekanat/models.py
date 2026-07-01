@@ -1,5 +1,6 @@
 from sqlmodel import Field, Relationship
 from sqlalchemy import ForeignKeyConstraint, Column, LargeBinary, DateTime, Text, Boolean, func
+from sqlalchemy.dialects.mysql import LONGBLOB
 from sqlalchemy.sql import expression
 from typing import Optional, List
 from datetime import datetime
@@ -221,9 +222,16 @@ class PersonModel(rx.Model, table=True):
 
     # Table columns
     id: int = Field(primary_key=True)
-    edbo: str = Field(nullable=False)
+    # ЄДБО необов'язковий (DK-37): не всі абітурієнти мають код у ЄДБО на момент подачі.
+    edbo: Optional[str] = Field(default=None, nullable=True)
     pib: str = Field(nullable=False)
-    photo: Optional[bytes] = Field(default=None, sa_column=Column("photo", LargeBinary, nullable=True))
+    # На MySQL/MariaDB звичайний LargeBinary мапиться у BLOB (ліміт 64 КБ) — фото не
+    # влазить і INSERT падає. LONGBLOB (до 4 ГБ) через with_variant; на SQLite лишається
+    # BLOB без ліміту (DK-37).
+    photo: Optional[bytes] = Field(
+        default=None,
+        sa_column=Column("photo", LargeBinary().with_variant(LONGBLOB(), "mysql"), nullable=True),
+    )
     photo_mime_type: Optional[str] = Field(default=None, nullable=True)
     citizenship: str = Field(nullable=False)
     sex: str = Field(nullable=False)

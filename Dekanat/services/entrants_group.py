@@ -206,7 +206,7 @@ class EntrantsGroupService:
                 ents.sort(key=lambda e: (e.person.pib if e.person and e.person.pib else "").lower())
                 base_prefix = base.prefix or ""
                 form_prefix = form.prefix or ""
-                spec_label = f"{spec.code} {spec.title} · {base.title} · {form.title}"
+                spec_label = f"{spec.code} {spec.title} ({spec.tag}) · {base.title} · {form.title}"
                 # Шаблон назви: (тег)-(рік)(префікс бази)(префікс форми)-(номер) (DK-26).
                 prefix = f"{spec.tag}-{yy}{base_prefix}{form_prefix}-"
                 n = _next_number(prefix)
@@ -287,7 +287,7 @@ class EntrantsGroupService:
                 pib = e.person.pib if e.person and e.person.pib else f"#{e.id}"
                 top = next((s for s in (e.specialties or []) if s.priority == 1), None)
                 spec_label = (
-                    f"{top.speciality.code} {top.speciality.title}"
+                    f"{top.speciality.code} {top.speciality.title} ({top.speciality.tag})"
                     if top is not None and top.speciality is not None
                     else "—"
                 )
@@ -395,7 +395,7 @@ class EntrantsGroupService:
                         if top is None and e.specialties:
                             top = e.specialties[0]
                         if top is not None and top.speciality is not None:
-                            specialty = f"{top.speciality.code} {top.speciality.title}"
+                            specialty = f"{top.speciality.code} {top.speciality.title} ({top.speciality.tag})"
 
                 applicants.sort(key=lambda a: a["name"].lower())
                 return {

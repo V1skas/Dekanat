@@ -110,7 +110,7 @@ class _CampaignFormBase(AppState):
     def _load_speciality_options(self):
         sp = SpecialityService().get_list_items()
         self.speciality_options = [
-            {"value": _quota_key(s.code, s.id_department), "label": f"{s.code} {s.title}"}
+            {"value": _quota_key(s.code, s.id_department), "label": f"{s.code} {s.title} ({s.tag})"}
             for s in sp
         ]
         self.entry_base_options = [

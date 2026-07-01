@@ -74,6 +74,14 @@ class EntrantService:
             print(f"[EntrantService][get_by_id][ERROR] {e}")
             raise
 
+    @staticmethod
+    def _validate_mokpp(person: PersonModel) -> None:
+        """ІПН — обов'язковий і рівно 10 цифр (DK-37). Дублюємо клієнтську перевірку
+        на сервері, бо клієнт може надіслати будь-що."""
+        mokpp = (person.mokpp or "").strip()
+        if not (mokpp.isdigit() and len(mokpp) == 10):
+            raise ValueError("ІПН має містити рівно 10 цифр")
+
     def _validate_specialties(
         self, person: PersonModel, specialties: list[SpecialtieEntrantModel]
     ) -> None:
@@ -118,6 +126,7 @@ class EntrantService:
         results_zno: list[ResultZnoModel],
     ) -> EntrantModel:
         try:
+            self._validate_mokpp(person)
             self._validate_specialties(person, specialties)
             with rx.session() as session:
                 # Перевірка дублікатів по ІПН (mokpp): двох абітурієнтів з одним ІПН бути
@@ -161,6 +170,7 @@ class EntrantService:
         results_zno: list[ResultZnoModel],
     ) -> EntrantModel:
         try:
+            self._validate_mokpp(person)
             self._validate_specialties(person, specialties)
             with rx.session() as session:
                 # Дублікат по ІПН (виключаючи саму картку, що редагується) — DK-36.

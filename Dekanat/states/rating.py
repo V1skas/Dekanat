@@ -110,7 +110,7 @@ class ListRatingState(AppState):
                 if sk not in seen_spec:
                     seen_spec.add(sk)
                     label = (
-                        f"{q.speciality.code} {q.speciality.title}"
+                        f"{q.speciality.code} {q.speciality.title} ({q.speciality.tag})"
                         if q.speciality is not None
                         else f"{q.id_speciality_code}"
                     )
@@ -165,7 +165,7 @@ class ListRatingState(AppState):
             # з різною базою/формою показуються окремими таблицями (DK-26).
             group_key = f"{spec_only}|{e.id_entry_base}|{e.id_form_of_study}"
             spec_name = (
-                f"{e.speciality.code} {e.speciality.title}"
+                f"{e.speciality.code} {e.speciality.title} ({e.speciality.tag})"
                 if e.speciality is not None
                 else f"{e.id_speciality_code}"
             )

@@ -81,7 +81,7 @@ def _view_quota_row(item: AdmissionCampaignSpecialityModel) -> rx.Component:
         rx.table.row_header_cell(
             rx.cond(
                 item.speciality,
-                item.speciality.code + " " + item.speciality.title,
+                item.speciality.code + " " + item.speciality.title + " (" + item.speciality.tag + ")",
                 "—",
             ),
             align="left",

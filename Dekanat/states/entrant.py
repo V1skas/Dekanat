@@ -348,13 +348,13 @@ class ListEntrantState(AppState):
                 seen_keys.add(key)
                 opts.append({
                     "value": key,
-                    "label": f"{q.speciality.code} {q.speciality.title}",
+                    "label": f"{q.speciality.code} {q.speciality.title} ({q.speciality.tag})",
                 })
         if len(opts) == 1:
             for s in SpecialityService().get_list_items():
                 opts.append({
                     "value": f"{s.code}|{s.id_department}",
-                    "label": f"{s.code} {s.title}",
+                    "label": f"{s.code} {s.title} ({s.tag})",
                 })
         self.speciality_options = opts
 
@@ -538,6 +538,9 @@ class EntrantFormState(AppState):
 
     # ---- Person fields (flat for easy form binding) ----
     edbo: str = ""
+    # ЄДБО, з яким картку завантажено (edit) — для серверного захисту від зміни
+    # без права ENTRANT_EDIT_EDBO (DK-37), за зразком loaded_status_id.
+    loaded_edbo: str = ""
     pib: str = ""
     citizenship: str = "Україна"
     sex: str = ""
@@ -668,7 +671,7 @@ class EntrantFormState(AppState):
         self.entrant_group_options = [{"value": str(g.id), "label": g.title} for g in eg]
         sp = SpecialityService().get_list_items()
         sp_by_key: Dict[str, str] = {
-            f"{s.code}|{s.id_department}": f"{s.code} {s.title}" for s in sp
+            f"{s.code}|{s.id_department}": f"{s.code} {s.title} ({s.tag})" for s in sp
         }
         self.all_speciality_options = [
             {"value": k, "label": v} for k, v in sp_by_key.items()
@@ -704,6 +707,7 @@ class EntrantFormState(AppState):
         self.photo_bytes = None
         self.photo_mime = None
         self.edbo = ""
+        self.loaded_edbo = ""
         self.pib = ""
         self.citizenship = "Україна"
         self.sex = ""
@@ -775,6 +779,7 @@ class EntrantFormState(AppState):
             self.photo_bytes = person.photo
             self.photo_mime = person.photo_mime_type
             self.edbo = person.edbo or ""
+            self.loaded_edbo = person.edbo or ""
             self.pib = person.pib or ""
             self.citizenship = person.citizenship or "Україна"
             self.sex = person.sex or ""
@@ -881,7 +886,8 @@ class EntrantFormState(AppState):
 
     @rx.event
     def set_mokpp(self, value: str):
-        self.mokpp = value
+        # ІПН — лише цифри, максимум 10 (DK-37). Нецифрові символи відкидаємо на вводі.
+        self.mokpp = "".join(c for c in value if c.isdigit())[:10]
 
     @rx.event
     def set_comment(self, value: str):
@@ -1056,6 +1062,11 @@ class EntrantFormState(AppState):
             return
         f = files[0]
         data = await f.read()
+        # Обмеження розміру фото — 5 МБ (DK-37). Без цього великі файли падали при
+        # збереженні у БД на проді (MariaDB).
+        if len(data) > 5 * 1024 * 1024:
+            yield rx.toast.error("Розмір фото не має перевищувати 5 МБ")
+            return
         self.photo_bytes = data
         self.photo_mime = f.content_type or "image/png"
 
@@ -1760,8 +1771,7 @@ class EntrantFormState(AppState):
     # ============================================================
 
     def _validate_main(self) -> Optional[str]:
-        if not self.edbo or not self.edbo.strip():
-            return "Поле коду ЄДБО обов'язкове!"
+        # ЄДБО необов'язковий (DK-37).
         if not self.pib:
             return "Поле ПІБ обов'язкове!"
         if not self.sex:
@@ -1771,7 +1781,10 @@ class EntrantFormState(AppState):
         if not self.place_of_registration:
             return "Введіть адресу реєстрації!"
         if not self.mokpp:
-            return "Введіть МОКПП!"
+            return "Введіть ІПН!"
+        # ІПН — рівно 10 цифр (DK-37).
+        if not (self.mokpp.isdigit() and len(self.mokpp) == 10):
+            return "ІПН має містити рівно 10 цифр!"
         if not self.phone_number:
             return "Введіть номер телефону!"
         if not self.id_source_of_funding:
@@ -1785,7 +1798,7 @@ class EntrantFormState(AppState):
     def _build_person(self) -> PersonModel:
         return PersonModel(
             id=self.entrant_id if self.entrant_id > 0 else None,  # type: ignore[arg-type]
-            edbo=self.edbo.strip(),
+            edbo=self.edbo.strip() or None,  # type: ignore[arg-type]
             pib=self.pib.strip(),
             photo=self.photo_bytes,
             photo_mime_type=self.photo_mime,
@@ -1819,6 +1832,12 @@ class EntrantFormState(AppState):
         # і повертаємо вихідний статус (для edit) або дефолтний (для add). DK-36.
         if not self.has_permission(Actions.ENTRANT_EDIT_STATUS):
             self.id_application_status = self.loaded_status_id
+
+        # Серверний захист ЄДБО: без права ENTRANT_EDIT_EDBO поле недоступне в UI,
+        # але клієнт міг би надіслати інше значення — відкидаємо його і повертаємо
+        # вихідний ЄДБО (для edit) або порожній (для add). DK-37.
+        if not self.has_permission(Actions.ENTRANT_EDIT_EDBO):
+            self.edbo = self.loaded_edbo
 
         err = self._validate_main()
         if err:
