@@ -135,11 +135,22 @@ def upgrade() -> None:
     op.rename_table('admission_campaigns_specialties__new', 'admission_campaigns_specialties')
     op.rename_table('rating_entries__new', 'rating_entries')
 
-    # 5. FK на specialties.id — лише MySQL/MariaDB (SQLite не має ALTER ADD FK).
+    # 5. FK на specialties.id. На MySQL — прямим ALTER; на SQLite — через batch
+    # (recreate) з ІМЕНОВАНИМИ констрейнтами. Іменовані обовʼязкові: без імені
+    # batch add_constraint падає ("Constraint must have a name"). FK потрібні, щоб
+    # схема збігалася з моделлю і `reflex db makemigrations` не генерував зайвих
+    # міграцій (DK-38).
     if is_mysql:
         op.create_foreign_key(None, 'specialties_entrants', 'specialties', ['id_speciality'], ['id'])
         op.create_foreign_key(None, 'admission_campaigns_specialties', 'specialties', ['id_speciality'], ['id'])
         op.create_foreign_key(None, 'rating_entries', 'specialties', ['id_speciality'], ['id'])
+    else:
+        with op.batch_alter_table('specialties_entrants', schema=None) as batch_op:
+            batch_op.create_foreign_key('fk_specialties_entrants_speciality', 'specialties', ['id_speciality'], ['id'])
+        with op.batch_alter_table('admission_campaigns_specialties', schema=None) as batch_op:
+            batch_op.create_foreign_key('fk_admission_campaigns_specialties_speciality', 'specialties', ['id_speciality'], ['id'])
+        with op.batch_alter_table('rating_entries', schema=None) as batch_op:
+            batch_op.create_foreign_key('fk_rating_entries_speciality', 'specialties', ['id_speciality'], ['id'])
 
 
 def downgrade() -> None:

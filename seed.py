@@ -226,8 +226,7 @@ def seed_campaign(session, specialties, entry_bases, forms_of_study):
                 contract = random.randint(8, 18)
                 session.add(AdmissionCampaignSpecialityModel(
                     id_admission_campaign=campaign.id,
-                    id_speciality_code=s.code,
-                    id_speciality_department=s.id_department,
+                    id_speciality=s.id,
                     id_entry_base=base.id,
                     id_form_of_study=form.id,
                     budget_places=budget,
@@ -311,8 +310,7 @@ def seed_entrants(session, refs, campaign, count=100):
         for priority, sp in enumerate(chosen_specs, start=1):
             session.add(SpecialtieEntrantModel(
                 id_entrant=entrant.id,
-                id_speciality_code=sp.code,
-                id_speciality_department=sp.id_department,
+                id_speciality=sp.id,
                 id_form_of_study=random.choice(forms_of_study).id,
                 priority=priority,
             ))
