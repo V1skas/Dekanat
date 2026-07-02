@@ -5,6 +5,7 @@ from sqlmodel import select
 from sqlalchemy.orm import selectinload
 
 from Dekanat.dao.rating import RatingDao
+from Dekanat.services.app_setting import AppSettingService
 from Dekanat.utils.display import disambiguate_pib
 from Dekanat.models import (
     RatingSnapshotModel,
@@ -45,6 +46,9 @@ class RatingService:
     def generate(self, id_campaign: int) -> Tuple[RatingSnapshotModel, List[RatingEntryModel]]:
         """Розраховує рейтинг для всіх спеціальностей кампанії, зберігає та повертає його."""
         try:
+            # Верхня межа суми балів (DK-40) — читаємо до відкриття основної сесії,
+            # щоб не тримати дві сесії SQLite одночасно.
+            max_total = AppSettingService().get_max_total_points()
             with rx.session() as session:
                 campaign = session.get(AdmissionCampaignModel, id_campaign)
                 if campaign is None:
@@ -98,6 +102,7 @@ class RatingService:
                     if ent.person is None:
                         continue
                     total = sum((r.points or 0) for r in (ent.person.results_zno or []))
+                    total = min(total, max_total)
                     has_kvota = any(
                         sc.id_special_condition in kvota_codes
                         for sc in (ent.person.special_conditions or [])

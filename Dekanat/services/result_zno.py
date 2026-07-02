@@ -19,14 +19,23 @@ class ResultZnoService:
             print(f"[ResultZnoService][get_by_subject_and_persons][ERROR] {e}")
             raise
 
-    def upsert(self, id_items_zno: int, id_person: int, points: Optional[int]) -> None:
-        """Якщо `points is None` — видаляє існуючу оцінку. Інакше — створює/оновлює."""
+    def upsert(
+        self,
+        id_items_zno: int,
+        id_person: int,
+        points: Optional[int],
+        points_raw: Optional[int] = None,
+    ) -> None:
+        """Якщо `points is None` — видаляє існуючу оцінку. Інакше — створює/оновлює.
+        `points` — підсумковий (домножений) бал, `points_raw` — сирий (введений)."""
         try:
             with rx.session() as session:
                 if points is None:
                     ResultZnoDao.delete_one(id_items_zno, id_person, session)
                 else:
-                    ResultZnoDao.upsert(id_items_zno, id_person, points, session)
+                    ResultZnoDao.upsert(
+                        id_items_zno, id_person, points, session, points_raw=points_raw
+                    )
                 session.commit()
         except Exception as e:
             print(f"[ResultZnoService][upsert][ERROR] {e}")

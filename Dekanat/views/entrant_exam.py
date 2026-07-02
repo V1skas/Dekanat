@@ -388,6 +388,7 @@ def _grading_dialog() -> rx.Component:
                     placeholder="Бали",
                     width="100%",
                 ),
+                rx.text(ViewEntrantExamState.grading_coefficient_hint, size="2", color="gray"),
                 rx.hstack(
                     controls.button_image_secondary(
                         name_icon="chevron_left",

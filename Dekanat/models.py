@@ -232,7 +232,8 @@ class PersonModel(rx.Model, table=True):
     date_of_birth: str = Field(nullable=False)
     place_of_registration_city: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     place_of_registration: str = Field(sa_type=Text, nullable=False)
-    mokpp: str = Field(nullable=False)
+    # ІПН необов'язковий (DK-38): у частини заяв абітурієнти його не вказують.
+    mokpp: Optional[str] = Field(default=None, nullable=True)
     email: Optional[str] = Field(nullable=True)
     phone_number: str = Field(nullable=False)
     the_need_for_a_dormitory: bool = Field(nullable=False)
@@ -321,11 +322,14 @@ class DocumentAboutEducationModel(rx.Model, table=True):
     __tablename__ = "document_about_education"
 
     # Table columns
-    title: str = Field(primary_key=True)
-    number: str = Field(primary_key=True)
+    # Сурогатний id (DK-38): номер документа та дата видачі стали необов'язковими,
+    # тому більше не можуть слугувати природним ключем (title, number).
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    number: Optional[str] = Field(default=None, nullable=True)
     series: str = Field(nullable=True)
     issued_by: str = Field(default=None, sa_type=Text, nullable=True)
-    date_of_issue: str
+    date_of_issue: Optional[str] = Field(default=None, nullable=True)
     id_person: int = Field(foreign_key="persons.id")
 
     # Relationships
@@ -478,6 +482,9 @@ class ItemZnoModel(rx.Model, table=True):
     # Table columns
     id: int = Field(primary_key=True)
     title: str
+    # Ваговий коефіцієнт предмета (DK-40): бал, введений оператором або отриманий на
+    # тестуванні, домножається на нього при збереженні оцінки. Дефолт 1.0 — без зміни.
+    coefficient: float = Field(default=1.0, nullable=False)
     is_deleted: bool = False
 
 
@@ -489,7 +496,12 @@ class ResultZnoModel(rx.Model, table=True):
     id: int = Field(primary_key=True, default=None)
     id_items_zno: int = Field(foreign_key="item_zno.id")
     id_person: int = Field(foreign_key="persons.id")
+    # Підсумковий бал = сирий × коефіцієнт предмета (обчислюється при збереженні, DK-40).
     points: int
+    # Сирий бал, введений оператором / отриманий на тестуванні (до множення на
+    # коефіцієнт). Потрібен, щоб діалог редагування показував саме те, що ввели,
+    # і повторне збереження не домножувало вдруге (DK-40).
+    points_raw: Optional[int] = Field(default=None, nullable=True)
 
     # Relationships
     item_zno: Optional['ItemZnoModel'] = Relationship()

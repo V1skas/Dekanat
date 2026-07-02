@@ -63,6 +63,21 @@ class AddItemZnoState(AppState):
     def set_title(self, value: str):
         self.item.title = value
 
+    @rx.var
+    def coefficient_str(self) -> str:
+        return (
+            str(self.item.coefficient)
+            if self.item is not None and self.item.coefficient is not None
+            else "1"
+        )
+
+    @rx.event
+    def set_coefficient(self, value: str):
+        try:
+            self.item.coefficient = float(value.replace(",", ".")) if value else 0.0
+        except (ValueError, TypeError):
+            self.item.coefficient = 0.0
+
     @rx.event
     def on_save(self):
         if not self.has_permission(Actions.ITEM_ZNO_ADD):
@@ -71,6 +86,9 @@ class AddItemZnoState(AppState):
 
         if self.item.title == "":
             yield rx.toast.warning("Поле назви повинно бути заповненим!")
+            return
+        if self.item.coefficient is None or self.item.coefficient <= 0:
+            yield rx.toast.warning("Коефіцієнт має бути додатним числом!")
             return
 
         service = ItemZnoService()
@@ -123,6 +141,21 @@ class EditItemZnoState(AppState):
     def set_title(self, value: str):
         self.item.title = value
 
+    @rx.var
+    def coefficient_str(self) -> str:
+        return (
+            str(self.item.coefficient)
+            if self.item is not None and self.item.coefficient is not None
+            else "1"
+        )
+
+    @rx.event
+    def set_coefficient(self, value: str):
+        try:
+            self.item.coefficient = float(value.replace(",", ".")) if value else 0.0
+        except (ValueError, TypeError):
+            self.item.coefficient = 0.0
+
     @rx.event
     def on_save(self):
         if not self.has_permission(Actions.ITEM_ZNO_EDIT):
@@ -131,6 +164,9 @@ class EditItemZnoState(AppState):
 
         if self.item.title == "":
             yield rx.toast.warning("Поле назви повинно бути заповненим!")
+            return
+        if self.item.coefficient is None or self.item.coefficient <= 0:
+            yield rx.toast.warning("Коефіцієнт має бути додатним числом!")
             return
 
         service = ItemZnoService()
@@ -198,3 +234,11 @@ class ViewItemZnoState(AppState):
     @rx.var
     def title(self) -> str:
         return self.item.title if self.item is not None and self.item.title is not None else ""
+
+    @rx.var
+    def coefficient_str(self) -> str:
+        return (
+            str(self.item.coefficient)
+            if self.item is not None and self.item.coefficient is not None
+            else "1"
+        )

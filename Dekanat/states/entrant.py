@@ -579,6 +579,8 @@ class EntrantFormState(AppState):
     kinship_options: List[Dict[str, str]] = []
     special_condition_options: List[Dict[str, str]] = []
     item_zno_options: List[Dict[str, str]] = []
+    # id предмета ЗНО (str) -> ваговий коефіцієнт (DK-40).
+    item_zno_coeffs: Dict[str, float] = {}
 
     # ---- Child collections ----
     identity_documents: List[IdentityDocumentModel] = []
@@ -696,9 +698,14 @@ class EntrantFormState(AppState):
         ks = KinshipService().get_list_items()
         self.kinship_options = [{"value": str(k.id), "label": k.title} for k in ks]
         sc = SpecialConditionService().get_list_items()
-        self.special_condition_options = [{"value": s.subcategory_code, "label": s.title} for s in sc]
+        self.special_condition_options = [
+            {"value": s.subcategory_code, "label": f"{s.subcategory_code} {s.title}"} for s in sc
+        ]
         iz = ItemZnoService().get_list_items()
         self.item_zno_options = [{"value": str(i.id), "label": i.title} for i in iz]
+        self.item_zno_coeffs = {
+            str(i.id): (i.coefficient if i.coefficient is not None else 1.0) for i in iz
+        }
 
     def _reset_form(self):
         self.entrant_id = -1
@@ -1143,18 +1150,14 @@ class EntrantFormState(AppState):
             return []
         base = str(self.id_entry_base)
         form = str(self.sp_id_form_of_study)
-        label_map = {opt["value"]: opt["label"] for opt in self.all_speciality_options}
-        seen: set = set()
-        result: List[Dict[str, str]] = []
+        allowed: set = set()
         for row in self.campaign_quota_rows:
             if row["base_id"] != base or row["form_id"] != form:
                 continue
-            key = row["spec_key"]
-            if key in seen:
-                continue
-            seen.add(key)
-            result.append({"value": key, "label": label_map.get(key, key)})
-        return result
+            allowed.add(row["spec_key"])
+        # all_speciality_options уже впорядкований за кодом спеціальності (SpecialityDao.get_all),
+        # тому фільтруємо по ньому — це зберігає сортування у діалозі вибору спеціальності (DK-39).
+        return [opt for opt in self.all_speciality_options if opt["value"] in allowed]
 
     # ============================================================
     # Identity document dialog
@@ -1291,19 +1294,13 @@ class EntrantFormState(AppState):
         if not self.docedu_title:
             yield rx.toast.warning("Введіть назву документа!")
             return
-        if not self.docedu_number:
-            yield rx.toast.warning("Введіть номер!")
-            return
-        if not self.docedu_date_of_issue:
-            yield rx.toast.warning("Введіть дату видачі!")
-            return
 
         item = DocumentAboutEducationModel(
             title=self.docedu_title.strip(),
-            number=self.docedu_number.strip(),
+            number=self.docedu_number.strip() or None,  # type: ignore[arg-type]
             series=self.docedu_series.strip() or None,  # type: ignore[arg-type]
             issued_by=self.docedu_issued_by.strip() or None,  # type: ignore[arg-type]
-            date_of_issue=self.docedu_date_of_issue,
+            date_of_issue=self.docedu_date_of_issue or None,  # type: ignore[arg-type]
             id_person=self.entrant_id if self.entrant_id > 0 else 0,
         )
         if 0 <= self.docedu_index < len(self.documents_about_education):
@@ -1595,6 +1592,9 @@ class EntrantFormState(AppState):
 
     @rx.event
     def open_sp_add(self):
+        if not self.id_entry_base:
+            yield rx.toast.error("Спочатку оберіть базу вступу")
+            return
         self._reset_sp_dialog()
         next_priority = len(self.specialties) + 1
         self.sp_priority = next_priority
@@ -1708,7 +1708,9 @@ class EntrantFormState(AppState):
         item = self.results_zno[index]
         self.rz_index = index
         self.rz_id_items_zno = item.id_items_zno or 0
-        self.rz_points = item.points or 0
+        # У діалозі редагуємо сирий (введений) бал, а не домножений (DK-40), щоб
+        # повторне збереження не множило вдруге. points_raw бекфілиться з points.
+        self.rz_points = item.points_raw if item.points_raw is not None else (item.points or 0)
         self.rz_open = True
 
     @rx.event
@@ -1734,6 +1736,11 @@ class EntrantFormState(AppState):
         except (ValueError, TypeError):
             self.rz_points = 0
 
+    @rx.var
+    def rz_coefficient_hint(self) -> str:
+        coeff = self.item_zno_coeffs.get(str(self.rz_id_items_zno), 1.0)
+        return f"Цей бал буде домножено на коефіцієнт предмета (×{coeff})."
+
     @rx.event
     def save_rz(self):
         if not self.rz_id_items_zno:
@@ -1743,10 +1750,14 @@ class EntrantFormState(AppState):
             yield rx.toast.warning("Бали мають бути у межах 0-200!")
             return
 
+        # Домножуємо введений бал на коефіцієнт предмета при збереженні (DK-40).
+        coeff = self.item_zno_coeffs.get(str(self.rz_id_items_zno), 1.0)
+        weighted = int(self.rz_points * coeff + 0.5)
         item = ResultZnoModel(
             id_items_zno=self.rz_id_items_zno,
             id_person=self.entrant_id if self.entrant_id > 0 else 0,
-            points=self.rz_points,
+            points=weighted,
+            points_raw=self.rz_points,
         )
         if 0 <= self.rz_index < len(self.results_zno):
             self.results_zno[self.rz_index] = item
@@ -1774,10 +1785,8 @@ class EntrantFormState(AppState):
             return "Введіть дату народження!"
         if not self.place_of_registration:
             return "Введіть адресу реєстрації!"
-        if not self.mokpp:
-            return "Введіть ІПН!"
-        # ІПН — рівно 10 цифр (DK-37).
-        if not (self.mokpp.isdigit() and len(self.mokpp) == 10):
+        # ІПН необов'язковий (DK-38), але якщо вказаний — рівно 10 цифр.
+        if self.mokpp and not (self.mokpp.isdigit() and len(self.mokpp) == 10):
             return "ІПН має містити рівно 10 цифр!"
         if not self.phone_number:
             return "Введіть номер телефону!"
@@ -1801,7 +1810,7 @@ class EntrantFormState(AppState):
             date_of_birth=self.date_of_birth,
             place_of_registration_city=self.place_of_registration_city.strip() or None,  # type: ignore[arg-type]
             place_of_registration=self.place_of_registration.strip(),
-            mokpp=self.mokpp.strip(),
+            mokpp=self.mokpp.strip() or None,  # type: ignore[arg-type]
             email=self.email.strip() or None,  # type: ignore[arg-type]
             phone_number=self.phone_number.strip(),
             the_need_for_a_dormitory=self.the_need_for_a_dormitory,
