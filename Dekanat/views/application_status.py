@@ -29,6 +29,10 @@ def table_row(item: ApplicationStatusModel) -> rx.Component:
             rx.cond(item.is_default, rx.icon("check", color=rx.color("accent", 9)), rx.text("—")),
             align="center"
         ),
+        rx.table.cell(
+            rx.cond(item.is_allowed_in_rating, rx.icon("check", color=rx.color("accent", 9)), rx.text("—")),
+            align="center"
+        ),
     )
 
 def table() -> rx.Component:
@@ -38,6 +42,7 @@ def table() -> rx.Component:
                 rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
                 rx.table.column_header_cell("Опис", color=rx.color("accent", 2)),
                 rx.table.column_header_cell("За замовчуванням", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Допуск до рейтингу", color=rx.color("accent", 2)),
             ),
 
             background_color=rx.color("accent", 9),
@@ -73,6 +78,14 @@ def view_page_content() -> rx.Component:
             ViewApplicationStatusState.is_default,
             rx.badge("Статус за замовчуванням для нових карток абітурієнтів", color_scheme="brown"),
         ),
+        rx.badge(
+            rx.cond(
+                ViewApplicationStatusState.is_allowed_in_rating,
+                "Допускається до рейтингового списку",
+                "Не допускається до рейтингового списку",
+            ),
+            color_scheme=rx.cond(ViewApplicationStatusState.is_allowed_in_rating, "green", "gray"),
+        ),
 
         spacing="3",
         align="stretch",
@@ -102,6 +115,15 @@ def add_page_content() -> rx.Component:
             align="center",
             spacing="2",
         ),
+        rx.hstack(
+            rx.switch(
+                checked=AddApplicationStatusState.is_allowed_in_rating,
+                on_change=AddApplicationStatusState.set_is_allowed_in_rating,
+            ),
+            rx.text("Допускати абітурієнтів із цим статусом до рейтингового списку"),
+            align="center",
+            spacing="2",
+        ),
 
         align="stretch",
         spacing="3",
@@ -127,6 +149,15 @@ def edit_page_content() -> rx.Component:
                 on_change=EditApplicationStatusState.set_is_default,
             ),
             rx.text("Використовувати за замовчуванням для нових карток абітурієнтів"),
+            align="center",
+            spacing="2",
+        ),
+        rx.hstack(
+            rx.switch(
+                checked=EditApplicationStatusState.is_allowed_in_rating,
+                on_change=EditApplicationStatusState.set_is_allowed_in_rating,
+            ),
+            rx.text("Допускати абітурієнтів із цим статусом до рейтингового списку"),
             align="center",
             spacing="2",
         ),

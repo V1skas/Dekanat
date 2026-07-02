@@ -32,6 +32,7 @@ MAIN: List[MenuItem] = [
     ]),
     MenuItem("Контингент", "graduation-cap", routes.DASHBOARD_CONTINGENT, children=[
         MenuItem("Абітурієнти", "user-plus", routes.ENTRANT_LIST, required_action=Actions.ENTRANT_LIST),
+        MenuItem("Заявки", "file-text", routes.ENTRANT_APPLICATION_LIST, required_action=Actions.ENTRANT_APPLICATION_LIST),
     ]),
     MenuItem("Приймальна комісія", "clipboard-pen", routes.DASHBOARD_ADMISSION_COMMISSION, children=[
         MenuItem("Вступні кампанії", "calendar-days", routes.ADMISSION_CAMPAIGN_LIST, required_action=Actions.ADMISSION_CAMPAIGN_LIST),

@@ -16,6 +16,7 @@ _STATUS_BG = {
     "contract": "rgba(249, 115, 22, 0.18)", # помаранчевий
     "rejected": "rgba(239, 68, 68, 0.20)",  # червоний
     "kvota": "rgba(59, 130, 246, 0.20)",    # синій
+    "excluded": "rgba(107, 114, 128, 0.22)", # сірий — не бере участі (DK-43)
 }
 
 _STATUS_LABEL = {
@@ -23,6 +24,7 @@ _STATUS_LABEL = {
     "contract": "Контракт",
     "rejected": "Не проходить",
     "kvota": "Квота",
+    "excluded": "Не бере участі",
 }
 
 
@@ -37,6 +39,7 @@ def _row_bg(status):
         ("contract", _STATUS_BG["contract"]),
         ("kvota", _STATUS_BG["kvota"]),
         ("rejected", _STATUS_BG["rejected"]),
+        ("excluded", _STATUS_BG["excluded"]),
         "transparent",
     )
 
@@ -48,17 +51,25 @@ def _row_status_label(status):
         ("contract", _STATUS_LABEL["contract"]),
         ("kvota", _STATUS_LABEL["kvota"]),
         ("rejected", _STATUS_LABEL["rejected"]),
+        ("excluded", _STATUS_LABEL["excluded"]),
         "",
     )
 
 
 def _rating_row(item: Dict[str, str]) -> rx.Component:
+    # Не допущені за статусом (DK-43) — приглушений сірий текст.
+    text_color = rx.cond(item["status"] == "excluded", rx.color("gray", 11), "inherit")
     return rx.table.row(
         rx.table.row_header_cell(item["position"], align="left"),
         rx.table.cell(item["pib"]),
         rx.table.cell(item["total"]),
         rx.table.cell(_row_status_label(item["status"])),
         background_color=_row_bg(item["status"]),
+        color=text_color,
+        # Клік по рядку веде на картку абітурієнта (DK-43).
+        on_click=ListRatingState.on_click_row(item["id"]),
+        cursor="pointer",
+        _hover={"box_shadow": f"inset 0 0 0 0.12rem {rx.color('accent', 8)}"},
     )
 
 
@@ -111,6 +122,7 @@ def _legend() -> rx.Component:
         _pill("Контракт", _STATUS_BG["contract"]),
         _pill("Квота", _STATUS_BG["kvota"]),
         _pill("Не проходить", _STATUS_BG["rejected"]),
+        _pill("Не бере участі (статус не допускає)", _STATUS_BG["excluded"]),
         spacing="4",
         wrap="wrap",
     )

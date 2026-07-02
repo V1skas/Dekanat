@@ -288,6 +288,13 @@ class ApplicationStatusModel(rx.Model, table=True):
         default=False,
         sa_column=Column("is_default", Boolean, nullable=False, server_default=expression.false()),
     )
+    # Чи допускається абітурієнт із цим статусом до рейтингового списку (DK-43).
+    # False (дефолт) — картка не бере участі в рейтингу: у знімку вона йде у самий
+    # низ списку зі статусом "excluded" і показується сірим.
+    is_allowed_in_rating: bool = Field(
+        default=False,
+        sa_column=Column("is_allowed_in_rating", Boolean, nullable=False, server_default=expression.false()),
+    )
     is_deleted: bool = False
 
 
@@ -314,7 +321,7 @@ class EntrantModel(rx.Model, table=True):
     person: 'PersonModel' = Relationship()
     application_status: ApplicationStatusModel = Relationship()
     entrant_group: Optional['EntrantGroupModel'] = Relationship()
-    specialties: Optional[List['SpecialtieEntrantModel']] = Relationship(sa_relationship_kwargs={"order_by": "SpecialtieEntrantModel.priority"})
+    specialties: Optional[List['SpecialtieEntrantModel']] = Relationship(back_populates="entrant", sa_relationship_kwargs={"order_by": "SpecialtieEntrantModel.priority"})
 
 
 @rx.ModelRegistry.register
@@ -444,7 +451,7 @@ class SpecialtieEntrantModel(rx.Model, table=True):
     priority: int
 
     # Relationships
-    # entrant: Optional['EntrantModel'] = Relationship(back_populates="specialties")
+    entrant: Optional['EntrantModel'] = Relationship(back_populates="specialties")
     speciality: Optional['SpecialityModel'] = Relationship()
     form_of_study: Optional['FormOfStudyModel'] = Relationship()
 
@@ -600,7 +607,8 @@ class RatingEntryModel(rx.Model, table=True):
     id_entrant: int = Field(foreign_key="entrants.id", nullable=False)
     position: int = Field(nullable=False)
     total_points: int = Field(default=0, nullable=False)
-    # 'budget' | 'contract' | 'kvota' | 'rejected'
+    # 'budget' | 'contract' | 'kvota' | 'rejected' | 'excluded'
+    # 'excluded' (DK-43) — статус картки не допускає до рейтингу: рядок унизу, сірий.
     status: str = Field(nullable=False)
 
     # Relationships

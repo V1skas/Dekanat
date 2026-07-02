@@ -1,0 +1,1 @@
+import"./react-D5nPORWt.js";import{n as e,t}from"./building-2-DVID_AS4.js";export{e as __iconNode,t as default};

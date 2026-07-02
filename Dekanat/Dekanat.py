@@ -17,6 +17,7 @@ from Dekanat.views import application_status
 from Dekanat.views import dashboard
 from Dekanat.views import department
 from Dekanat.views import entrant
+from Dekanat.views import entrant_application
 from Dekanat.views import entrant_exam
 from Dekanat.views import entrants_group
 from Dekanat.views import entry_base
@@ -38,6 +39,7 @@ from Dekanat.states import rating as rating_states
 from Dekanat.states import application_status as application_status_states
 from Dekanat.states import department as department_states
 from Dekanat.states import entrant as entrant_states
+from Dekanat.states import entrant_application as entrant_application_states
 from Dekanat.states import entrant_exam as entrant_exam_states
 from Dekanat.states import entrants_group as entrants_group_states
 from Dekanat.states import entry_base as entry_base_states
@@ -167,6 +169,8 @@ app.add_page(entrant.list_page, route=routes.ENTRANT_LIST, on_load=entrant_state
 app.add_page(entrant.add_page, route=routes.ENTRANT_ADD, on_load=entrant_states.EntrantFormState.on_load_add)
 app.add_page(entrant.edit_page, route=routes.ENTRANT_EDIT+"[id]", on_load=entrant_states.EntrantFormState.on_load_edit)
 app.add_page(entrant.view_page, route=routes.ENTRANT_VIEW+"[id]", on_load=entrant_states.ViewEntrantState.on_load)
+
+app.add_page(entrant_application.list_page, route=routes.ENTRANT_APPLICATION_LIST, on_load=entrant_application_states.ListEntrantApplicationState.on_load)
 
 app.add_page(rating.list_page, route=routes.RATING_LIST, on_load=rating_states.ListRatingState.on_load)
 

@@ -9,6 +9,7 @@ from Dekanat.states.app import AppState
 from Dekanat.models import AdmissionCampaignModel
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.services.admission_campaign_report import AdmissionCampaignReportService
+from Dekanat.utils.background import run_blocking
 
 
 _COMPARE_NONE = "__none__"
@@ -174,7 +175,11 @@ class ListAdmissionReportState(AppState):
     # ---- generate ----
 
     @rx.event
-    def on_click_generate(self):
+    async def on_click_generate(self):
+        """Формування звіту. Важкий read-only розрахунок payload винесено у фоновий
+        потік (`run_blocking`), щоб не блокувати event loop іншим користувачам
+        (DK-44). Запис знімка робимо на event loop — INSERT у потік не виносимо
+        (SQLite `database is locked`)."""
         if not self.has_permission(Actions.REPORT_ADMISSION_GENERATE):
             yield rx.toast.error("У Вас немає дозволу на формування звіту!")
             return
@@ -184,7 +189,10 @@ class ListAdmissionReportState(AppState):
         self.generating = True
         yield
         try:
-            AdmissionCampaignReportService().generate(self.selected_campaign_id)
+            campaign_id = self.selected_campaign_id
+            service = AdmissionCampaignReportService()
+            payload = await run_blocking(service.compute_payload, campaign_id)
+            service.persist_payload(campaign_id, payload)
             self._reload_primary()
             yield rx.toast.success("Звіт сформовано.")
         except Exception as ex:

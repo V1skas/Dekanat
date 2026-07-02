@@ -23,6 +23,13 @@ ENTRANT_ADD = ENTRANT+"/add"
 ENTRANT_EDIT = ENTRANT+"/edit/"
 ENTRANT_VIEW = ENTRANT+"/view/"
 
+# Окреме представлення абітурієнтів «за заявками» (по кожній спеціальності з
+# пріоритетного списку) — DK-35. Тільки список; картку/редагування переиспользуют
+# сторінки ENTRANT_VIEW/ENTRANT_EDIT (з query-параметром ?from=applications, щоб
+# кнопка «назад» повертала сюди).
+ENTRANT_APPLICATION = CONTINGENT+"/applications"
+ENTRANT_APPLICATION_LIST = ENTRANT_APPLICATION+"/list"
+
 ITEM_ZNO = BASE+"/item_zno"
 ITEM_ZNO_LIST = ITEM_ZNO+"/list"
 ITEM_ZNO_ADD = ITEM_ZNO+"/add"

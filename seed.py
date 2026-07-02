@@ -132,16 +132,23 @@ def seed_reference_data(session):
         f, _ = get_or_create(session, FormOfStudyModel, title=t, defaults={"prefix": prefix})
         forms_of_study.append(f)
 
+    # Третій елемент — is_allowed_in_rating (DK-43): чи потрапляє картка в рейтинг.
+    # «Відхилена» не допускається — щоб було видно сірі рядки унизу списку.
     status_data = [
-        ("Подана", "Заявку подано"),
-        ("Розглядається", "Заявка на розгляді"),
-        ("Прийнята", "Заявку прийнято"),
-        ("Відхилена", "Заявку відхилено"),
-        ("Зарахований", "Абітурієнта зараховано"),
+        ("Подана", "Заявку подано", True),
+        ("Розглядається", "Заявка на розгляді", True),
+        ("Прийнята", "Заявку прийнято", True),
+        ("Відхилена", "Заявку відхилено", False),
+        ("Зарахований", "Абітурієнта зараховано", True),
     ]
     statuses = []
-    for t, d in status_data:
-        s, _ = get_or_create(session, ApplicationStatusModel, title=t, defaults={"description": d})
+    for t, d, allowed in status_data:
+        s, _ = get_or_create(
+            session,
+            ApplicationStatusModel,
+            title=t,
+            defaults={"description": d, "is_allowed_in_rating": allowed},
+        )
         statuses.append(s)
 
     idt_titles = ["Паспорт громадянина України", "ID-картка", "Закордонний паспорт", "Свідоцтво про народження"]

@@ -35,6 +35,18 @@ from Dekanat.services.admission_campaign_speciality import AdmissionCampaignSpec
 from Dekanat.models import AdmissionCampaignModel
 
 
+# Значення query-параметра ?from, з яким картку абітурієнта відкрито зі списку заявок
+# (DK-35). Керує тим, куди веде кнопка «назад» і чи зберігається контекст крізь
+# редагування.
+FROM_APPLICATIONS = "applications"
+
+
+def _from_suffix(came_from: str) -> str:
+    """Query-суфікс для збереження контексту «прийшли зі списку заявок» при переходах
+    картка → редагування → картка. Порожній рядок, якщо контексту немає."""
+    return f"?from={FROM_APPLICATIONS}" if came_from == FROM_APPLICATIONS else ""
+
+
 # ---------- List page ----------
 
 class ListEntrantState(AppState):
@@ -415,6 +427,9 @@ class ListEntrantState(AppState):
 class ViewEntrantState(AppState):
     item: Optional[EntrantModel] = None
     in_process: bool = True
+    # Звідки відкрито картку (query ?from). "applications" — зі списку заявок (DK-35):
+    # тоді кнопка «назад» і переходи ведуть назад у список заявок.
+    came_from: str = ""
 
     @rx.event
     def on_load(self):
@@ -423,6 +438,7 @@ class ViewEntrantState(AppState):
             yield rx.redirect(routes.DASHBOARD)
             return
 
+        self.came_from = self.router.url.query_parameters.get("from", "") or ""
         self.in_process = True
         try:
             service = EntrantService()
@@ -436,13 +452,22 @@ class ViewEntrantState(AppState):
             yield rx.toast.error("Під час завантаження даних виникла помилка. Спробуйте ще раз.")
         return
 
+    @rx.var
+    def back_route(self) -> str:
+        """Куди веде кнопка «назад» у шапці картки: список заявок, якщо картку
+        відкрито звідти (DK-35), інакше — звичайний список абітурієнтів."""
+        if self.came_from == FROM_APPLICATIONS:
+            return routes.ENTRANT_APPLICATION_LIST
+        return routes.ENTRANT_LIST
+
     @rx.event
     def on_click_edit(self):
         if not self.has_permission(Actions.ENTRANT_EDIT):
             return rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
         if self.item is None:
             return None
-        return rx.redirect(routes.ENTRANT_EDIT + str(self.item.id))
+        # Зберігаємо контекст «зі списку заявок» крізь редагування.
+        return rx.redirect(routes.ENTRANT_EDIT + str(self.item.id) + _from_suffix(self.came_from))
 
     @rx.event
     def on_click_delete(self):
@@ -454,7 +479,7 @@ class ViewEntrantState(AppState):
 
         service = EntrantService()
         if service.delete_one(self.item):
-            yield rx.redirect(routes.ENTRANT_LIST)
+            yield rx.redirect(self.back_route)
             yield rx.toast.success("Видалено!")
         else:
             yield rx.toast.error("Не вдалось видалити. Спробуйте ще раз.")
@@ -525,6 +550,9 @@ class EntrantFormState(AppState):
     mode: str = "add"  # "add" | "edit"
     entrant_id: int = -1
     in_process: bool = True
+    # Контекст «прийшли зі списку заявок» (query ?from) — щоб після збереження/скасування
+    # повернутися саме на картку з тим самим контекстом, а звідти — у список заявок (DK-35).
+    came_from: str = ""
     # Лічильник для key= на date-інпутах діалогів: змінюється при кожному відкритті
     # діалогу, форсуючи ремоунт інпута, щоб порожнє значення стейту реально показувало
     # пусте поле (нативний <input type=date> інакше може лишати попередню дату). DK-36.
@@ -746,6 +774,7 @@ class EntrantFormState(AppState):
             return
 
         self.mode = "add"
+        self.came_from = ""
         self.in_process = True
         try:
             self._reset_form()
@@ -767,6 +796,7 @@ class EntrantFormState(AppState):
             return
 
         self.mode = "edit"
+        self.came_from = self.router.url.query_parameters.get("from", "") or ""
         self.in_process = True
         try:
             self._reset_form()
@@ -1869,7 +1899,7 @@ class EntrantFormState(AppState):
                     results_zno=list(self.results_zno),
                 )
                 yield rx.toast.success("Запис змінено!")
-                yield rx.redirect(routes.ENTRANT_VIEW + str(saved.id))
+                yield rx.redirect(routes.ENTRANT_VIEW + str(saved.id) + _from_suffix(self.came_from))
             else:
                 if not self.has_permission(Actions.ENTRANT_ADD):
                     yield rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
@@ -1897,5 +1927,5 @@ class EntrantFormState(AppState):
     @rx.event
     def on_cancel(self):
         if self.mode == "edit" and self.entrant_id > 0:
-            return rx.redirect(routes.ENTRANT_VIEW + str(self.entrant_id))
+            return rx.redirect(routes.ENTRANT_VIEW + str(self.entrant_id) + _from_suffix(self.came_from))
         return rx.redirect(routes.ENTRANT_LIST)

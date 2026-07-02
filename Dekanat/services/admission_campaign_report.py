@@ -52,6 +52,15 @@ class AdmissionCampaignReportService:
     # ---- generate ----
 
     def generate(self, id_campaign: int) -> Tuple[Dict, datetime]:
+        """Рахує payload і зберігає знімок. Обчислення (read-only) і запис розділені
+        на `compute_payload`/`persist_payload`, щоб state міг винести розрахунок у
+        фоновий потік, не роблячи конкурентний INSERT із потоку (DK-44)."""
+        payload = self.compute_payload(id_campaign)
+        return self.persist_payload(id_campaign, payload)
+
+    def compute_payload(self, id_campaign: int) -> Dict:
+        """Читає дані кампанії й рахує payload звіту БЕЗ запису в БД. Повністю
+        read-only — безпечно викликати у фоновому потоці через `run_blocking` (DK-44)."""
         try:
             with rx.session() as session:
                 campaign = session.get(AdmissionCampaignModel, id_campaign)
@@ -238,7 +247,16 @@ class AdmissionCampaignReportService:
                     },
                 }
 
-                # Перезаписуємо останній знімок кампанії — історія не зберігається.
+                return payload
+        except Exception as e:
+            print(f"[AdmissionCampaignReportService][compute_payload][ERROR] {e}")
+            raise
+
+    def persist_payload(self, id_campaign: int, payload: Dict) -> Tuple[Dict, datetime]:
+        """Зберігає обчислений payload як новий знімок, перезаписуючи попередній
+        (історія не зберігається). Виконується на event loop, а не в потоці (DK-44)."""
+        try:
+            with rx.session() as session:
                 AdmissionCampaignReportDao.delete_for_campaign(id_campaign, session)
                 snap = AdmissionCampaignReportModel(
                     id_campaign=id_campaign,
@@ -249,5 +267,5 @@ class AdmissionCampaignReportService:
                 session.refresh(snap)
                 return payload, snap.generated_at
         except Exception as e:
-            print(f"[AdmissionCampaignReportService][generate][ERROR] {e}")
+            print(f"[AdmissionCampaignReportService][persist_payload][ERROR] {e}")
             raise

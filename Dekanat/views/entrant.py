@@ -684,7 +684,8 @@ def view_page() -> rx.Component:
                 ViewEntrantState.get_user_actions.contains(Actions.ENTRANT_EDIT),
                 controls.button_image_primary(name_icon="pencil_line", on_click=ViewEntrantState.on_click_edit),
             ),
-            left=controls.button_back(routes.ENTRANT_LIST),
+            # «Назад» веде у список заявок, якщо картку відкрито звідти (DK-35), інакше — у список абітурієнтів.
+            left=controls.button_back(ViewEntrantState.back_route),
             width="100%",
         ),
         rx.skeleton(view_page_content(), loading=ViewEntrantState.in_process, height="100%"),

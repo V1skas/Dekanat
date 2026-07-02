@@ -1,0 +1,1 @@
+import"./react-D5nPORWt.js";import{t as e}from"./createLucideIcon-CTGaDH8j.js";var t=[[`path`,{d:`M12 20h.01`,key:`zekei9`}]],n=e(`wifi-zero`,t);export{t as __iconNode,n as default};

@@ -1,0 +1,17 @@
+import{r as e}from"./rolldown-runtime-Dte3XhyD.js";import{t}from"./react-D5nPORWt.js";import"./react-dom-CfS6TUty.js";import{A as n}from"./chunk-JZWAC4HX-C_UR8Kqd.js";import{a as r,d as i,h as a,r as o}from"./context-GoNefOGC.js";import{n as s}from"./emotion-react.browser.esm-IuRf-uQu.js";import{H as c,U as l,V as u,W as d,d as f,f as p,h as m,l as h,m as g,nt as _,p as v,tt as y}from"./esm-BkCTxeeH.js";import{c as b}from"./stateful_components-C_q8enJk.js";var x=e(t(),1);function S(){let[e,t]=(0,x.useContext)(o);return s(u,{onClick:(0,x.useCallback)(t=>e([i(`reflex___state____state.dekanat___states___app____app_state.dekanat___states___entrant_exam____print_entrant_exam_state.on_click_back`,{},{})],[t],{}),[e,i]),variant:`outline`},`Назад`)}function C(){let[e,t]=(0,x.useContext)(o);return s(u,{css:{color:`white`,backgroundImage:`linear-gradient(135deg, var(--accent-11) 20%, var(--accent-9) 65%)`},onClick:(0,x.useCallback)(t=>e([i(`reflex___state____state.dekanat___states___app____app_state.dekanat___states___entrant_exam____print_entrant_exam_state.on_click_print`,{},{})],[t],{}),[e,i])},`Друк`)}function w(){let e=(0,x.useContext)(r.reflex___state____state__dekanat___states___app____app_state__dekanat___states___entrant_exam____list_entrant_exam_state);return s(p,{},Array.prototype.map.call(e.items_display_rx_state_??[],(e,t)=>s(h,{key:t},s(f,{},e?.group),s(f,{},e?.item_zno),s(f,{},e?.date),s(f,{},e?.time_start),s(f,{},e?.time_end),s(f,{},e?.workers))))}function T(){return s(x.Fragment,{},(0,x.useContext)(r.reflex___state____state__dekanat___states___app____app_state__dekanat___states___entrant_exam____list_entrant_exam_state).items_display_rx_state_.length>0?s(x.Fragment,{},s(m,{css:{width:`100%`},variant:`surface`},s(v,{},s(h,{},s(g,{},`Група`),s(g,{},`Назва екзамену`),s(g,{},`Дата`),s(g,{},`Початок`),s(g,{},`Кінець`),s(g,{},`Відповідальні`))),s(w,{}))):s(x.Fragment,{},s(y,{as:`p`,css:{color:`gray`}},`Записи відсутні`)))}function E(){let e=(0,x.useContext)(r.reflex___state____state__dekanat___states___app____app_state),t=(0,x.useRef)(null);return a.ref_print_area=t,s(x.Fragment,{},e.is_auth_rx_state_?s(x.Fragment,{},s(d,{css:{width:`100%`,padding:`1rem`}},s(`div`,{className:`rx-Html`,dangerouslySetInnerHTML:{__html:`
+        <style>
+          @media print {
+            .no-print { display: none !important; }
+            html, body { background: white !important; }
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 100%;
+              padding: 1rem;
+            }
+          }
+        </style>
+        `}}),s(l,{align:`start`,className:`rx-Stack no-print`,css:{width:`100%`,marginBottom:`1rem`},direction:`row`,gap:`3`},s(S,{}),s(l,{css:{flex:1,justifySelf:`stretch`,alignSelf:`stretch`}}),s(C,{})),s(d,{css:{width:`100%`},id:`print-area`,ref:t},s(_,{css:{marginBottom:`0.75rem`},size:`5`},`Графік іспитів`),s(T,{})))):s(x.Fragment,{},s(l,{css:{display:`flex`,alignItems:`center`,justifyContent:`center`,height:`100%`,width:`100%`}},s(l,{align:`start`,className:`rx-Stack`,direction:`row`,gap:`3`},s(c,{size:`3`}),s(b,{})))))}var D=n(function(){return s(x.Fragment,{},s(E,{}),s(`title`,{},`Dekanat | Print`),s(`meta`,{content:`favicon.ico`,property:`og:image`}))});export{D as default};

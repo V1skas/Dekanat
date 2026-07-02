@@ -127,6 +127,9 @@
     <loc>http://0.0.0.0/contingent/entrants/add</loc>
   </url>
   <url>
+    <loc>http://0.0.0.0/contingent/applications/list</loc>
+  </url>
+  <url>
     <loc>http://0.0.0.0/admission_commission/rating/list</loc>
   </url>
   <url>

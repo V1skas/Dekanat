@@ -80,6 +80,14 @@ class AddApplicationStatusState(AppState):
     def set_is_default(self, value: bool):
         self.item.is_default = value
 
+    @rx.var
+    def is_allowed_in_rating(self) -> bool:
+        return bool(self.item.is_allowed_in_rating) if self.item is not None else False
+
+    @rx.event
+    def set_is_allowed_in_rating(self, value: bool):
+        self.item.is_allowed_in_rating = value
+
     @rx.event
     def on_save(self):
         if not self.has_permission(Actions.APPLICATION_STATUS_ADD):
@@ -155,6 +163,14 @@ class EditApplicationStatusState(AppState):
     @rx.event
     def set_is_default(self, value: bool):
         self.item.is_default = value
+
+    @rx.var
+    def is_allowed_in_rating(self) -> bool:
+        return bool(self.item.is_allowed_in_rating) if self.item is not None else False
+
+    @rx.event
+    def set_is_allowed_in_rating(self, value: bool):
+        self.item.is_allowed_in_rating = value
 
     @rx.event
     def on_save(self):
@@ -239,3 +255,7 @@ class ViewApplicationStatusState(AppState):
     @rx.var
     def is_default(self) -> bool:
         return bool(self.item.is_default) if self.item is not None else False
+
+    @rx.var
+    def is_allowed_in_rating(self) -> bool:
+        return bool(self.item.is_allowed_in_rating) if self.item is not None else False
