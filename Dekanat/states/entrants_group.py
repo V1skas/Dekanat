@@ -25,6 +25,9 @@ class ListEntrantsGroupState(AppState):
     filter_campaign_id: int = 0  # 0 — без фільтра по кампанії
     campaigns: List[AdmissionCampaignModel] = []
 
+    # Кількість абітурієнтів у кожній групі: {str(group_id): "N"} (DK-42).
+    counts: Dict[str, str] = {}
+
     # Режим вибору груп для друку (DK-24 follow-up).
     select_mode: bool = False
     selected_ids: List[int] = []
@@ -48,6 +51,10 @@ class ListEntrantsGroupState(AppState):
             title=self.filter_title.strip() or None,
             created_between=self._campaign_range(),
         )
+        ids = [it.id for it in self.items if it.id is not None]
+        raw_counts = service.get_entrant_counts(ids)
+        # Ключі — рядки (foreach віддає item.id.to_string()); дефолт 0 для всіх груп.
+        self.counts = {str(gid): str(raw_counts.get(gid, 0)) for gid in ids}
 
     @rx.event
     def on_load(self):
@@ -566,10 +573,15 @@ class GeneratedEntrant(BaseModel):
 
 
 class GeneratedGroup(BaseModel):
+    # id > 0 — це наявна група в режимі дозаповнення (DK-42): при збереженні
+    # абітурієнти дописуються до неї, нова група не створюється.
+    id: int = 0
     title: str = ""
     spec_code: str = ""
     spec_dept: int = 0
     spec_label: str = ""
+    # Скільки абітурієнтів вже є в наявній групі (0 для нових груп).
+    existing_count: int = 0
     entrants: List[GeneratedEntrant] = Field(default_factory=list)
 
 
@@ -580,6 +592,8 @@ class AutoGenerateEntrantsGroupState(AppState):
 
     # Параметри генерації
     max_size: int = 25
+    # Чи дозаповнювати наявні групи перед створенням нових (DK-42).
+    use_existing: bool = False
     # Сформовані групи — тримаємо в памʼяті до натискання «Зберегти».
     generated_groups: List[GeneratedGroup] = []
     # Список «вільних» абітурієнтів кампанії, з якого можна руками додавати у групи.
@@ -608,6 +622,14 @@ class AutoGenerateEntrantsGroupState(AppState):
             yield rx.toast.warning("Немає активної вступної кампанії — спочатку створіть її.")
             yield rx.redirect(routes.ENTRANTS_GROUP_LIST)
             return
+        # Скидаємо попередній (можливо, скасований) результат — інакше при
+        # повторному заході залишаться старі сформовані групи (DK-42).
+        self.generated_groups = []
+        self._pool = []
+        self.composition_open = False
+        self.composition_index = -1
+        self.picker_open = False
+        self.picker_search = ""
         self.in_progress = False
 
     # ---- Form fields ----
@@ -618,6 +640,10 @@ class AutoGenerateEntrantsGroupState(AppState):
             self.max_size = max(1, int(value)) if value else 1
         except (ValueError, TypeError):
             self.max_size = 1
+
+    @rx.event
+    def set_use_existing(self, value: bool):
+        self.use_existing = value
 
     # ---- Запуск формування ----
 
@@ -633,13 +659,15 @@ class AutoGenerateEntrantsGroupState(AppState):
         self.generating = True
         yield  # тригер реренду перед важкою операцією
         try:
-            preview = EntrantsGroupService().preview_auto_groups(self.max_size)
+            preview = EntrantsGroupService().preview_auto_groups(self.max_size, self.use_existing)
             self.generated_groups = [
                 GeneratedGroup(
+                    id=g.get("id", 0),
                     title=g["title"],
                     spec_code=g["spec_code"],
                     spec_dept=g["spec_dept"],
                     spec_label=g["spec_label"],
+                    existing_count=g.get("existing_count", 0),
                     entrants=[
                         GeneratedEntrant(
                             id=e["id"],
@@ -686,15 +714,28 @@ class AutoGenerateEntrantsGroupState(AppState):
             return
         group = self.generated_groups[self.composition_index]
         new_group = GeneratedGroup(
+            id=group.id,
             title=group.title,
             spec_code=group.spec_code,
             spec_dept=group.spec_dept,
             spec_label=group.spec_label,
+            existing_count=group.existing_count,
             entrants=[e for e in group.entrants if e.id != entrant_id],
         )
         new_groups = list(self.generated_groups)
         new_groups[self.composition_index] = new_group
         self.generated_groups = new_groups
+
+    @rx.event
+    def remove_group(self, index: int):
+        """Прибрати цілу сформовану групу з результату (DK-42)."""
+        if not (0 <= index < len(self.generated_groups)):
+            return
+        new_groups = [g for i, g in enumerate(self.generated_groups) if i != index]
+        self.generated_groups = new_groups
+        # Якщо був відкритий діалог складу цієї (чи зсунутої) групи — закриваємо.
+        self.composition_open = False
+        self.composition_index = -1
 
     # ---- Picker для ручного додавання ----
 
@@ -725,10 +766,12 @@ class AutoGenerateEntrantsGroupState(AppState):
         if any(e.id == entrant_id for e in group.entrants):
             return  # уже в групі
         new_group = GeneratedGroup(
+            id=group.id,
             title=group.title,
             spec_code=group.spec_code,
             spec_dept=group.spec_dept,
             spec_label=group.spec_label,
+            existing_count=group.existing_count,
             entrants=list(group.entrants) + [
                 GeneratedEntrant(id=match.id, pib=match.pib, spec_label=match.spec_label),
             ],
@@ -768,13 +811,19 @@ class AutoGenerateEntrantsGroupState(AppState):
 
     @rx.var
     def group_rows(self) -> List[Dict[str, str]]:
-        """Плоский список для таблиці результатів: назва, спеціальність, кількість."""
+        """Плоский список для таблиці результатів: назва, спеціальність, кількість.
+
+        Для наявних груп (дозаповнення, DK-42) `is_existing == "1"`, `count` — скільки
+        додається, `total` — скільки буде разом із уже наявними."""
         return [
             {
                 "index": str(i),
                 "title": g.title,
                 "spec_label": g.spec_label,
                 "count": str(len(g.entrants)),
+                "existing_count": str(g.existing_count),
+                "total": str(g.existing_count + len(g.entrants)),
+                "is_existing": "1" if g.id else "",
             }
             for i, g in enumerate(self.generated_groups)
         ]
@@ -803,6 +852,7 @@ class AutoGenerateEntrantsGroupState(AppState):
         try:
             payload = [
                 {
+                    "id": g.id,
                     "title": g.title,
                     "entrants": [{"id": e.id} for e in g.entrants],
                 }

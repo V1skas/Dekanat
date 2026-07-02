@@ -106,6 +106,32 @@ class EntrantsGroupDao:
                 session.add(e)
 
     @staticmethod
+    def append_entrants(group_id: int, entrant_ids: list[int], session: Session) -> None:
+        """Дозаписує переданих абітурієнтів до групи, не чіпаючи поточний склад.
+        На відміну від `replace_entrants` — існуючі члени групи лишаються (DK-42)."""
+        if not entrant_ids:
+            return
+        to_add = session.exec(
+            select(EntrantModel).where(EntrantModel.id.in_(entrant_ids))
+        ).all()
+        for e in to_add:
+            e.id_entrant_group = group_id
+            session.add(e)
+
+    @staticmethod
+    def get_entrant_counts(group_ids: Sequence[int], session: Session) -> dict[int, int]:
+        """Кількість активних абітурієнтів у кожній із переданих груп (DK-42)."""
+        if not group_ids:
+            return {}
+        rows = session.exec(
+            select(EntrantModel.id_entrant_group, func.count(EntrantModel.id))
+            .where(EntrantModel.id_entrant_group.in_(list(group_ids)))
+            .where(EntrantModel.is_deleted == False)
+            .group_by(EntrantModel.id_entrant_group)
+        ).all()
+        return {gid: cnt for gid, cnt in rows if gid is not None}
+
+    @staticmethod
     def get_exams_by_group(group_id: int, session: Session) -> Sequence[EntrantExamModel]:
         statement = (
             select(EntrantExamModel)

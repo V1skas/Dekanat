@@ -42,6 +42,7 @@ def _list_row(item: EntrantGroupModel) -> rx.Component:
             rx.link(item.title, href=f"{routes.ENTRANTS_GROUP_VIEW}{item.id}"),
             align="left"
         ),
+        rx.table.cell(ListEntrantsGroupState.counts[item.id.to_string()], align="center"),
     )
 
 def _list_table() -> rx.Component:
@@ -53,6 +54,7 @@ def _list_table() -> rx.Component:
                     rx.table.column_header_cell("", color=rx.color("accent", 2), width="2.5rem"),
                 ),
                 rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Абітурієнтів", color=rx.color("accent", 2), width="8rem"),
             ),
             background_color=rx.color("accent", 9),
         ),
@@ -265,7 +267,17 @@ def view_page_content() -> rx.Component:
     return rx.vstack(
         rx.heading(ViewEntrantsGroupState.title, size="6"),
 
-        rx.heading("Абітурієнти у групі", size="4"),
+        rx.hstack(
+            rx.heading("Абітурієнти у групі", size="4"),
+            rx.badge(
+                ViewEntrantsGroupState.entrants_in_group.length().to_string(),
+                color_scheme="brown",
+                variant="soft",
+                size="2",
+            ),
+            align="center",
+            spacing="2",
+        ),
         rx.cond(
             ViewEntrantsGroupState.entrants_in_group.length() > 0,
             _view_entrants_table(),
@@ -430,17 +442,38 @@ def list_page() -> rx.Component:
 def _auto_table_row(row: dict) -> rx.Component:
     return rx.table.row(
         rx.table.row_header_cell(
-            rx.link(
-                row["title"],
-                on_click=AutoGenerateEntrantsGroupState.open_composition(row["index"].to(int)),
-                cursor="pointer",
-                color=rx.color("accent", 11),
-                weight="bold",
+            rx.hstack(
+                rx.link(
+                    row["title"],
+                    on_click=AutoGenerateEntrantsGroupState.open_composition(row["index"].to(int)),
+                    cursor="pointer",
+                    color=rx.color("accent", 11),
+                    weight="bold",
+                ),
+                rx.cond(
+                    row["is_existing"] != "",
+                    rx.badge("наявна", color_scheme="grass", variant="soft"),
+                ),
+                align="center",
+                spacing="2",
             ),
             align="left",
         ),
         rx.table.cell(row["spec_label"]),
-        rx.table.cell(row["count"]),
+        # Для наявних груп показуємо підсумок і скільки додається (DK-42).
+        rx.table.cell(
+            rx.cond(
+                row["is_existing"] != "",
+                row["total"] + " (+" + row["count"] + ")",
+                row["count"],
+            ),
+        ),
+        rx.table.cell(
+            controls.delete_with_confirm(
+                on_confirm=AutoGenerateEntrantsGroupState.remove_group(row["index"].to(int)),
+                description="Прибрати цю сформовану групу з результату?",
+            ),
+        ),
     )
 
 
@@ -451,6 +484,7 @@ def _auto_results_table() -> rx.Component:
                 rx.table.column_header_cell("Назва групи", color=rx.color("accent", 2)),
                 rx.table.column_header_cell("Спеціальність", color=rx.color("accent", 2)),
                 rx.table.column_header_cell("Кількість", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Дії", color=rx.color("accent", 2), width="6rem"),
             ),
             background_color=rx.color("accent", 9),
         ),
@@ -591,11 +625,26 @@ def auto_generate_page_content() -> rx.Component:
         rx.box(
             rx.vstack(
                 rx.text("*Максимальний розмір групи:", weight="bold"),
-                rx.input(
-                    type="number",
-                    value=AutoGenerateEntrantsGroupState.max_size.to_string(),
-                    on_change=AutoGenerateEntrantsGroupState.set_max_size,
-                    width="12rem",
+                rx.hstack(
+                    rx.input(
+                        type="number",
+                        value=AutoGenerateEntrantsGroupState.max_size.to_string(),
+                        on_change=AutoGenerateEntrantsGroupState.set_max_size,
+                        width="12rem",
+                    ),
+                    rx.checkbox(
+                        "Враховувати наявні групи",
+                        checked=AutoGenerateEntrantsGroupState.use_existing,
+                        on_change=AutoGenerateEntrantsGroupState.set_use_existing,
+                    ),
+                    align="center",
+                    spacing="3",
+                ),
+                rx.text(
+                    "Якщо увімкнено — абітурієнти спершу дозаповнюють наявні групи "
+                    "тієї ж спеціальності до вказаного ліміту, а решта формує нові.",
+                    size="1",
+                    color="gray",
                 ),
                 controls.button_primary(
                     rx.cond(
