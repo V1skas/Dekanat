@@ -56,6 +56,64 @@ def _entrant_loaders():
     ]
 
 
+def apply_entrant_filters(
+    statement,
+    *,
+    pib_substring: Optional[str] = None,
+    phone_substring: Optional[str] = None,
+    application_status_id: Optional[int] = None,
+    entry_base_id: Optional[int] = None,
+    created_between: Optional[Tuple[datetime, datetime]] = None,
+    created_date_between: Optional[Tuple[datetime, datetime]] = None,
+    priority_speciality_id: Optional[int] = None,
+    top_priority_speciality_id: Optional[int] = None,
+):
+    """Додає до statement однакові для списку абітурієнтів та списку заявок (DK-35)
+    where-предикати. Передбачається, що у statement уже приєднані EntrantModel та
+    PersonModel. Фільтр по is_deleted лишається за викликачем (див. `with_del`)."""
+    if pib_substring:
+        # ua_lower — кирилиця-aware нижній регістр (SQLite lower() її не бере), DK-36.
+        q = pib_substring.strip().lower()
+        statement = statement.where(ua_lower(PersonModel.pib).like(f"%{q}%"))
+    if phone_substring:
+        qp = phone_substring.strip().lower()
+        statement = statement.where(func.lower(PersonModel.phone_number).like(f"%{qp}%"))
+    if entry_base_id:
+        statement = statement.where(PersonModel.id_entry_base == entry_base_id)
+    if application_status_id:
+        statement = statement.where(EntrantModel.id_application_status == application_status_id)
+    if created_between is not None:
+        start_dt, end_dt = created_between
+        statement = statement.where(EntrantModel.created_at >= start_dt).where(EntrantModel.created_at <= end_dt)
+    # Окремий фільтр по даті створення (конкретний день / період) — DK-34.
+    # AND'иться з фільтром кампанії: обидва обмежують created_at незалежно.
+    if created_date_between is not None:
+        date_start, date_end = created_date_between
+        statement = statement.where(EntrantModel.created_at >= date_start).where(EntrantModel.created_at <= date_end)
+
+    # Фільтр по специальності з пріоритетів — будь-який пріоритет, не лише перший.
+    if priority_speciality_id:
+        spec_filter = aliased(SpecialtieEntrantModel)
+        statement = statement.where(
+            select(spec_filter.id_entrant)
+            .where(spec_filter.id_entrant == EntrantModel.id)
+            .where(spec_filter.id_speciality == priority_speciality_id)
+            .exists()
+        )
+
+    # Фільтр по пріоритетній (перший пріоритет) специальності — DK-36.
+    if top_priority_speciality_id:
+        top_filter = aliased(SpecialtieEntrantModel)
+        statement = statement.where(
+            select(top_filter.id_entrant)
+            .where(top_filter.id_entrant == EntrantModel.id)
+            .where(top_filter.id_speciality == top_priority_speciality_id)
+            .where(top_filter.priority == 1)
+            .exists()
+        )
+    return statement
+
+
 def _apply_sort(statement, sort_field: Optional[str], sort_dir: str):
     """Додає ORDER BY до запиту з урахуванням outerjoin'ів зі справочниками.
 
@@ -136,46 +194,17 @@ class EntrantDao:
         )
         if not with_del:
             statement = statement.where(EntrantModel.is_deleted == False)
-        if pib_substring:
-            # ua_lower — кирилиця-aware нижній регістр (SQLite lower() її не бере), DK-36.
-            q = pib_substring.strip().lower()
-            statement = statement.where(ua_lower(PersonModel.pib).like(f"%{q}%"))
-        if phone_substring:
-            qp = phone_substring.strip().lower()
-            statement = statement.where(func.lower(PersonModel.phone_number).like(f"%{qp}%"))
-        if entry_base_id:
-            statement = statement.where(PersonModel.id_entry_base == entry_base_id)
-        if application_status_id:
-            statement = statement.where(EntrantModel.id_application_status == application_status_id)
-        if created_between is not None:
-            start_dt, end_dt = created_between
-            statement = statement.where(EntrantModel.created_at >= start_dt).where(EntrantModel.created_at <= end_dt)
-        # Окремий фільтр по даті створення (конкретний день / період) — DK-34.
-        # AND'иться з фільтром кампанії: обидва обмежують created_at незалежно.
-        if created_date_between is not None:
-            date_start, date_end = created_date_between
-            statement = statement.where(EntrantModel.created_at >= date_start).where(EntrantModel.created_at <= date_end)
-
-        # Фільтр по специальності з пріоритетів — будь-який пріоритет, не лише перший.
-        if priority_speciality_id:
-            spec_filter = aliased(SpecialtieEntrantModel)
-            statement = statement.where(
-                select(spec_filter.id_entrant)
-                .where(spec_filter.id_entrant == EntrantModel.id)
-                .where(spec_filter.id_speciality == priority_speciality_id)
-                .exists()
-            )
-
-        # Фільтр по пріоритетній (перший пріоритет) специальності — DK-36.
-        if top_priority_speciality_id:
-            top_filter = aliased(SpecialtieEntrantModel)
-            statement = statement.where(
-                select(top_filter.id_entrant)
-                .where(top_filter.id_entrant == EntrantModel.id)
-                .where(top_filter.id_speciality == top_priority_speciality_id)
-                .where(top_filter.priority == 1)
-                .exists()
-            )
+        statement = apply_entrant_filters(
+            statement,
+            pib_substring=pib_substring,
+            phone_substring=phone_substring,
+            application_status_id=application_status_id,
+            entry_base_id=entry_base_id,
+            created_between=created_between,
+            created_date_between=created_date_between,
+            priority_speciality_id=priority_speciality_id,
+            top_priority_speciality_id=top_priority_speciality_id,
+        )
 
         # Сортування. Для полів зі звʼязаних таблиць — окремі outerjoin'и з аліасами,
         # щоб не зачепити інші where'и (ProcessingOrder/Status могли б бути уже додані).

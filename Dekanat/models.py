@@ -314,7 +314,7 @@ class EntrantModel(rx.Model, table=True):
     person: 'PersonModel' = Relationship()
     application_status: ApplicationStatusModel = Relationship()
     entrant_group: Optional['EntrantGroupModel'] = Relationship()
-    specialties: Optional[List['SpecialtieEntrantModel']] = Relationship(sa_relationship_kwargs={"order_by": "SpecialtieEntrantModel.priority"})
+    specialties: Optional[List['SpecialtieEntrantModel']] = Relationship(back_populates="entrant", sa_relationship_kwargs={"order_by": "SpecialtieEntrantModel.priority"})
 
 
 @rx.ModelRegistry.register
@@ -444,7 +444,7 @@ class SpecialtieEntrantModel(rx.Model, table=True):
     priority: int
 
     # Relationships
-    # entrant: Optional['EntrantModel'] = Relationship(back_populates="specialties")
+    entrant: Optional['EntrantModel'] = Relationship(back_populates="specialties")
     speciality: Optional['SpecialityModel'] = Relationship()
     form_of_study: Optional['FormOfStudyModel'] = Relationship()
 
