@@ -183,6 +183,7 @@ class ListRatingState(AppState):
                 order.append(group_key)
             groups_by_key[group_key].rows.append(
                 {
+                    "id": str(e.id_entrant),
                     "position": str(e.position),
                     "pib": pib,
                     "phone": phone,
@@ -222,6 +223,13 @@ class ListRatingState(AppState):
     @rx.event
     def toggle_filter_collapsed(self):
         self.filter_collapsed = not self.filter_collapsed
+
+    @rx.event
+    def on_click_row(self, entrant_id: str):
+        """Клік по рядку рейтингу веде на картку абітурієнта (DK-43)."""
+        if not entrant_id:
+            return
+        return rx.redirect(routes.ENTRANT_VIEW + entrant_id)
 
     def _refill_from_latest(self):
         """Перерахунок груп з кешованого знімка під поточні фільтри."""

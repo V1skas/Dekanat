@@ -18,6 +18,7 @@ from Dekanat.models import (
     ResultZnoModel,
     SpecialConditionPersonModel,
     SpecialConditionModel,
+    ApplicationStatusModel,
 )
 
 
@@ -26,6 +27,8 @@ STATUS_BUDGET = "budget"
 STATUS_CONTRACT = "contract"
 STATUS_KVOTA = "kvota"
 STATUS_REJECTED = "rejected"
+# DK-43: картка, чий статус заявки не допускає до рейтингу — рядок унизу, сірий.
+STATUS_EXCLUDED = "excluded"
 
 
 class RatingService:
@@ -94,6 +97,17 @@ class RatingService:
                     ).all()
                 }
 
+                # Статуси заявки, що допускають абітурієнта до рейтингу (DK-43).
+                # Картки з рештою статусів у рейтингу не беруть участі — див. нижче.
+                allowed_status_ids = {
+                    s.id
+                    for s in session.exec(
+                        select(ApplicationStatusModel).where(
+                            ApplicationStatusModel.is_allowed_in_rating == True
+                        )
+                    ).all()
+                }
+
                 # Підготовка даних по кожному абітурієнту. Квота визначається кортежем
                 # (спеціальність, база вступу, форма навчання): база береться з особи,
                 # форма — з конкретного запису пріоритету (DK-26).
@@ -115,6 +129,7 @@ class RatingService:
                         "id": ent.id,
                         "total": total,
                         "kvota": has_kvota,
+                        "allowed": ent.id_application_status in allowed_status_ids,
                         "base": ent.person.id_entry_base,
                         "specs": spec_keys,
                     }
@@ -129,20 +144,34 @@ class RatingService:
                         and (q.id_speciality, q.id_form_of_study)
                         in info["specs"]
                     ]
+                    # Не допущені за статусом заявки (DK-43) — не ранжуються нарівні
+                    # з рештою, а йдуть у самий низ зі статусом STATUS_EXCLUDED.
+                    allowed = [a for a in applicants if a["allowed"]]
+                    excluded = sorted(
+                        [a for a in applicants if not a["allowed"]],
+                        key=lambda a: a["total"],
+                        reverse=True,
+                    )
                     # Кандидати з квотою — нагору; в межах груп сортування за балом desc
                     kvotas = sorted(
-                        [a for a in applicants if a["kvota"]],
+                        [a for a in allowed if a["kvota"]],
                         key=lambda a: a["total"],
                         reverse=True,
                     )
                     others = sorted(
-                        [a for a in applicants if not a["kvota"]],
+                        [a for a in allowed if not a["kvota"]],
                         key=lambda a: a["total"],
                         reverse=True,
                     )
-                    ordered = kvotas + others
+                    ordered = kvotas + others + excluded
 
                     for pos, info in enumerate(ordered, start=1):
+                        if not info["allowed"]:
+                            status = STATUS_EXCLUDED
+                        elif info["kvota"]:
+                            status = STATUS_KVOTA
+                        else:
+                            status = ""
                         entries.append(
                             RatingEntryModel(
                                 id_snapshot=0,  # set later
@@ -152,7 +181,7 @@ class RatingService:
                                 id_entrant=info["id"],
                                 position=pos,
                                 total_points=info["total"],
-                                status=STATUS_KVOTA if info["kvota"] else "",
+                                status=status,
                             )
                         )
 
@@ -173,9 +202,10 @@ class RatingService:
                     for e in spec_entries:
                         if e.status == STATUS_KVOTA:
                             budget_left = max(0, budget_left - 1)
-                    # Другий прохід: виставляємо статуси не-квота-абітурієнтам у порядку position
+                    # Другий прохід: виставляємо статуси не-квота-абітурієнтам у порядку position.
+                    # Не допущені (STATUS_EXCLUDED, DK-43) місць не займають і статус зберігають.
                     for e in sorted(spec_entries, key=lambda x: x.position):
-                        if e.status == STATUS_KVOTA:
+                        if e.status in (STATUS_KVOTA, STATUS_EXCLUDED):
                             continue
                         if budget_left > 0:
                             e.status = STATUS_BUDGET
@@ -293,10 +323,13 @@ class RatingService:
                     base = q.entry_base if q is not None else None
                     form = q.form_of_study if q is not None else None
 
+                    # Не допущені за статусом (DK-43) до офіційного документа не потрапляють.
+                    ranked_entries = [e for e in group_entries if e.status != STATUS_EXCLUDED]
+
                     # Колонки іспитів — об'єднання предметів, за якими є оцінки у цьому
                     # потоці, впорядковане за id предмета (стабільний порядок колонок).
                     item_ids = set()
-                    for e in group_entries:
+                    for e in ranked_entries:
                         item_ids.update(grades_by_person.get(e.id_entrant, {}).keys())
                     ordered_items = sorted(item_ids)
                     exams = [item_titles.get(i, f"#{i}") for i in ordered_items]
@@ -305,7 +338,7 @@ class RatingService:
                     contract_places = q.contract_places if q is not None else 0
 
                     applicants: List[Dict] = []
-                    for e in sorted(group_entries, key=lambda x: x.position):
+                    for e in sorted(ranked_entries, key=lambda x: x.position):
                         pgrades = grades_by_person.get(e.id_entrant, {})
                         grades = [pgrades.get(i, 0) for i in ordered_items]
                         pib = (
