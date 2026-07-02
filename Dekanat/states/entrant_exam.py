@@ -517,8 +517,13 @@ class ViewEntrantExamState(AppState):
     grading_open: bool = False
     # Список абітурієнтів групи, для якої проводиться іспит (передзібрані рядки таблиці).
     grading_rows: List[Dict[str, str]] = []
-    # Мапа поточних оцінок: id_entrant -> grade (str). Не присутній ключ = немає оцінки.
+    # Мапа поточних (домножених) оцінок: id_entrant -> grade (str). Показується в таблиці.
     grades_by_entrant: Dict[str, str] = {}
+    # Мапа сирих (введених) оцінок: id_entrant -> raw (str). Редагується в діалозі, щоб
+    # повторне збереження не домножувало вдруге (DK-40).
+    raw_by_entrant: Dict[str, str] = {}
+    # Коефіцієнт предмета цього іспиту (DK-40).
+    item_coefficient: float = 1.0
     # Сирий список абітурієнтів (id + pib) — використовується лише на бекенді для
     # пересборки `grading_rows` після зміни оцінок (leading underscore — backend-only).
     _raw_entrants: List[Dict[str, str]] = []
@@ -546,6 +551,11 @@ class ViewEntrantExamState(AppState):
         loaded = service.get_by_id(int(self._route_param("id", "-1")))
         if loaded is not None:
             self.item = loaded
+            self.item_coefficient = (
+                loaded.item_zno.coefficient
+                if loaded.item_zno is not None and loaded.item_zno.coefficient is not None
+                else 1.0
+            )
             self.responsible_workers_display = [
                 {"pib": w.pib, "email": w.email or "—", "phone": w.phone_number or "—"}
                 for w in (loaded.responsible_workers or [])
@@ -567,6 +577,10 @@ class ViewEntrantExamState(AppState):
             self.grades_by_entrant = {
                 str(r.id_person): str(r.points) for r in results
             }
+            self.raw_by_entrant = {
+                str(r.id_person): str(r.points_raw if r.points_raw is not None else r.points)
+                for r in results
+            }
             self._reload_grading_rows()
 
     @rx.event
@@ -580,6 +594,8 @@ class ViewEntrantExamState(AppState):
         try:
             self._raw_entrants = []
             self.grades_by_entrant = {}
+            self.raw_by_entrant = {}
+            self.item_coefficient = 1.0
             self.grading_rows = []
             self.grading_open = False
             self.g_open = False
@@ -680,9 +696,14 @@ class ViewEntrantExamState(AppState):
         if not (0 <= index < len(self.grading_rows)):
             return
         self.g_index = index
-        existing = self.grading_rows[index]["grade"]
+        # У діалозі редагуємо сирий (введений) бал, а не домножений (DK-40).
+        existing = self.raw_by_entrant.get(self.grading_rows[index]["id"], "")
         self.g_grade_input = existing
         self.g_grade_original = existing
+
+    @rx.var
+    def grading_coefficient_hint(self) -> str:
+        return f"Цей бал буде домножено на коефіцієнт предмета (×{self.item_coefficient})."
 
     @rx.event
     def open_grading_dialog(self, index: int = 0):
@@ -747,18 +768,26 @@ class ViewEntrantExamState(AppState):
 
         raw = (self.g_grade_input or "").strip()
         points: Optional[int]
+        weighted: Optional[int]
         if raw == "":
             points = None
+            weighted = None
         else:
             try:
                 points = int(raw)
             except ValueError:
                 yield rx.toast.warning("Оцінка має бути цілим числом!")
                 return
+            # Домножуємо введений бал на коефіцієнт предмета при збереженні (DK-40).
+            weighted = int(points * self.item_coefficient + 0.5)
 
         try:
-            ResultZnoService().upsert(self.item.id_item_zno, entrant_id, points)
-            self.grades_by_entrant[row["id"]] = raw
+            ResultZnoService().upsert(
+                self.item.id_item_zno, entrant_id, weighted, points_raw=points
+            )
+            # У таблиці показуємо домножений бал, у діалозі — сирий.
+            self.grades_by_entrant[row["id"]] = "" if weighted is None else str(weighted)
+            self.raw_by_entrant[row["id"]] = raw
             self.g_grade_original = raw
             self._reload_grading_rows()
             yield rx.toast.success("Оцінку збережено!")

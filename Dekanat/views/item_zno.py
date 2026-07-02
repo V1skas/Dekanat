@@ -16,6 +16,7 @@ def table_row(item: ItemZnoModel) -> rx.Component:
             rx.link(item.title, href=f"{routes.ITEM_ZNO_VIEW}{item.id}"),
             align="left"
         ),
+        rx.table.cell(item.coefficient),
     )
 
 def table() -> rx.Component:
@@ -23,6 +24,7 @@ def table() -> rx.Component:
         rx.table.header(
             rx.table.row(
                 rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("Коефіцієнт", color=rx.color("accent", 2)),
             ),
             background_color=rx.color("accent", 9),
         ),
@@ -46,6 +48,11 @@ def list_page_content() -> rx.Component:
 def view_page_content() -> rx.Component:
     return rx.vstack(
         rx.heading(ViewItemZnoState.title),
+        rx.hstack(
+            rx.text("Коефіцієнт:", weight="bold"),
+            rx.text(ViewItemZnoState.coefficient_str),
+            spacing="2",
+        ),
         height="100%",
         width="100%"
     )
@@ -54,6 +61,9 @@ def add_page_content() -> rx.Component:
     return rx.vstack(
         rx.text("*Назва"),
         rx.input(id="title", required=True, value=AddItemZnoState.title, on_change=AddItemZnoState.set_title, width="100%"),
+        rx.text("*Коефіцієнт"),
+        rx.input(type="number", step="any", value=AddItemZnoState.coefficient_str, on_change=AddItemZnoState.set_coefficient, width="100%"),
+        rx.text("Бал, введений оператором, буде домножено на цей коефіцієнт.", size="2", color="gray"),
         align="stretch",
         spacing="3",
         width="100%",
@@ -63,6 +73,9 @@ def edit_page_content() -> rx.Component:
     return rx.vstack(
         rx.text("*Назва"),
         rx.input(id="title", required=True, value=EditItemZnoState.title, on_change=EditItemZnoState.set_title, width="100%"),
+        rx.text("*Коефіцієнт"),
+        rx.input(type="number", step="any", value=EditItemZnoState.coefficient_str, on_change=EditItemZnoState.set_coefficient, width="100%"),
+        rx.text("Бал, введений оператором, буде домножено на цей коефіцієнт.", size="2", color="gray"),
         align="stretch",
         spacing="3",
         width="100%",

@@ -14,6 +14,7 @@ from Dekanat.services.app_setting import AppSettingService
 # Підписи розділів — порядок задає порядок виводу на сторінці.
 CATEGORY_TITLES: Dict[str, str] = {
     "auth": "Авторизація",
+    "rating": "Рейтинг",
     "users": "Користувачі",
 }
 
@@ -114,6 +115,8 @@ class ListAppSettingState(AppState):
                     return f"«{d.title}»: очікується ціле число."
                 if d.key == "session_timeout_minutes" and n < 1:
                     return "«Час сесії, хв»: значення має бути ≥ 1."
+                if d.key == "max_total_points" and n < 1:
+                    return "«Максимальна сума балів»: значення має бути ≥ 1."
             elif d.value_type == "bool":
                 if d.value not in ("true", "false"):
                     return f"«{d.title}»: очікується true/false."

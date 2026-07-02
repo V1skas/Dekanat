@@ -482,6 +482,9 @@ class ItemZnoModel(rx.Model, table=True):
     # Table columns
     id: int = Field(primary_key=True)
     title: str
+    # Ваговий коефіцієнт предмета (DK-40): бал, введений оператором або отриманий на
+    # тестуванні, домножається на нього при збереженні оцінки. Дефолт 1.0 — без зміни.
+    coefficient: float = Field(default=1.0, nullable=False)
     is_deleted: bool = False
 
 
@@ -493,7 +496,12 @@ class ResultZnoModel(rx.Model, table=True):
     id: int = Field(primary_key=True, default=None)
     id_items_zno: int = Field(foreign_key="item_zno.id")
     id_person: int = Field(foreign_key="persons.id")
+    # Підсумковий бал = сирий × коефіцієнт предмета (обчислюється при збереженні, DK-40).
     points: int
+    # Сирий бал, введений оператором / отриманий на тестуванні (до множення на
+    # коефіцієнт). Потрібен, щоб діалог редагування показував саме те, що ввели,
+    # і повторне збереження не домножувало вдруге (DK-40).
+    points_raw: Optional[int] = Field(default=None, nullable=True)
 
     # Relationships
     item_zno: Optional['ItemZnoModel'] = Relationship()

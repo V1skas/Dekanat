@@ -8,8 +8,10 @@ from Dekanat.models import AppSettingModel
 
 # Категории и ключи настроек
 CATEGORY_AUTH = "auth"
+CATEGORY_RATING = "rating"
 
 KEY_SESSION_TIMEOUT_MINUTES = "session_timeout_minutes"
+KEY_MAX_TOTAL_POINTS = "max_total_points"
 
 # Дефолтні значення (використовуються, якщо запис у БД відсутній)
 DEFAULTS: Dict[str, Dict[str, str]] = {
@@ -18,6 +20,13 @@ DEFAULTS: Dict[str, Dict[str, str]] = {
         "title": "Час сесії, хв",
         "description": "Час бездіяльності користувача, після якого сесія завершується. Ковзне вікно: продовжується при кожній активній дії.",
         "value": "60",
+        "value_type": "int",
+    },
+    KEY_MAX_TOTAL_POINTS: {
+        "category": CATEGORY_RATING,
+        "title": "Максимальна сума балів",
+        "description": "Верхня межа суми балів абітурієнта при формуванні рейтингу. Якщо сума перевищує це значення — вона обрізається до нього. Квоти від спеціальних умов не змінюються.",
+        "value": "200",
         "value_type": "int",
     },
 }
@@ -90,3 +99,6 @@ class AppSettingService:
 
     def get_session_timeout_minutes(self) -> int:
         return self.get_int(KEY_SESSION_TIMEOUT_MINUTES, fallback=60)
+
+    def get_max_total_points(self) -> int:
+        return self.get_int(KEY_MAX_TOTAL_POINTS, fallback=200)

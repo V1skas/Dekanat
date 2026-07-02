@@ -579,6 +579,8 @@ class EntrantFormState(AppState):
     kinship_options: List[Dict[str, str]] = []
     special_condition_options: List[Dict[str, str]] = []
     item_zno_options: List[Dict[str, str]] = []
+    # id предмета ЗНО (str) -> ваговий коефіцієнт (DK-40).
+    item_zno_coeffs: Dict[str, float] = {}
 
     # ---- Child collections ----
     identity_documents: List[IdentityDocumentModel] = []
@@ -701,6 +703,9 @@ class EntrantFormState(AppState):
         ]
         iz = ItemZnoService().get_list_items()
         self.item_zno_options = [{"value": str(i.id), "label": i.title} for i in iz]
+        self.item_zno_coeffs = {
+            str(i.id): (i.coefficient if i.coefficient is not None else 1.0) for i in iz
+        }
 
     def _reset_form(self):
         self.entrant_id = -1
@@ -1703,7 +1708,9 @@ class EntrantFormState(AppState):
         item = self.results_zno[index]
         self.rz_index = index
         self.rz_id_items_zno = item.id_items_zno or 0
-        self.rz_points = item.points or 0
+        # У діалозі редагуємо сирий (введений) бал, а не домножений (DK-40), щоб
+        # повторне збереження не множило вдруге. points_raw бекфілиться з points.
+        self.rz_points = item.points_raw if item.points_raw is not None else (item.points or 0)
         self.rz_open = True
 
     @rx.event
@@ -1729,6 +1736,11 @@ class EntrantFormState(AppState):
         except (ValueError, TypeError):
             self.rz_points = 0
 
+    @rx.var
+    def rz_coefficient_hint(self) -> str:
+        coeff = self.item_zno_coeffs.get(str(self.rz_id_items_zno), 1.0)
+        return f"Цей бал буде домножено на коефіцієнт предмета (×{coeff})."
+
     @rx.event
     def save_rz(self):
         if not self.rz_id_items_zno:
@@ -1738,10 +1750,14 @@ class EntrantFormState(AppState):
             yield rx.toast.warning("Бали мають бути у межах 0-200!")
             return
 
+        # Домножуємо введений бал на коефіцієнт предмета при збереженні (DK-40).
+        coeff = self.item_zno_coeffs.get(str(self.rz_id_items_zno), 1.0)
+        weighted = int(self.rz_points * coeff + 0.5)
         item = ResultZnoModel(
             id_items_zno=self.rz_id_items_zno,
             id_person=self.entrant_id if self.entrant_id > 0 else 0,
-            points=self.rz_points,
+            points=weighted,
+            points_raw=self.rz_points,
         )
         if 0 <= self.rz_index < len(self.results_zno):
             self.results_zno[self.rz_index] = item

@@ -31,15 +31,23 @@ class ResultZnoDao:
 
     @staticmethod
     def upsert(
-        id_items_zno: int, id_person: int, points: int, session: Session
+        id_items_zno: int,
+        id_person: int,
+        points: int,
+        session: Session,
+        points_raw: Optional[int] = None,
     ) -> ResultZnoModel:
         existing = ResultZnoDao.get_one(id_items_zno, id_person, session)
         if existing is not None:
             existing.points = points
+            existing.points_raw = points_raw
             session.add(existing)
             return existing
         new_item = ResultZnoModel(
-            id_items_zno=id_items_zno, id_person=id_person, points=points
+            id_items_zno=id_items_zno,
+            id_person=id_person,
+            points=points,
+            points_raw=points_raw,
         )
         session.add(new_item)
         return new_item

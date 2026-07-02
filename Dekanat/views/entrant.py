@@ -1330,6 +1330,7 @@ def _dlg_rz() -> rx.Component:
                 _select(EntrantFormState.item_zno_options, EntrantFormState.rz_id_items_zno_str, EntrantFormState.set_rz_id_items_zno, width="100%"),
                 rx.text("*Бали:"),
                 rx.input(type="number", value=EntrantFormState.rz_points.to_string(), on_change=EntrantFormState.set_rz_points, width="100%"),
+                rx.text(EntrantFormState.rz_coefficient_hint, size="2", color="gray"),
                 _dialog_buttons(EntrantFormState.save_rz, EntrantFormState.close_rz),
                 spacing="2",
                 align="stretch",
