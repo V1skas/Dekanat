@@ -173,39 +173,10 @@ class EntrantsGroupService:
 
             candidates = [e for e in entrants if _is_free(e)]
 
-            # Наявні (не видалені) групи — для режиму дозаповнення (DK-42).
-            # Бакет групи визначаємо за її поточними членами (пріоритетна
-            # спеціальність + база + форма), а точну кількість — окремим запитом
-            # (члени поза діапазоном кампанії теж рахуються, щоб не переповнити).
-            existing_by_bucket: Dict[Tuple[int, int, int], List[Tuple[int, str, int]]] = {}
-            if use_existing:
-                group_meta: Dict[int, Dict] = {}
-                for e in entrants:
-                    if _is_free(e):
-                        continue
-                    g = e.entrant_group
-                    if g is None or g.is_deleted:
-                        continue
-                    rec = group_meta.setdefault(g.id, {"title": g.title, "bucket": None})
-                    if rec["bucket"] is None:
-                        top = next((s for s in (e.specialties or []) if s.priority == 1), None)
-                        if (
-                            top is not None and top.speciality is not None and top.form_of_study is not None
-                            and e.person is not None and e.person.entry_base is not None
-                        ):
-                            rec["bucket"] = (top.id_speciality, e.person.entry_base.id, top.form_of_study.id)
-                counts = EntrantsGroupDao.get_entrant_counts(list(group_meta.keys()), session)
-                for gid, rec in group_meta.items():
-                    if rec["bucket"] is None:
-                        continue
-                    existing_by_bucket.setdefault(rec["bucket"], []).append(
-                        (gid, rec["title"] or f"#{gid}", counts.get(gid, 0))
-                    )
-                for lst in existing_by_bucket.values():
-                    lst.sort(key=lambda t: t[1])  # стабільний порядок за назвою
-
-            # Згрупуємо за кортежем (приоритетная специальность, база вступу, форма
-            # навчання) — назва групи тепер враховує префікси бази та форми (DK-26).
+            # Згрупуємо кандидатів за кортежем (приоритетная специальность, база
+            # вступу, форма навчання) — назва групи враховує префікси бази та форми
+            # (DK-26). Робимо це першим: префікси цих бакетів потрібні, щоб визначити
+            # базу/форму порожньої, вручну створеної групи за її назвою (DK-42).
             by_spec: Dict[Tuple[int, int, int], Dict] = {}
             for e in candidates:
                 top = next((s for s in (e.specialties or []) if s.priority == 1), None)
@@ -224,11 +195,72 @@ class EntrantsGroupService:
                 })
                 bucket["entrants"].append(e)
 
-            # Перерахуємо існуючі групи з префіксом TAG-YY-, щоб продовжити нумерацію.
-            existing_titles = {
-                row.title
-                for row in session.exec(select(EntrantGroupModel).where(EntrantGroupModel.is_deleted == False)).all()
+            # Префікс назви групи для бакета: (тег)-(рік)(префікс бази)(префікс форми)-.
+            def _bucket_prefix(bucket: Dict) -> str:
+                spec: SpecialityModel = bucket["spec"]
+                base = bucket["base"]
+                form = bucket["form"]
+                return f"{spec.tag}-{yy}{base.prefix or ''}{form.prefix or ''}-"
+
+            prefix_by_key: Dict[Tuple[int, int, int], str] = {
+                key: _bucket_prefix(b) for key, b in by_spec.items()
             }
+
+            def _bucket_from_title(title: Optional[str]) -> Optional[Tuple[int, int, int]]:
+                """Визначає бакет (спеціальність, база, форма) за назвою групи.
+
+                Потрібно для порожньої, вручну створеної групи, у якої немає членів,
+                за якими можна було б визначити базу/форму. Назва має відповідати
+                шаблону автоформування `<TAG>-<YY><база><форма>-<N>`; тоді збіг із
+                префіксом одного з бакетів кандидатів однозначно дає його ключ."""
+                if not title:
+                    return None
+                for key, prefix in prefix_by_key.items():
+                    if title.startswith(prefix) and title[len(prefix):].isdigit():
+                        return key
+                return None
+
+            # Усі не видалені групи — потрібні і для продовження нумерації, і для
+            # режиму дозаповнення (визначення бакета наявних/порожніх груп).
+            all_groups = list(
+                session.exec(select(EntrantGroupModel).where(EntrantGroupModel.is_deleted == False)).all()
+            )
+            existing_titles = {g.title for g in all_groups if g.title}
+
+            # Наявні (не видалені) групи — для режиму дозаповнення (DK-42).
+            # Бакет групи з абітурієнтами визначаємо за її поточними членами
+            # (пріоритетна спеціальність + база + форма). Для порожньої, вручну
+            # створеної групи членів немає — тоді визначаємо бакет за назвою
+            # (`_bucket_from_title`), щоб теж дозаповнити її; точну кількість беремо
+            # окремим запитом (члени поза діапазоном кампанії теж рахуються).
+            existing_by_bucket: Dict[Tuple[int, int, int], List[Tuple[int, str, int]]] = {}
+            if use_existing:
+                counts = EntrantsGroupDao.get_entrant_counts([g.id for g in all_groups], session)
+                member_bucket: Dict[int, Tuple[int, int, int]] = {}
+                for e in entrants:
+                    if _is_free(e):
+                        continue
+                    g = e.entrant_group
+                    if g is None or g.is_deleted or g.id in member_bucket:
+                        continue
+                    top = next((s for s in (e.specialties or []) if s.priority == 1), None)
+                    if (
+                        top is not None and top.speciality is not None and top.form_of_study is not None
+                        and e.person is not None and e.person.entry_base is not None
+                    ):
+                        member_bucket[g.id] = (top.id_speciality, e.person.entry_base.id, top.form_of_study.id)
+                for g in all_groups:
+                    cnt = counts.get(g.id, 0)
+                    bucket_key = member_bucket.get(g.id)
+                    if bucket_key is None and cnt == 0:
+                        bucket_key = _bucket_from_title(g.title)
+                    if bucket_key is None:
+                        continue
+                    existing_by_bucket.setdefault(bucket_key, []).append(
+                        (g.id, g.title or f"#{g.id}", cnt)
+                    )
+                for lst in existing_by_bucket.values():
+                    lst.sort(key=lambda t: t[1])  # стабільний порядок за назвою
 
             def _next_number(prefix: str) -> int:
                 # Найбільший вже наявний номер з таким префіксом + 1.
@@ -256,11 +288,9 @@ class EntrantsGroupService:
                 ents: List[EntrantModel] = bucket["entrants"]
                 # Стабільний порядок: за ПІБ.
                 ents.sort(key=lambda e: (e.person.pib if e.person and e.person.pib else "").lower())
-                base_prefix = base.prefix or ""
-                form_prefix = form.prefix or ""
                 spec_label = f"{spec.code} {spec.title} ({spec.tag}) · {base.title} · {form.title}"
                 # Шаблон назви: (тег)-(рік)(префікс бази)(префікс форми)-(номер) (DK-26).
-                prefix = f"{spec.tag}-{yy}{base_prefix}{form_prefix}-"
+                prefix = prefix_by_key[bucket_key]
 
                 remaining = list(ents)
 
