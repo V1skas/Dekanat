@@ -254,7 +254,11 @@ class ListRatingState(AppState):
         self._refill_from_latest()
 
     @rx.event
-    def on_click_generate(self):
+    async def on_click_generate(self):
+        """Формування рейтингу. Важкий read-only розрахунок винесено у фоновий
+        потік (`run_blocking`), щоб не блокувати event loop і не «підвішувати»
+        застосунок іншим користувачам (DK-44). Запис знімка робимо вже на event
+        loop — виносити INSERT у потік не можна (SQLite `database is locked`)."""
         if not self.has_permission(Actions.RATING_GENERATE):
             yield rx.toast.error("У Вас немає дозволу на формування рейтингу!")
             return
@@ -265,12 +269,15 @@ class ListRatingState(AppState):
         self.generating = True
         yield
         try:
-            snapshot, entries = RatingService().generate(self.selected_campaign_id)
+            campaign_id = self.selected_campaign_id
+            service = RatingService()
+            entries = await run_blocking(service.compute_entries, campaign_id)
+            snapshot, fresh_entries = service.persist_entries(campaign_id, entries)
             try:
                 self.generated_at_display = snapshot.generated_at.strftime("%Y-%m-%d %H:%M:%S")
             except AttributeError:
                 self.generated_at_display = str(snapshot.generated_at)
-            self._fill_from_entries(entries)
+            self._fill_from_entries(fresh_entries)
             yield rx.toast.success("Рейтинг сформовано!")
         except Exception:
             yield rx.toast.error("Під час формування рейтингу сталася помилка. Спробуйте ще раз.")

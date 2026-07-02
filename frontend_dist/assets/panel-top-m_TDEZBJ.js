@@ -1,1 +1,0 @@
-import"./react-DemXi45S.js";import{t as e}from"./createLucideIcon-CkHeeWdg.js";var t=[[`rect`,{width:`18`,height:`18`,x:`3`,y:`3`,rx:`2`,key:`afitv7`}],[`path`,{d:`M3 9h18`,key:`1pudct`}]],n=e(`panel-top`,t);export{t as __iconNode,n as default};

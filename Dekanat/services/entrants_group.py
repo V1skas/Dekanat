@@ -477,6 +477,7 @@ class EntrantsGroupService:
                 subject = ", ".join(subjects)
 
                 specialty = ""
+                opp = ""
                 applicants: List[Dict] = []
                 for e in entrants:
                     p = e.person
@@ -503,11 +504,13 @@ class EntrantsGroupService:
                             top = e.specialties[0]
                         if top is not None and top.speciality is not None:
                             specialty = f"{top.speciality.code} {top.speciality.title} ({top.speciality.tag})"
+                            opp = top.speciality.educational_and_professional_program or ""
 
                 applicants.sort(key=lambda a: a["name"].lower())
                 return {
                     "group_title": group.title or f"#{group_id}",
                     "specialty": specialty,
+                    "opp": opp,
                     "subject": subject,
                     "applicants": applicants,
                 }

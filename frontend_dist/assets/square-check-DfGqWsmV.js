@@ -1,1 +1,0 @@
-import"./react-DemXi45S.js";import{t as e}from"./createLucideIcon-CkHeeWdg.js";var t=[[`rect`,{width:`18`,height:`18`,x:`3`,y:`3`,rx:`2`,key:`afitv7`}],[`path`,{d:`m9 12 2 2 4-4`,key:`dzmm74`}]],n=e(`square-check`,t);export{t as __iconNode,n as default};

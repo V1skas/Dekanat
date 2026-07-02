@@ -47,7 +47,19 @@ class RatingService:
             raise
 
     def generate(self, id_campaign: int) -> Tuple[RatingSnapshotModel, List[RatingEntryModel]]:
-        """Розраховує рейтинг для всіх спеціальностей кампанії, зберігає та повертає його."""
+        """Розраховує рейтинг для всіх спеціальностей кампанії, зберігає та повертає його.
+
+        Обчислення (важка read-only частина) і збереження розділені: `compute_entries`
+        рахує рядки без запису (state виносить його у фоновий потік, DK-44),
+        `persist_entries` пише знімок. Виносити у потік ще й запис не можна — на
+        SQLite конкурентний INSERT із hot-path авторизації дає `database is locked`."""
+        entries = self.compute_entries(id_campaign)
+        return self.persist_entries(id_campaign, entries)
+
+    def compute_entries(self, id_campaign: int) -> List[RatingEntryModel]:
+        """Читає дані й рахує рейтингові рядки БЕЗ запису в БД. Повертає ще не
+        привʼязані до сесії `RatingEntryModel` (id_snapshot не заданий). Повністю
+        read-only — безпечно викликати у фоновому потоці через `run_blocking` (DK-44)."""
         try:
             # Верхня межа суми балів (DK-40) — читаємо до відкриття основної сесії,
             # щоб не тримати дві сесії SQLite одночасно.
@@ -216,6 +228,20 @@ class RatingService:
                         else:
                             e.status = STATUS_REJECTED
 
+                # Обчислені рядки повертаємо — запис робить persist_entries.
+                return entries
+        except Exception as e:
+            print(f"[RatingService][compute_entries][ERROR] {e}")
+            raise
+
+    def persist_entries(
+        self, id_campaign: int, entries: List[RatingEntryModel]
+    ) -> Tuple[RatingSnapshotModel, List[RatingEntryModel]]:
+        """Зберігає обчислені рядки: видаляє попередній знімок кампанії, створює
+        новий і записує рядки, потім перечитує з relationships. Виконується на
+        event loop (швидкий запис), а не в потоці — див. `compute_entries` (DK-44)."""
+        try:
+            with rx.session() as session:
                 # Видаляємо попередній рейтинг кампанії і зберігаємо новий
                 RatingDao.delete_for_campaign(id_campaign, session)
 
@@ -229,7 +255,7 @@ class RatingService:
                 fresh_entries = list(RatingDao.get_entries(snapshot_loaded.id, session)) if snapshot_loaded else []
                 return snapshot_loaded if snapshot_loaded is not None else snapshot, fresh_entries
         except Exception as e:
-            print(f"[RatingService][generate][ERROR] {e}")
+            print(f"[RatingService][persist_entries][ERROR] {e}")
             raise
 
     def get_documents_payload(

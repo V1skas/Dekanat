@@ -58,6 +58,7 @@ class VidomistReport(XlsxReport):
     sheet_name: ClassVar[str] = "Відомість"
 
     specialty: str            # «D1 Інженерія ...» — тягнеться з групи
+    opp: str = ""             # освітньо-професійна програма спеціальності (DK-44)
     subject: str = ""         # форма контролю / предмет випробування
     report_date: date         # дата формування (Pydantic розпарсить ISO-рядок)
     number: str = ""          # № відомості — лишається порожнім (від руки)
@@ -66,6 +67,7 @@ class VidomistReport(XlsxReport):
         # Об'єкти, а не дамп: applicants як ExamApplicant; шапка — скалярами.
         return {
             "specialty": self.specialty,
+            "opp": self.opp,
             "subject": self.subject,
             "report_date": self.report_date,
             "number": self.number,

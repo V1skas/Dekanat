@@ -542,6 +542,7 @@ class ViewEntrantsGroupState(AppState):
         if kind == "vidomist":
             report = VidomistReport(
                 specialty=payload["specialty"],
+                opp=payload.get("opp", ""),
                 subject=payload["subject"],
                 report_date=date.today(),
                 applicants=applicants,

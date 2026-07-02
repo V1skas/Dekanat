@@ -1,0 +1,1 @@
+import"./react-D5nPORWt.js";import{t as e}from"./createLucideIcon-CTGaDH8j.js";var t=[[`path`,{d:`m6 17 5-5-5-5`,key:`xnjwq`}],[`path`,{d:`m13 17 5-5-5-5`,key:`17xmmf`}]],n=e(`chevrons-right`,t);export{t as __iconNode,n as default};

@@ -1,1 +1,0 @@
-import"./react-DemXi45S.js";import{n as e,t}from"./id-card-0OcDh3_R.js";export{e as __iconNode,t as default};
