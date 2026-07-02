@@ -72,10 +72,10 @@ class EntrantService:
 
     @staticmethod
     def _validate_mokpp(person: PersonModel) -> None:
-        """ІПН — обов'язковий і рівно 10 цифр (DK-37). Дублюємо клієнтську перевірку
-        на сервері, бо клієнт може надіслати будь-що."""
+        """ІПН — необов'язковий (DK-38), але якщо вказаний, має бути рівно 10 цифр.
+        Дублюємо клієнтську перевірку на сервері, бо клієнт може надіслати будь-що."""
         mokpp = (person.mokpp or "").strip()
-        if not (mokpp.isdigit() and len(mokpp) == 10):
+        if mokpp and not (mokpp.isdigit() and len(mokpp) == 10):
             raise ValueError("ІПН має містити рівно 10 цифр")
 
     def _validate_specialties(

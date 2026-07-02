@@ -1291,19 +1291,13 @@ class EntrantFormState(AppState):
         if not self.docedu_title:
             yield rx.toast.warning("Введіть назву документа!")
             return
-        if not self.docedu_number:
-            yield rx.toast.warning("Введіть номер!")
-            return
-        if not self.docedu_date_of_issue:
-            yield rx.toast.warning("Введіть дату видачі!")
-            return
 
         item = DocumentAboutEducationModel(
             title=self.docedu_title.strip(),
-            number=self.docedu_number.strip(),
+            number=self.docedu_number.strip() or None,  # type: ignore[arg-type]
             series=self.docedu_series.strip() or None,  # type: ignore[arg-type]
             issued_by=self.docedu_issued_by.strip() or None,  # type: ignore[arg-type]
-            date_of_issue=self.docedu_date_of_issue,
+            date_of_issue=self.docedu_date_of_issue or None,  # type: ignore[arg-type]
             id_person=self.entrant_id if self.entrant_id > 0 else 0,
         )
         if 0 <= self.docedu_index < len(self.documents_about_education):
@@ -1774,10 +1768,8 @@ class EntrantFormState(AppState):
             return "Введіть дату народження!"
         if not self.place_of_registration:
             return "Введіть адресу реєстрації!"
-        if not self.mokpp:
-            return "Введіть ІПН!"
-        # ІПН — рівно 10 цифр (DK-37).
-        if not (self.mokpp.isdigit() and len(self.mokpp) == 10):
+        # ІПН необов'язковий (DK-38), але якщо вказаний — рівно 10 цифр.
+        if self.mokpp and not (self.mokpp.isdigit() and len(self.mokpp) == 10):
             return "ІПН має містити рівно 10 цифр!"
         if not self.phone_number:
             return "Введіть номер телефону!"
@@ -1801,7 +1793,7 @@ class EntrantFormState(AppState):
             date_of_birth=self.date_of_birth,
             place_of_registration_city=self.place_of_registration_city.strip() or None,  # type: ignore[arg-type]
             place_of_registration=self.place_of_registration.strip(),
-            mokpp=self.mokpp.strip(),
+            mokpp=self.mokpp.strip() or None,  # type: ignore[arg-type]
             email=self.email.strip() or None,  # type: ignore[arg-type]
             phone_number=self.phone_number.strip(),
             the_need_for_a_dormitory=self.the_need_for_a_dormitory,

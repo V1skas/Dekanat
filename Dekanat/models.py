@@ -232,7 +232,8 @@ class PersonModel(rx.Model, table=True):
     date_of_birth: str = Field(nullable=False)
     place_of_registration_city: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     place_of_registration: str = Field(sa_type=Text, nullable=False)
-    mokpp: str = Field(nullable=False)
+    # ІПН необов'язковий (DK-38): у частини заяв абітурієнти його не вказують.
+    mokpp: Optional[str] = Field(default=None, nullable=True)
     email: Optional[str] = Field(nullable=True)
     phone_number: str = Field(nullable=False)
     the_need_for_a_dormitory: bool = Field(nullable=False)
@@ -321,11 +322,14 @@ class DocumentAboutEducationModel(rx.Model, table=True):
     __tablename__ = "document_about_education"
 
     # Table columns
-    title: str = Field(primary_key=True)
-    number: str = Field(primary_key=True)
+    # Сурогатний id (DK-38): номер документа та дата видачі стали необов'язковими,
+    # тому більше не можуть слугувати природним ключем (title, number).
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    number: Optional[str] = Field(default=None, nullable=True)
     series: str = Field(nullable=True)
     issued_by: str = Field(default=None, sa_type=Text, nullable=True)
-    date_of_issue: str
+    date_of_issue: Optional[str] = Field(default=None, nullable=True)
     id_person: int = Field(foreign_key="persons.id")
 
     # Relationships

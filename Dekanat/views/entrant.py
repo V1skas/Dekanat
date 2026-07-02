@@ -406,10 +406,10 @@ def _v_iddoc_table() -> rx.Component:
 def _v_docedu_row(item: DocumentAboutEducationModel) -> rx.Component:
     return rx.table.row(
         rx.table.cell(item.title),
-        rx.table.cell(item.number),
+        rx.table.cell(rx.cond(item.number, item.number, "—")),
         rx.table.cell(rx.cond(item.series, item.series, "—")),
         rx.table.cell(rx.cond(item.issued_by, item.issued_by, "—")),
-        rx.table.cell(item.date_of_issue),
+        rx.table.cell(rx.cond(item.date_of_issue, item.date_of_issue, "—")),
     )
 
 
@@ -633,7 +633,7 @@ def view_page_content() -> rx.Component:
                         _v_kv("Дата народження", ViewEntrantState.item.person.date_of_birth),
                         _v_kv("Область, район, місто", rx.cond(ViewEntrantState.item.person.place_of_registration_city, ViewEntrantState.item.person.place_of_registration_city, "—")),
                         _v_kv("Адреса реєстрації", ViewEntrantState.item.person.place_of_registration),
-                        _v_kv("ІПН", ViewEntrantState.item.person.mokpp),
+                        _v_kv("ІПН", rx.cond(ViewEntrantState.item.person.mokpp, ViewEntrantState.item.person.mokpp, "—")),
                         _v_kv("Телефон", ViewEntrantState.item.person.phone_number),
                         _v_kv("E-mail", rx.cond(ViewEntrantState.item.person.email, ViewEntrantState.item.person.email, "—")),
                         _v_kv("Потреба в гуртожитку", rx.cond(ViewEntrantState.item.person.the_need_for_a_dormitory, "Так", "Ні")),
@@ -764,9 +764,8 @@ def _personal_fields() -> rx.Component:
         rx.input(value=EntrantFormState.place_of_registration_city, on_change=EntrantFormState.set_place_of_registration_city, width="100%"),
         rx.text("*Адреса:"),
         rx.input(required=True, value=EntrantFormState.place_of_registration, on_change=EntrantFormState.set_place_of_registration, width="100%"),
-        rx.text("*ІПН:"),
+        rx.text("ІПН:"),
         rx.input(
-            required=True,
             value=EntrantFormState.mokpp,
             on_change=EntrantFormState.set_mokpp,
             max_length=10,
@@ -878,10 +877,10 @@ def _f_iddoc_section() -> rx.Component:
 def _f_docedu_row(item, idx: int) -> rx.Component:
     return rx.table.row(
         rx.table.cell(item.title),
-        rx.table.cell(item.number),
+        rx.table.cell(rx.cond(item.number, item.number, "—")),
         rx.table.cell(rx.cond(item.series, item.series, "—")),
         rx.table.cell(rx.cond(item.issued_by, item.issued_by, "—")),
-        rx.table.cell(item.date_of_issue),
+        rx.table.cell(rx.cond(item.date_of_issue, item.date_of_issue, "—")),
         _action_cell(
             EntrantFormState.open_docedu_edit(idx),
             EntrantFormState.delete_docedu(idx),
@@ -1181,13 +1180,13 @@ def _dlg_docedu() -> rx.Component:
             rx.vstack(
                 rx.text("*Назва:"),
                 rx.input(value=EntrantFormState.docedu_title, on_change=EntrantFormState.set_docedu_title, width="100%"),
-                rx.text("*Номер:"),
+                rx.text("Номер:"),
                 rx.input(value=EntrantFormState.docedu_number, on_change=EntrantFormState.set_docedu_number, width="100%"),
                 rx.text("Серія:"),
                 rx.input(value=EntrantFormState.docedu_series, on_change=EntrantFormState.set_docedu_series, width="100%"),
                 rx.text("Ким видано:"),
                 rx.input(value=EntrantFormState.docedu_issued_by, on_change=EntrantFormState.set_docedu_issued_by, width="100%"),
-                rx.text("*Дата видачі:"),
+                rx.text("Дата видачі:"),
                 rx.input(type="date", value=EntrantFormState.docedu_date_of_issue, on_change=EntrantFormState.set_docedu_date_of_issue, key="docedu_doi_" + EntrantFormState.date_nonce.to_string(), width="100%"),
                 _dialog_buttons(EntrantFormState.save_docedu, EntrantFormState.close_docedu),
                 spacing="2",
