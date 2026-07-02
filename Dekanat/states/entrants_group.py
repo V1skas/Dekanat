@@ -11,6 +11,7 @@ from Dekanat.models import EntrantGroupModel, EntrantModel, EntrantExamModel, Ad
 from Dekanat.services.entrants_group import EntrantsGroupService
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.utils.display import disambiguate_pib
+from Dekanat.utils.background import run_blocking
 
 
 # ---------- List page ----------
@@ -488,55 +489,70 @@ class ViewEntrantsGroupState(AppState):
         return rx.redirect(f"{routes.ENTRANTS_GROUP_PRINT}?ids={self.item.id}")
 
     @rx.event
-    def on_click_sheet(self, kind: str):
+    async def on_click_sheet(self, kind: str):
         """Сформувати екзаменаційну відомість групи у XLSX і віддати на
         завантаження (DK-29). kind: 'vidomist' | 'vykladacham' | 'telefony'.
-        Перевірка права — і на сервері (back-end)."""
+        Перевірка права — і на сервері (back-end).
+
+        Рендер XLSX винесено у фоновий потік (`run_blocking`), щоб формування
+        відомості не блокувало event loop та роботу інших користувачів (DK-41)."""
         if not self.has_permission(Actions.ENTRANTS_GROUP_SHEETS):
             yield rx.toast.error("У Вас немає дозволу на формування відомостей!")
             return
         if self.item is None or self.item.id is None:
             yield rx.toast.warning("Групу не завантажено.")
             return
+        if kind not in ("vidomist", "vykladacham", "telefony"):
+            yield rx.toast.error("Невідомий тип відомості.")
+            return
 
+        group_id = self.item.id
         self.downloading = True
         yield
         try:
-            from datetime import date
-            from Dekanat.reports import (
-                ExamApplicant,
-                VidomistReport,
-                VykladachamReport,
-                TelefonyReport,
-            )
-
-            payload = EntrantsGroupService().get_exam_sheet_payload(self.item.id)
-            applicants = [ExamApplicant(**a) for a in payload["applicants"]]
-            if not applicants:
+            result = await run_blocking(self._render_sheet_document, group_id, kind)
+            if result is None:
                 yield rx.toast.warning("У групі немає абітурієнтів.")
                 return
-
-            if kind == "vidomist":
-                report = VidomistReport(
-                    specialty=payload["specialty"],
-                    subject=payload["subject"],
-                    report_date=date.today(),
-                    applicants=applicants,
-                )
-            elif kind == "vykladacham":
-                report = VykladachamReport(applicants=applicants)
-            elif kind == "telefony":
-                report = TelefonyReport(applicants=applicants)
-            else:
-                yield rx.toast.error("Невідомий тип відомості.")
-                return
-
-            filename = f"{payload['group_title']}_{report.file_basename}.xlsx"
-            yield rx.download(data=report.render_bytes(), filename=filename)
+            data, filename = result
+            yield rx.download(data=data, filename=filename)
         except Exception:
             yield rx.toast.error("Під час формування відомості сталася помилка. Спробуйте ще раз.")
         finally:
             self.downloading = False
+
+    @staticmethod
+    def _render_sheet_document(group_id: int, kind: str):
+        """Блокуюча частина: читання даних + рендер XLSX-відомості групи.
+        Виконується у фоновому потоці — жодних мутацій стану / `yield`.
+        Повертає `(bytes, filename)` або None, якщо у групі немає абітурієнтів."""
+        from datetime import date
+        from Dekanat.reports import (
+            ExamApplicant,
+            VidomistReport,
+            VykladachamReport,
+            TelefonyReport,
+        )
+
+        payload = EntrantsGroupService().get_exam_sheet_payload(group_id)
+        applicants = [ExamApplicant(**a) for a in payload["applicants"]]
+        if not applicants:
+            return None
+
+        if kind == "vidomist":
+            report = VidomistReport(
+                specialty=payload["specialty"],
+                subject=payload["subject"],
+                report_date=date.today(),
+                applicants=applicants,
+            )
+        elif kind == "vykladacham":
+            report = VykladachamReport(applicants=applicants)
+        else:  # telefony (kind вже провалідовано в on_click_sheet)
+            report = TelefonyReport(applicants=applicants)
+
+        filename = f"{payload['group_title']}_{report.file_basename}.xlsx"
+        return report.render_bytes(), filename
 
     @rx.event
     def on_click_delete(self):

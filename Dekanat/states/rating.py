@@ -18,6 +18,7 @@ from Dekanat.models import AdmissionCampaignModel
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.services.rating import RatingService
 from Dekanat.utils.display import disambiguate_pib
+from Dekanat.utils.background import run_blocking
 
 
 class ListRatingState(AppState):
@@ -277,8 +278,11 @@ class ListRatingState(AppState):
             self.generating = False
 
     @rx.event
-    def on_click_download_group(self, group_key: str):
-        """Завантажити DOCX одного потоку (спеціальність+база+форма)."""
+    async def on_click_download_group(self, group_key: str):
+        """Завантажити DOCX одного потоку (спеціальність+база+форма).
+
+        Формування документа винесено у фоновий потік (`run_blocking`), щоб не
+        блокувати event loop і не «підвішувати» застосунок іншим користувачам."""
         if not self.has_permission(Actions.RATING_DOCX):
             yield rx.toast.error("У Вас немає дозволу на завантаження рейтингу!")
             return
@@ -292,38 +296,50 @@ class ListRatingState(AppState):
         self.downloading = True
         yield
         try:
-            from Dekanat.reports import RatingReport
-
-            payloads, _ = RatingService().get_documents_payload(
-                self.selected_campaign_id, spec_key, base_key, form_key
+            result = await run_blocking(
+                self._render_group_document,
+                self.selected_campaign_id, spec_key, base_key, form_key,
             )
-            if not payloads:
+            if result is None:
                 yield rx.toast.warning("Немає даних для формування документа.")
                 return
-            report = RatingReport(**payloads[0])
-            yield rx.download(data=report.render_bytes(), filename=report.filename)
+            data, filename = result
+            yield rx.download(data=data, filename=filename)
         except Exception:
             yield rx.toast.error("Під час формування документа сталася помилка. Спробуйте ще раз.")
         finally:
             self.downloading = False
 
-    def _build_current_download(self):
-        """Формує DOCX по всіх потоках поточної вибірки (з урахуванням фільтрів).
-        Один потік → окремий .docx, декілька → zip (по файлу на потік).
-        Повертає event `rx.download` або None, якщо даних немає."""
+    @staticmethod
+    def _render_group_document(campaign_id: int, spec_key: str, base_key: str, form_key: str):
+        """Блокуюча частина: читання даних + рендер DOCX одного потоку.
+        Виконується у фоновому потоці — жодних мутацій стану / `yield`.
+        Повертає `(bytes, filename)` або None, якщо даних немає."""
         from Dekanat.reports import RatingReport
 
         payloads, _ = RatingService().get_documents_payload(
-            self.selected_campaign_id,
-            self.selected_spec_key,
-            self.selected_base_key,
-            self.selected_form_key,
+            campaign_id, spec_key, base_key, form_key
+        )
+        if not payloads:
+            return None
+        report = RatingReport(**payloads[0])
+        return report.render_bytes(), report.filename
+
+    @staticmethod
+    def _build_current_download(campaign_id: int, spec_key: str, base_key: str, form_key: str):
+        """Блокуюча частина: формує DOCX по всіх потоках поточної вибірки.
+        Один потік → окремий .docx, декілька → zip (по файлу на потік).
+        Виконується у фоновому потоці. Повертає `(bytes, filename)` або None."""
+        from Dekanat.reports import RatingReport
+
+        payloads, _ = RatingService().get_documents_payload(
+            campaign_id, spec_key, base_key, form_key
         )
         if not payloads:
             return None
         if len(payloads) == 1:
             report = RatingReport(**payloads[0])
-            return rx.download(data=report.render_bytes(), filename=report.filename)
+            return report.render_bytes(), report.filename
 
         import io
         import zipfile
@@ -340,12 +356,15 @@ class ListRatingState(AppState):
                 name = base_name if n == 0 else f"{report.file_stem} ({n + 1}).docx"
                 zf.writestr(name, report.render_bytes())
         buf.seek(0)
-        return rx.download(data=buf.getvalue(), filename="rating_list.zip")
+        return buf.getvalue(), "rating_list.zip"
 
     @rx.event
-    def on_click_download_all(self):
+    async def on_click_download_all(self):
         """Масове завантаження: по файлу на кожен потік поточної вибірки.
-        Один потік — окремий .docx, декілька — zip-архів."""
+        Один потік — окремий .docx, декілька — zip-архів.
+
+        Рендер винесено у фоновий потік (`run_blocking`) — event loop лишається
+        вільним для інших користувачів, поки формується архів."""
         if not self.has_permission(Actions.RATING_DOCX):
             yield rx.toast.error("У Вас немає дозволу на завантаження рейтингу!")
             return
@@ -356,11 +375,18 @@ class ListRatingState(AppState):
         self.downloading = True
         yield
         try:
-            event = self._build_current_download()
-            if event is None:
+            result = await run_blocking(
+                self._build_current_download,
+                self.selected_campaign_id,
+                self.selected_spec_key,
+                self.selected_base_key,
+                self.selected_form_key,
+            )
+            if result is None:
                 yield rx.toast.warning("Немає сформованого рейтингу для завантаження.")
                 return
-            yield event
+            data, filename = result
+            yield rx.download(data=data, filename=filename)
         except Exception:
             yield rx.toast.error("Під час формування документів сталася помилка. Спробуйте ще раз.")
         finally:
