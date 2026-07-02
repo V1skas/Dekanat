@@ -696,7 +696,9 @@ class EntrantFormState(AppState):
         ks = KinshipService().get_list_items()
         self.kinship_options = [{"value": str(k.id), "label": k.title} for k in ks]
         sc = SpecialConditionService().get_list_items()
-        self.special_condition_options = [{"value": s.subcategory_code, "label": s.title} for s in sc]
+        self.special_condition_options = [
+            {"value": s.subcategory_code, "label": f"{s.subcategory_code} {s.title}"} for s in sc
+        ]
         iz = ItemZnoService().get_list_items()
         self.item_zno_options = [{"value": str(i.id), "label": i.title} for i in iz]
 
@@ -1143,18 +1145,14 @@ class EntrantFormState(AppState):
             return []
         base = str(self.id_entry_base)
         form = str(self.sp_id_form_of_study)
-        label_map = {opt["value"]: opt["label"] for opt in self.all_speciality_options}
-        seen: set = set()
-        result: List[Dict[str, str]] = []
+        allowed: set = set()
         for row in self.campaign_quota_rows:
             if row["base_id"] != base or row["form_id"] != form:
                 continue
-            key = row["spec_key"]
-            if key in seen:
-                continue
-            seen.add(key)
-            result.append({"value": key, "label": label_map.get(key, key)})
-        return result
+            allowed.add(row["spec_key"])
+        # all_speciality_options уже впорядкований за кодом спеціальності (SpecialityDao.get_all),
+        # тому фільтруємо по ньому — це зберігає сортування у діалозі вибору спеціальності (DK-39).
+        return [opt for opt in self.all_speciality_options if opt["value"] in allowed]
 
     # ============================================================
     # Identity document dialog
@@ -1589,6 +1587,9 @@ class EntrantFormState(AppState):
 
     @rx.event
     def open_sp_add(self):
+        if not self.id_entry_base:
+            yield rx.toast.error("Спочатку оберіть базу вступу")
+            return
         self._reset_sp_dialog()
         next_priority = len(self.specialties) + 1
         self.sp_priority = next_priority

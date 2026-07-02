@@ -62,7 +62,7 @@ def _list_table_row(item: EntrantModel) -> rx.Component:
             align="left",
         ),
         rx.table.cell(
-            rx.cond(item.created_at, item.created_at.to_string()[0:10], "—")
+            rx.cond(item.created_at, item.created_at.to_string()[1:11], "—")
         ),
         rx.table.cell(rx.cond(item.person, item.person.phone_number, "—")),
         rx.table.cell(rx.cond(item.person, rx.cond(item.person.email, item.person.email, "—"), "—")),

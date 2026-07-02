@@ -11,6 +11,7 @@ class SpecialityDao:
         statement = select(SpecialityModel).options(selectinload(SpecialityModel.department))
         if not with_del:
             statement = statement.where(SpecialityModel.is_deleted == False)
+        statement = statement.order_by(SpecialityModel.code)
         return session.exec(statement).all()
 
     @staticmethod
