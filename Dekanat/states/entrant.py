@@ -418,6 +418,7 @@ class ListEntrantState(AppState):
             "entry_base": arrow if self.sort_field == "entry_base" else "",
             "source_of_funding": arrow if self.sort_field == "source_of_funding" else "",
             "speciality": arrow if self.sort_field == "speciality" else "",
+            "entrant_group": arrow if self.sort_field == "entrant_group" else "",
             "application_status": arrow if self.sort_field == "application_status" else "",
         }
 

@@ -81,6 +81,9 @@ def _list_table_row(item: EntrantModel) -> rx.Component:
             )
         ),
         rx.table.cell(
+            rx.cond(item.entrant_group, item.entrant_group.title, "—")
+        ),
+        rx.table.cell(
             rx.cond(
                 item.specialties,
                 rx.cond(
@@ -128,6 +131,7 @@ def _list_table() -> rx.Component:
                 _sortable_header("Електронна пошта", "email"),
                 _sortable_header("База вступу", "entry_base"),
                 _sortable_header("Джерело фінансування", "source_of_funding"),
+                _sortable_header("Група", "entrant_group"),
                 _sortable_header("Спеціальність", "speciality"),
                 _sortable_header("Статус заяви", "application_status"),
             ),
@@ -627,7 +631,7 @@ def view_page_content() -> rx.Component:
                     _v_photo(),
                     rx.vstack(
                         _v_kv("ПІБ", ViewEntrantState.item.person.pib),
-                        _v_kv("Код ЄДБО", rx.cond(ViewEntrantState.item.person.edbo, ViewEntrantState.item.person.edbo, "—")),
+                        _v_kv("ID особи в ЄДБО", rx.cond(ViewEntrantState.item.person.edbo, ViewEntrantState.item.person.edbo, "—")),
                         _v_kv("Громадянство", ViewEntrantState.item.person.citizenship),
                         _v_kv("Стать", ViewEntrantState.item.person.sex),
                         _v_kv("Дата народження", ViewEntrantState.item.person.date_of_birth),
@@ -738,7 +742,7 @@ def _photo_block() -> rx.Component:
 
 def _personal_fields() -> rx.Component:
     return rx.vstack(
-        rx.text("Код ЄДБО:"),
+        rx.text("ID особи в ЄДБО:"),
         rx.input(
             value=EntrantFormState.edbo,
             on_change=EntrantFormState.set_edbo,

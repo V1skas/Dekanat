@@ -6,6 +6,7 @@ from sqlalchemy.orm import selectinload, aliased, make_transient
 
 from Dekanat.models import (
     EntrantModel,
+    EntrantGroupModel,
     PersonModel,
     SpecialtieEntrantModel,
     SpecialityModel,
@@ -33,6 +34,7 @@ SORT_FIELDS = {
     "entry_base",
     "source_of_funding",
     "speciality",
+    "entrant_group",
     "application_status",
 }
 
@@ -147,6 +149,9 @@ def _apply_sort(statement, sort_field: Optional[str], sort_dir: str):
     if sort_field == "source_of_funding":
         sof = aliased(SourceOfFundingModel)
         return statement.outerjoin(sof, PersonModel.id_source_of_funding == sof.id).order_by(_dir(_txt(sof.title)))
+    if sort_field == "entrant_group":
+        eg = aliased(EntrantGroupModel)
+        return statement.outerjoin(eg, EntrantModel.id_entrant_group == eg.id).order_by(_dir(_txt(eg.title)))
     if sort_field == "application_status":
         ast = aliased(ApplicationStatusModel)
         return statement.outerjoin(ast, EntrantModel.id_application_status == ast.id).order_by(_dir(_txt(ast.title)))
