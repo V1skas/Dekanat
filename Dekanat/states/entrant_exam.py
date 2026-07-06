@@ -20,6 +20,7 @@ from Dekanat.services.worker import WorkerService
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.services.result_zno import ResultZnoService
 from Dekanat.utils.display import disambiguate_pib
+from Dekanat.utils.background import run_blocking
 
 
 # ============================================================
@@ -45,6 +46,11 @@ class ListEntrantExamState(AppState):
     item_zno_options_data: List[ItemZnoModel] = []
     worker_options_data: List[WorkerModel] = []
     campaigns: List[AdmissionCampaignModel] = []
+
+    # ---- Експорт розкладу у DOCX (DK-46) ----
+    export_open: bool = False
+    export_selected_ids: List[int] = []
+    downloading: bool = False
 
     def _campaign_date_range(self) -> Optional[tuple]:
         if not self.filter_campaign_id:
@@ -106,9 +112,100 @@ class ListEntrantExamState(AppState):
     def on_click_add(self):
         return rx.redirect(routes.ENTRANT_EXAM_ADD)
 
+    # --- DOCX export (DK-46) ---
+
+    @rx.var
+    def export_selected_set(self) -> List[str]:
+        """`contains`-перевірка стану чекбоксів у діалозі (Reflex порівнює лише зі
+        списком рядків)."""
+        return [str(i) for i in self.export_selected_ids]
+
+    @rx.var
+    def export_selected_count(self) -> int:
+        return len(self.export_selected_ids)
+
+    def _all_display_ids(self) -> List[int]:
+        ids: List[int] = []
+        for it in self.items_display:
+            try:
+                ids.append(int(it["id"]))
+            except (ValueError, TypeError, KeyError):
+                continue
+        return ids
+
     @rx.event
-    def on_click_print(self):
-        return rx.redirect(routes.ENTRANT_EXAM_PRINT)
+    def open_export(self):
+        if not self.has_permission(Actions.ENTRANT_EXAM_LIST):
+            return rx.toast.error("У Вас немає дозволу на завантаження розкладу!")
+        # За замовчуванням обираємо всі поточні (відфільтровані) іспити.
+        self.export_selected_ids = self._all_display_ids()
+        self.export_open = True
+
+    @rx.event
+    def set_export_open(self, value: bool):
+        self.export_open = value
+
+    @rx.event
+    def toggle_export_id(self, exam_id: str):
+        try:
+            eid = int(exam_id)
+        except (ValueError, TypeError):
+            return
+        if eid in self.export_selected_ids:
+            self.export_selected_ids = [i for i in self.export_selected_ids if i != eid]
+        else:
+            self.export_selected_ids = self.export_selected_ids + [eid]
+
+    @rx.event
+    def select_all_export(self):
+        self.export_selected_ids = self._all_display_ids()
+
+    @rx.event
+    def clear_export(self):
+        self.export_selected_ids = []
+
+    @rx.event
+    async def on_click_export(self):
+        """Формування розкладу у DOCX (DK-46). Важкий рендер винесено у фоновий
+        потік (`run_blocking`) — event loop лишається вільним для інших користувачів;
+        робота у потоці read-only по БД."""
+        if not self.has_permission(Actions.ENTRANT_EXAM_LIST):
+            yield rx.toast.error("У Вас немає дозволу на завантаження розкладу!")
+            return
+        if not self.export_selected_ids:
+            yield rx.toast.warning("Оберіть принаймні один іспит для експорту.")
+            return
+
+        ids = list(self.export_selected_ids)
+        self.downloading = True
+        yield
+        try:
+            result = await run_blocking(self._render_schedule, ids)
+            if result is None:
+                yield rx.toast.warning("Немає даних для формування розкладу.")
+                return
+            data, filename = result
+            self.export_open = False
+            self.export_selected_ids = []
+            yield rx.download(data=data, filename=filename)
+        except Exception as e:
+            print(f"[ListEntrantExamState][on_click_export][ERROR] {e}")
+            yield rx.toast.error("Під час формування документа сталася помилка. Спробуйте ще раз.")
+        finally:
+            self.downloading = False
+
+    @staticmethod
+    def _render_schedule(exam_ids: List[int]):
+        """Блокуюча частина: читання даних + рендер DOCX. Виконується у фоновому
+        потоці — жодних мутацій стану / `yield`. Повертає `(bytes, filename)` або
+        None, якщо іспитів немає."""
+        from Dekanat.reports import ExamScheduleReport
+
+        payload = EntrantExamService().get_schedule_payload(exam_ids)
+        if not payload.get("rows"):
+            return None
+        report = ExamScheduleReport(**payload)
+        return report.render_bytes(), report.filename
 
     # --- filter panel ---
 
@@ -793,26 +890,3 @@ class ViewEntrantExamState(AppState):
             yield rx.toast.success("Оцінку збережено!")
         except Exception:
             yield rx.toast.error("Під час збереження оцінки трапилась помилка. Спробуйте ще раз.")
-
-
-# ============================================================
-# Print
-# ============================================================
-
-class PrintEntrantExamState(AppState):
-    @rx.event
-    def on_load(self):
-        if not self.has_permission(Actions.ENTRANT_EXAM_LIST):
-            yield rx.toast.error("У Вас немає дозволу на перегляд цієї сторінки!")
-            yield rx.redirect(routes.DASHBOARD)
-            return
-        # Дозволяємо браузеру намалювати таблицю, потім автоматично відкриваємо діалог друку.
-        yield rx.call_script("setTimeout(() => window.print(), 300)")
-
-    @rx.event
-    def on_click_back(self):
-        return rx.redirect(routes.ENTRANT_EXAM_LIST)
-
-    @rx.event
-    def on_click_print(self):
-        return rx.call_script("window.print()")

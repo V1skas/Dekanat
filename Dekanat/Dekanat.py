@@ -159,7 +159,6 @@ app.add_page(entrant_exam.list_page, route=routes.ENTRANT_EXAM_LIST, on_load=ent
 app.add_page(entrant_exam.add_page, route=routes.ENTRANT_EXAM_ADD, on_load=entrant_exam_states.AddEntrantExamState.on_load)
 app.add_page(entrant_exam.edit_page, route=routes.ENTRANT_EXAM_EDIT+"[id]", on_load=entrant_exam_states.EditEntrantExamState.on_load)
 app.add_page(entrant_exam.view_page, route=routes.ENTRANT_EXAM_VIEW+"[id]", on_load=entrant_exam_states.ViewEntrantExamState.on_load)
-app.add_page(entrant_exam.print_page, route=routes.ENTRANT_EXAM_PRINT, on_load=entrant_exam_states.PrintEntrantExamState.on_load)
 
 app.add_page(entrants_group.list_page, route=routes.ENTRANTS_GROUP_LIST, on_load=entrants_group_states.ListEntrantsGroupState.on_load)
 app.add_page(entrants_group.auto_generate_page, route=routes.ENTRANTS_GROUP_AUTO, on_load=entrants_group_states.AutoGenerateEntrantsGroupState.on_load)

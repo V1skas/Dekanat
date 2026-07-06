@@ -5,6 +5,9 @@ from sqlalchemy.orm import selectinload
 from Dekanat.models import (
     EntrantExamModel,
     EntrantExamWorkerModel,
+    EntrantModel,
+    SpecialtieEntrantModel,
+    FormOfStudyModel,
 )
 
 
@@ -63,6 +66,41 @@ class EntrantExamDao:
         if not with_del:
             statement = statement.where(EntrantExamModel.is_deleted == False)
         return session.exec(statement).one_or_none()
+
+    @staticmethod
+    def get_by_ids(ids: Sequence[int], session: Session, with_del: bool = False) -> Sequence[EntrantExamModel]:
+        """Іспити за списком id (для експорту розкладу, DK-46). Порядок — за датою
+        та часом початку, як у графіку. Порожній список → без запиту."""
+        if not ids:
+            return []
+        statement = (
+            EntrantExamDao._base_select()
+            .where(EntrantExamModel.id.in_(list(ids)))
+            .order_by(EntrantExamModel.date, EntrantExamModel.time_start)
+        )
+        if not with_del:
+            statement = statement.where(EntrantExamModel.is_deleted == False)
+        return session.exec(statement).all()
+
+    @staticmethod
+    def get_forms_of_study_for_groups(group_ids: Sequence[int], session: Session) -> List[str]:
+        """Назви форм навчання за пріоритетною (priority=1) спеціальністю абітурієнтів
+        указаних груп — для підзаголовка-відділення розкладу (DK-46). Read-only."""
+        if not group_ids:
+            return []
+        statement = (
+            select(FormOfStudyModel)
+            .join(
+                SpecialtieEntrantModel,
+                SpecialtieEntrantModel.id_form_of_study == FormOfStudyModel.id,
+            )
+            .join(EntrantModel, EntrantModel.id == SpecialtieEntrantModel.id_entrant)
+            .where(EntrantModel.id_entrant_group.in_(list(group_ids)))
+            .where(EntrantModel.is_deleted == False)
+            .where(SpecialtieEntrantModel.priority == 1)
+            .distinct()
+        )
+        return [f.title for f in session.exec(statement).all()]
 
     @staticmethod
     def get_by_group(group_id: int, session: Session, with_del: bool = False) -> Sequence[EntrantExamModel]:

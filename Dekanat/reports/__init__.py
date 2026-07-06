@@ -27,6 +27,10 @@ from Dekanat.reports.registration_journal import (
     RegistrationJournalReport,
     RegistrationJournalRow,
 )
+from Dekanat.reports.entrant_exam import (
+    ExamScheduleReport,
+    ExamScheduleRow,
+)
 from Dekanat.reports.xlsx_reports import (
     ExamApplicant,
     VidomistReport,
@@ -61,6 +65,8 @@ __all__ = [
     "RatingApplicant",
     "RegistrationJournalReport",
     "RegistrationJournalRow",
+    "ExamScheduleReport",
+    "ExamScheduleRow",
     "ExamApplicant",
     "VidomistReport",
     "VykladachamReport",

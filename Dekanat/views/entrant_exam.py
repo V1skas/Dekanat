@@ -9,7 +9,6 @@ from Dekanat.states.entrant_exam import (
     AddEntrantExamState,
     EditEntrantExamState,
     ViewEntrantExamState,
-    PrintEntrantExamState,
 )
 
 from Dekanat.views.templates.layouts import page_wrapper, header_subpage
@@ -124,6 +123,82 @@ def list_page_content() -> rx.Component:
         spacing="3",
         align="stretch",
         width="100%",
+    )
+
+
+# ============================================================
+# Export to DOCX dialog (DK-46)
+# ============================================================
+
+def _export_row(row: Dict[str, str]) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(
+            rx.checkbox(
+                checked=ListEntrantExamState.export_selected_set.contains(row["id"]),
+                on_change=ListEntrantExamState.toggle_export_id(row["id"]),
+            ),
+            width="3rem",
+        ),
+        rx.table.row_header_cell(row["group"], align="left"),
+        rx.table.cell(row["item_zno"]),
+        rx.table.cell(row["date"]),
+        rx.table.cell(row["time_start"]),
+    )
+
+
+def _export_dialog() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Експорт розкладу у DOCX"),
+            rx.vstack(
+                rx.hstack(
+                    controls.button_secondary("Обрати всі", on_click=ListEntrantExamState.select_all_export),
+                    controls.button_secondary("Зняти всі", on_click=ListEntrantExamState.clear_export),
+                    rx.spacer(),
+                    rx.badge(
+                        "Обрано: ",
+                        ListEntrantExamState.export_selected_count.to_string(),
+                        size="2",
+                    ),
+                    width="100%",
+                    align="center",
+                ),
+                rx.cond(
+                    ListEntrantExamState.items_display.length() > 0,
+                    rx.table.root(
+                        _table_header("", "Група", "Предмет", "Дата", "Початок"),
+                        rx.table.body(
+                            rx.foreach(ListEntrantExamState.items_display, _export_row),
+                        ),
+                        variant="surface",
+                        width="100%",
+                    ),
+                    controls.empty_placeholder("Немає іспитів для експорту"),
+                ),
+                rx.hstack(
+                    rx.dialog.close(
+                        controls.button_secondary("Закрити", on_click=ListEntrantExamState.set_export_open(False)),
+                    ),
+                    rx.spacer(),
+                    controls.button_primary(
+                        rx.icon("download", size=18),
+                        "Експортувати",
+                        on_click=ListEntrantExamState.on_click_export,
+                        loading=ListEntrantExamState.downloading,
+                    ),
+                    width="100%",
+                    align="center",
+                ),
+                spacing="3",
+                align="stretch",
+                max_height="65vh",
+                overflow_y="auto",
+                width="100%",
+            ),
+            max_width="45rem",
+        ),
+        open=ListEntrantExamState.export_open,
+        on_open_change=ListEntrantExamState.set_export_open,
     )
 
 
@@ -457,85 +532,6 @@ def view_page_content() -> rx.Component:
 
 
 # ============================================================
-# Print page
-# ============================================================
-
-def _print_row(row: Dict[str, str]) -> rx.Component:
-    return rx.table.row(
-        rx.table.cell(row["group"]),
-        rx.table.cell(row["item_zno"]),
-        rx.table.cell(row["date"]),
-        rx.table.cell(row["time_start"]),
-        rx.table.cell(row["time_end"]),
-        rx.table.cell(row["workers"]),
-    )
-
-
-def _print_styles() -> rx.Component:
-    # Сховати весь хром застосунку (шапку, сайдбар, кнопки) при друку та прибрати
-    # обмеження висоти контейнера контенту, щоб таблиця могла рости вертикально.
-    return rx.html(
-        """
-        <style>
-          @media print {
-            .no-print { display: none !important; }
-            html, body { background: white !important; }
-            body * { visibility: hidden; }
-            #print-area, #print-area * { visibility: visible; }
-            #print-area {
-              position: absolute;
-              left: 0;
-              top: 0;
-              width: 100%;
-              padding: 1rem;
-            }
-          }
-        </style>
-        """
-    )
-
-
-def print_page_content() -> rx.Component:
-    return rx.box(
-        _print_styles(),
-        rx.hstack(
-            controls.button_secondary("Назад", on_click=PrintEntrantExamState.on_click_back),
-            rx.spacer(),
-            controls.button_primary("Друк", on_click=PrintEntrantExamState.on_click_print),
-            class_name="no-print",
-            width="100%",
-            margin_bottom="1rem",
-        ),
-        rx.box(
-            rx.heading("Графік іспитів", size="5", margin_bottom="0.75rem"),
-            rx.cond(
-                ListEntrantExamState.items_display.length() > 0,
-                rx.table.root(
-                    rx.table.header(
-                        rx.table.row(
-                            rx.table.column_header_cell("Група"),
-                            rx.table.column_header_cell("Назва екзамену"),
-                            rx.table.column_header_cell("Дата"),
-                            rx.table.column_header_cell("Початок"),
-                            rx.table.column_header_cell("Кінець"),
-                            rx.table.column_header_cell("Відповідальні"),
-                        ),
-                    ),
-                    rx.table.body(rx.foreach(ListEntrantExamState.items_display, _print_row)),
-                    variant="surface",
-                    width="100%",
-                ),
-                rx.text("Записи відсутні", color="gray"),
-            ),
-            id="print-area",
-            width="100%",
-        ),
-        width="100%",
-        padding="1rem",
-    )
-
-
-# ============================================================
 # Add / Edit content wrappers
 # ============================================================
 
@@ -560,14 +556,17 @@ def list_page() -> rx.Component:
                 ListEntrantExamState.filter_open,
                 ListEntrantExamState.toggle_filter,
             ),
-            controls.button_image_secondary(name_icon="printer", on_click=ListEntrantExamState.on_click_print),
+            controls.button_image_secondary(name_icon="download", on_click=ListEntrantExamState.open_export),
             rx.cond(
                 ListEntrantExamState.get_user_actions.contains(Actions.ENTRANT_EXAM_ADD),
                 controls.button_image_primary(name_icon="plus", on_click=ListEntrantExamState.on_click_add),
             ),
             width="100%",
         ),
-        rx.skeleton(list_page_content(), loading=ListEntrantExamState.in_progress, height="100%"),
+        rx.fragment(
+            rx.skeleton(list_page_content(), loading=ListEntrantExamState.in_progress, height="100%"),
+            _export_dialog(),
+        ),
         filter_panel=_filter_panel(),
         on_mount=ListEntrantExamState.on_load,
     )
@@ -617,10 +616,3 @@ def edit_page() -> rx.Component:
         ),
         rx.skeleton(edit_page_content(), loading=EditEntrantExamState.in_process, height="100%"),
     )
-
-
-@require_login
-def print_page() -> rx.Component:
-    # Окрема сторінка з друкарською розміткою: використовує дані з ListEntrantExamState
-    # (фільтри застосовані на списочній сторінці зберігаються в сесійному стані клієнта).
-    return print_page_content()
