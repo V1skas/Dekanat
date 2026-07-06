@@ -78,6 +78,14 @@ class AddItemZnoState(AppState):
         except (ValueError, TypeError):
             self.item.coefficient = 0.0
 
+    @rx.var
+    def is_counted_in_rating(self) -> bool:
+        return bool(self.item.is_counted_in_rating) if self.item is not None else False
+
+    @rx.event
+    def set_is_counted_in_rating(self, value: bool):
+        self.item.is_counted_in_rating = value
+
     @rx.event
     def on_save(self):
         if not self.has_permission(Actions.ITEM_ZNO_ADD):
@@ -155,6 +163,14 @@ class EditItemZnoState(AppState):
             self.item.coefficient = float(value.replace(",", ".")) if value else 0.0
         except (ValueError, TypeError):
             self.item.coefficient = 0.0
+
+    @rx.var
+    def is_counted_in_rating(self) -> bool:
+        return bool(self.item.is_counted_in_rating) if self.item is not None else False
+
+    @rx.event
+    def set_is_counted_in_rating(self, value: bool):
+        self.item.is_counted_in_rating = value
 
     @rx.event
     def on_save(self):
@@ -242,3 +258,7 @@ class ViewItemZnoState(AppState):
             if self.item is not None and self.item.coefficient is not None
             else "1"
         )
+
+    @rx.var
+    def is_counted_in_rating(self) -> bool:
+        return bool(self.item.is_counted_in_rating) if self.item is not None else False

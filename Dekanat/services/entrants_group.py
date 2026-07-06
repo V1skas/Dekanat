@@ -15,9 +15,12 @@ from Dekanat.models import (
     PersonModel,
     SpecialtieEntrantModel,
     SpecialityModel,
+    EntryBaseModel,
+    FormOfStudyModel,
     InformationAboutRelativesModel,
 )
 from Dekanat.services.admission_campaign import AdmissionCampaignService
+from Dekanat.utils.clock import now_local
 
 
 class EntrantsGroupService:
@@ -111,24 +114,79 @@ class EntrantsGroupService:
 
     # ---------- Автоформування груп ----------
 
+    @staticmethod
+    def _year_suffix(campaign) -> str:
+        """Дві останні цифри року старту кампанії — для назви групи."""
+        try:
+            year_full = int(campaign.start_date[:4])
+        except (ValueError, TypeError, AttributeError):
+            year_full = now_local().year
+        return f"{year_full % 100:02d}"
+
+    @staticmethod
+    def _top_specialty(e: EntrantModel) -> Optional[SpecialtieEntrantModel]:
+        """Спеціальність найвищого пріоритету (найменше число) абітурієнта, або None,
+        якщо спеціальностей немає взагалі (DK-48 — такі до груп не потрапляють)."""
+        specs = list(e.specialties or [])
+        if not specs:
+            return None
+        return min(specs, key=lambda s: s.priority if s.priority is not None else 10_000)
+
+    @staticmethod
+    def _bucket_prefix(
+        spec: SpecialityModel, base: EntryBaseModel, form: FormOfStudyModel, yy: str
+    ) -> str:
+        """Префікс назви екзаменаційної групи: `<TAG>-<YY><тег>-` (DK-48).
+
+        Тег береться з бази вступу; якщо у бази тег порожній — береться тег форми
+        навчання. Якщо тег бази не порожній, тег форми не використовується взагалі
+        (навіть якщо він теж заданий)."""
+        base_prefix = (base.prefix or "").strip() if base is not None else ""
+        form_prefix = (form.prefix or "").strip() if form is not None else ""
+        tag_part = base_prefix if base_prefix else form_prefix
+        return f"{spec.tag}-{yy}{tag_part}-"
+
+    @staticmethod
+    def _match_existing_groups(
+        prefix: str, all_groups: List[EntrantGroupModel], counts: Dict[int, int]
+    ) -> List[Tuple[int, str, int]]:
+        """Наявні (не видалені) групи, чия назва відповідає шаблону `<prefix><N>`.
+
+        Тип наявної групи визначається ВИКЛЮЧНО за її назвою — склад
+        (спеціальності/форми/бази учасників) не враховується (DK-48). Групи з
+        довільною назвою (що не збігається з жодним префіксом) не чіпаються.
+        Повертає `(id, title, count)`, впорядковані за номером у назві."""
+        matched: List[Tuple[int, str, int]] = []
+        for g in all_groups:
+            t = g.title or ""
+            if t.startswith(prefix) and t[len(prefix):].isdigit():
+                matched.append((g.id, t, counts.get(g.id, 0)))
+        matched.sort(key=lambda x: int(x[1][len(prefix):]))
+        return matched
+
+    @staticmethod
+    def _next_number(prefix: str, existing_titles) -> int:
+        """Найбільший вже наявний номер з таким префіксом + 1."""
+        max_n = 0
+        for t in existing_titles:
+            if not t or not t.startswith(prefix):
+                continue
+            suffix = t[len(prefix):]
+            if suffix.isdigit():
+                max_n = max(max_n, int(suffix))
+        return max_n + 1
+
     def preview_auto_groups(self, max_size: int, use_existing: bool = False) -> List[Dict]:
         """Розрахувати склад нових екзаменаційних груп без збереження.
 
-        Правила (DK-24):
-        * Беремо абітурієнтів активної кампанії (за `created_at`).
-        * Лише ті, хто ще не у групі (`id_entrant_group IS NULL` або стара група soft-deleted).
-        * У абітурієнта має бути приоритетна (priority=1) спеціальність — інакше до групи
-          поставити неможливо, він пропускається.
-        * Розбиваємо за приоритетной специальностью; всередині — нарізаємо на групи по
-          `max_size` (останній блок може бути меншим).
-        * Імʼя: `<TAG>-<YY>-<N>`, де YY — дві останні цифри року старту кампанії,
-          N — порядковий номер для цієї спеціальності у цьому році (з урахуванням
-          уже існуючих груп з таким префіксом у БД, щоб не плодити дублів).
-
-        Якщо `use_existing=True` (DK-42): перш ніж створювати нові групи, доповнюємо
-        вже наявні (не видалені) групи тієї самої специальності/бази/форми до `max_size`,
-        і лише тих, хто не вмістився, розкидаємо по нових групах. Наявні групи у
-        результаті мають ненульовий `id` та `existing_count` (скільки вже в них є).
+        Правила (DK-24, оновлено DK-48):
+        * Беремо абітурієнтів активної кампанії (за `created_at`), ще не у групі.
+        * У абітурієнта має бути хоча б одна спеціальність — інакше він пропускається
+          (DK-48). Бакет = спеціальність найвищого пріоритету + база вступу особи +
+          форма навчання цієї спеціальності.
+        * Назва: `<TAG>-<YY><тег>-<N>` (див. `_bucket_prefix`).
+        * Якщо `use_existing=True` — спершу дозаповнюємо наявні групи, чий бакет
+          визначено ВИКЛЮЧНО за назвою (DK-48), до `max_size`; решту розкидаємо по нових.
 
         Повертає список словників:
         ``{"id": int, "title": str, "spec_code": str, "spec_dept": int, "spec_label": str,
@@ -140,15 +198,11 @@ class EntrantsGroupService:
         campaign = AdmissionCampaignService().get_active_campaign()
         if campaign is None:
             raise RuntimeError("Немає активної вступної кампанії")
-        try:
-            year_full = int(campaign.start_date[:4])
-        except (ValueError, TypeError):
-            year_full = datetime.now().year
-        yy = f"{year_full % 100:02d}"
+        yy = self._year_suffix(campaign)
         active_range = AdmissionCampaignService().get_active_range()
 
         with rx.session() as session:
-            # Кандидати: абітурієнти кампанії, не в групі, з priority=1 спеціальністю.
+            # Кандидати: абітурієнти кампанії, не в групі.
             stmt = (
                 select(EntrantModel)
                 .options(
@@ -173,13 +227,11 @@ class EntrantsGroupService:
 
             candidates = [e for e in entrants if _is_free(e)]
 
-            # Згрупуємо кандидатів за кортежем (приоритетная специальность, база
-            # вступу, форма навчання) — назва групи враховує префікси бази та форми
-            # (DK-26). Робимо це першим: префікси цих бакетів потрібні, щоб визначити
-            # базу/форму порожньої, вручну створеної групи за її назвою (DK-42).
+            # Бакет = (пріоритетна спеціальність, база вступу особи, форма навчання).
+            # Абітурієнтів без жодної спеціальності пропускаємо (DK-48).
             by_spec: Dict[Tuple[int, int, int], Dict] = {}
             for e in candidates:
-                top = next((s for s in (e.specialties or []) if s.priority == 1), None)
+                top = self._top_specialty(e)
                 if top is None or top.speciality is None or top.form_of_study is None:
                     continue
                 if e.person is None or e.person.entry_base is None:
@@ -195,83 +247,17 @@ class EntrantsGroupService:
                 })
                 bucket["entrants"].append(e)
 
-            # Префікс назви групи для бакета: (тег)-(рік)(префікс бази)(префікс форми)-.
-            def _bucket_prefix(bucket: Dict) -> str:
-                spec: SpecialityModel = bucket["spec"]
-                base = bucket["base"]
-                form = bucket["form"]
-                return f"{spec.tag}-{yy}{base.prefix or ''}{form.prefix or ''}-"
-
-            prefix_by_key: Dict[Tuple[int, int, int], str] = {
-                key: _bucket_prefix(b) for key, b in by_spec.items()
-            }
-
-            def _bucket_from_title(title: Optional[str]) -> Optional[Tuple[int, int, int]]:
-                """Визначає бакет (спеціальність, база, форма) за назвою групи.
-
-                Потрібно для порожньої, вручну створеної групи, у якої немає членів,
-                за якими можна було б визначити базу/форму. Назва має відповідати
-                шаблону автоформування `<TAG>-<YY><база><форма>-<N>`; тоді збіг із
-                префіксом одного з бакетів кандидатів однозначно дає його ключ."""
-                if not title:
-                    return None
-                for key, prefix in prefix_by_key.items():
-                    if title.startswith(prefix) and title[len(prefix):].isdigit():
-                        return key
-                return None
-
-            # Усі не видалені групи — потрібні і для продовження нумерації, і для
-            # режиму дозаповнення (визначення бакета наявних/порожніх груп).
+            # Усі не видалені групи — для продовження нумерації та дозаповнення.
             all_groups = list(
                 session.exec(select(EntrantGroupModel).where(EntrantGroupModel.is_deleted == False)).all()
             )
             existing_titles = {g.title for g in all_groups if g.title}
-
-            # Наявні (не видалені) групи — для режиму дозаповнення (DK-42).
-            # Бакет групи з абітурієнтами визначаємо за її поточними членами
-            # (пріоритетна спеціальність + база + форма). Для порожньої, вручну
-            # створеної групи членів немає — тоді визначаємо бакет за назвою
-            # (`_bucket_from_title`), щоб теж дозаповнити її; точну кількість беремо
-            # окремим запитом (члени поза діапазоном кампанії теж рахуються).
-            existing_by_bucket: Dict[Tuple[int, int, int], List[Tuple[int, str, int]]] = {}
-            if use_existing:
-                counts = EntrantsGroupDao.get_entrant_counts([g.id for g in all_groups], session)
-                member_bucket: Dict[int, Tuple[int, int, int]] = {}
-                for e in entrants:
-                    if _is_free(e):
-                        continue
-                    g = e.entrant_group
-                    if g is None or g.is_deleted or g.id in member_bucket:
-                        continue
-                    top = next((s for s in (e.specialties or []) if s.priority == 1), None)
-                    if (
-                        top is not None and top.speciality is not None and top.form_of_study is not None
-                        and e.person is not None and e.person.entry_base is not None
-                    ):
-                        member_bucket[g.id] = (top.id_speciality, e.person.entry_base.id, top.form_of_study.id)
-                for g in all_groups:
-                    cnt = counts.get(g.id, 0)
-                    bucket_key = member_bucket.get(g.id)
-                    if bucket_key is None and cnt == 0:
-                        bucket_key = _bucket_from_title(g.title)
-                    if bucket_key is None:
-                        continue
-                    existing_by_bucket.setdefault(bucket_key, []).append(
-                        (g.id, g.title or f"#{g.id}", cnt)
-                    )
-                for lst in existing_by_bucket.values():
-                    lst.sort(key=lambda t: t[1])  # стабільний порядок за назвою
-
-            def _next_number(prefix: str) -> int:
-                # Найбільший вже наявний номер з таким префіксом + 1.
-                max_n = 0
-                for t in existing_titles:
-                    if not t.startswith(prefix):
-                        continue
-                    suffix = t[len(prefix):]
-                    if suffix.isdigit():
-                        max_n = max(max_n, int(suffix))
-                return max_n + 1
+            # Живі лічильники членів наявних груп — оновлюються при дозаповненні,
+            # щоб бакети зі спільним префіксом не переповнили ту саму групу (DK-48).
+            live_counts: Dict[int, int] = (
+                dict(EntrantsGroupDao.get_entrant_counts([g.id for g in all_groups], session))
+                if use_existing else {}
+            )
 
             def _entrant_dict(e: EntrantModel, spec_label: str) -> Dict:
                 return {
@@ -281,7 +267,7 @@ class EntrantsGroupService:
                 }
 
             result: List[Dict] = []
-            for bucket_key, bucket in by_spec.items():
+            for bucket in by_spec.values():
                 spec: SpecialityModel = bucket["spec"]
                 base = bucket["base"]
                 form = bucket["form"]
@@ -289,19 +275,19 @@ class EntrantsGroupService:
                 # Стабільний порядок: за ПІБ.
                 ents.sort(key=lambda e: (e.person.pib if e.person and e.person.pib else "").lower())
                 spec_label = f"{spec.code} {spec.title} ({spec.tag}) · {base.title} · {form.title}"
-                # Шаблон назви: (тег)-(рік)(префікс бази)(префікс форми)-(номер) (DK-26).
-                prefix = prefix_by_key[bucket_key]
+                prefix = self._bucket_prefix(spec, base, form, yy)
 
                 remaining = list(ents)
 
-                # Крок 1 (DK-42): дозаповнюємо наявні групи цієї специальності до max_size.
+                # Крок 1 (DK-42/DK-48): дозаповнюємо наявні групи (за назвою) до max_size.
                 if use_existing:
-                    for gid, gtitle, gcount in existing_by_bucket.get(bucket_key, []):
+                    for gid, gtitle, gcount in self._match_existing_groups(prefix, all_groups, live_counts):
                         free = max_size - gcount
                         if free <= 0 or not remaining:
                             continue
                         take = remaining[:free]
                         remaining = remaining[free:]
+                        live_counts[gid] = gcount + len(take)
                         result.append({
                             "id": gid,
                             "title": gtitle,
@@ -332,11 +318,11 @@ class EntrantsGroupService:
                         chunks.append(remaining[start:start + size])
                         start += size
 
-                n = _next_number(prefix)
+                n = self._next_number(prefix, existing_titles)
                 for chunk in chunks:
                     title = f"{prefix}{n}"
                     n += 1
-                    # Реєструємо ім'я, щоб подальші виклики не повторили його.
+                    # Реєструємо ім'я, щоб подальші бакети/виклики не повторили його.
                     existing_titles.add(title)
                     result.append({
                         "id": 0,
@@ -350,6 +336,117 @@ class EntrantsGroupService:
 
             # Стабільне сортування результату — за назвою.
             result.sort(key=lambda g: g["title"])
+            return result
+
+    def suggest_group_for_entrant(
+        self, top_spec_id: int, base_id: int, form_id: int, max_size: int
+    ) -> Dict:
+        """Підбір екзаменаційної групи для одного абітурієнта (DK-48).
+
+        Той самий процес, що й при автоформуванні, але для однієї людини та з
+        урахуванням наявних груп. Спершу шукаємо наявну (не видалену) групу
+        відповідного бакета (визначеного за назвою) з вільним місцем (< `max_size`);
+        якщо такої немає — пропонуємо назву нової групи за тими самими правилами.
+        Групу в БД тут НЕ створюємо — це робиться при збереженні картки абітурієнта.
+
+        Повертає:
+          ``{"status": "existing", "group_id": int, "title": str}``
+          ``{"status": "new", "group_id": 0, "title": str}``
+          ``{"status": "error", "message": str}``
+        """
+        if max_size < 1:
+            return {"status": "error", "message": "Некоректний ліміт розміру групи"}
+        campaign = AdmissionCampaignService().get_active_campaign()
+        if campaign is None:
+            return {"status": "error", "message": "Немає активної вступної кампанії"}
+        yy = self._year_suffix(campaign)
+        try:
+            with rx.session() as session:
+                spec = session.get(SpecialityModel, top_spec_id)
+                base = session.get(EntryBaseModel, base_id)
+                form = session.get(FormOfStudyModel, form_id)
+                if spec is None or base is None or form is None:
+                    return {
+                        "status": "error",
+                        "message": "Не вдалося визначити спеціальність, базу вступу або форму навчання",
+                    }
+                prefix = self._bucket_prefix(spec, base, form, yy)
+                all_groups = list(
+                    session.exec(
+                        select(EntrantGroupModel).where(EntrantGroupModel.is_deleted == False)
+                    ).all()
+                )
+                counts = EntrantsGroupDao.get_entrant_counts([g.id for g in all_groups], session)
+                for gid, gtitle, gcount in self._match_existing_groups(prefix, all_groups, counts):
+                    if gcount < max_size:
+                        return {"status": "existing", "group_id": gid, "title": gtitle}
+                existing_titles = {g.title for g in all_groups if g.title}
+                n = self._next_number(prefix, existing_titles)
+                return {"status": "new", "group_id": 0, "title": f"{prefix}{n}"}
+        except Exception as e:
+            print(f"[EntrantsGroupService][suggest_group_for_entrant][ERROR] {e}")
+            return {"status": "error", "message": "Під час підбору групи сталася помилка"}
+
+    def suggest_entrants_for_group(
+        self, group_id: int, exclude_ids: Optional[Sequence[int]] = None
+    ) -> List[EntrantModel]:
+        """Вільні абітурієнти активної кампанії, які «пасують» групі за її назвою (DK-48).
+
+        Спеціальність/базу/форму, під які створена група, визначаємо НЕ зворотним
+        розбором назви (він неоднозначний — тег бази й тег форми зливаються в один
+        сегмент), а симетрично до автоформування: для кожного вільного кандидата
+        рахуємо його бакет-префікс (`_bucket_prefix` за спеціальністю найвищого
+        пріоритету + базою особи + формою) і беремо тих, чий префікс збігається з
+        назвою групи (`<prefix><N>`). Тобто саме тих, кого автоформування помістило б
+        у групу з такою назвою. Порядок — за ПІБ. Ліміт розміру тут НЕ застосовуємо —
+        це робить викликаюча сторона (знає поточний склад форми).
+        """
+        campaign = AdmissionCampaignService().get_active_campaign()
+        if campaign is None:
+            return []
+        yy = self._year_suffix(campaign)
+        exclude = set(exclude_ids or [])
+        active_range = AdmissionCampaignService().get_active_range()
+        with rx.session() as session:
+            group = session.get(EntrantGroupModel, group_id)
+            if group is None or not group.title:
+                return []
+            title = group.title
+
+            stmt = (
+                select(EntrantModel)
+                .options(
+                    selectinload(EntrantModel.person).selectinload(PersonModel.entry_base),
+                    selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.speciality),
+                    selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.form_of_study),
+                    selectinload(EntrantModel.entrant_group),
+                )
+                .join(PersonModel, EntrantModel.id == PersonModel.id)
+                .where(EntrantModel.is_deleted == False)
+            )
+            if active_range is not None:
+                start_dt, end_dt = active_range
+                stmt = stmt.where(EntrantModel.created_at >= start_dt).where(EntrantModel.created_at <= end_dt)
+            entrants = session.exec(stmt).all()
+
+            def _is_free(e: EntrantModel) -> bool:
+                if e.id_entrant_group is None:
+                    return True
+                return bool(e.entrant_group and e.entrant_group.is_deleted)
+
+            result: List[EntrantModel] = []
+            for e in entrants:
+                if e.id in exclude or not _is_free(e):
+                    continue
+                top = self._top_specialty(e)
+                if top is None or top.speciality is None or top.form_of_study is None:
+                    continue
+                if e.person is None or e.person.entry_base is None:
+                    continue
+                prefix = self._bucket_prefix(top.speciality, e.person.entry_base, top.form_of_study, yy)
+                if title.startswith(prefix) and title[len(prefix):].isdigit():
+                    result.append(e)
+            result.sort(key=lambda e: (e.person.pib if e.person and e.person.pib else "").lower())
             return result
 
     def get_assignable_for_campaign(self) -> List[Dict]:

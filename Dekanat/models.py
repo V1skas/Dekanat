@@ -7,6 +7,8 @@ from datetime import datetime
 
 import reflex as rx
 
+from Dekanat.utils.clock import now_local
+
 
 @rx.ModelRegistry.register
 class RolesActionsModel(rx.Model, table=True):
@@ -74,11 +76,11 @@ class AuthTokenModel(rx.Model, table=True):
     token: str = Field(nullable=False, unique=True)
     id_worker: int = Field(foreign_key="workers.id", nullable=False)
     expires_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("expires_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
     last_activity_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("last_activity_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
 
@@ -240,7 +242,7 @@ class PersonModel(rx.Model, table=True):
     id_source_of_funding: int = Field(foreign_key="source_of_funding.id")
     id_entry_base: int = Field(foreign_key="entry_base.id")
     created_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("created_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
     is_deleted: bool = False
@@ -265,7 +267,7 @@ class EntrantGroupModel(rx.Model, table=True):
     id: int = Field(primary_key=True)
     title: str
     created_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("created_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
     is_deleted: bool = False
@@ -308,11 +310,11 @@ class EntrantModel(rx.Model, table=True):
     id_entrant_group: Optional[int] = Field(default=None, foreign_key="entrants_groups.id", nullable=True)
     comment: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     created_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("created_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
     application_status_changed_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("application_status_changed_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
     is_deleted: bool = False
@@ -492,6 +494,13 @@ class ItemZnoModel(rx.Model, table=True):
     # Ваговий коефіцієнт предмета (DK-40): бал, введений оператором або отриманий на
     # тестуванні, домножається на нього при збереженні оцінки. Дефолт 1.0 — без зміни.
     coefficient: float = Field(default=1.0, nullable=False)
+    # Чи враховується оцінка з цього предмета у рейтинговому списку (DK-47). False
+    # (дефолт) — предмет не бере участі у сумі балів рейтингу і не потрапляє колонкою
+    # оцінок у DOCX рейтингу (напр. окремі компоненти НМТ). Вмикається оператором.
+    is_counted_in_rating: bool = Field(
+        default=False,
+        sa_column=Column("is_counted_in_rating", Boolean, nullable=False, server_default=expression.false()),
+    )
     is_deleted: bool = False
 
 
@@ -504,11 +513,12 @@ class ResultZnoModel(rx.Model, table=True):
     id_items_zno: int = Field(foreign_key="item_zno.id")
     id_person: int = Field(foreign_key="persons.id")
     # Підсумковий бал = сирий × коефіцієнт предмета (обчислюється при збереженні, DK-40).
-    points: int
+    # Дробний (DK-47): комплексні бали (напр. середнє за НМТ) не цілі.
+    points: float
     # Сирий бал, введений оператором / отриманий на тестуванні (до множення на
     # коефіцієнт). Потрібен, щоб діалог редагування показував саме те, що ввели,
-    # і повторне збереження не домножувало вдруге (DK-40).
-    points_raw: Optional[int] = Field(default=None, nullable=True)
+    # і повторне збереження не домножувало вдруге (DK-40). Дробний (DK-47).
+    points_raw: Optional[float] = Field(default=None, nullable=True)
 
     # Relationships
     item_zno: Optional['ItemZnoModel'] = Relationship()
@@ -552,7 +562,7 @@ class AdmissionCampaignReportModel(rx.Model, table=True):
     id: int = Field(primary_key=True)
     id_campaign: int = Field(foreign_key="admission_campaigns.id", nullable=False)
     generated_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("generated_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
     # JSON payload зі звітом (числа за день/тиждень/період, серії, розподіл по
@@ -584,7 +594,7 @@ class RatingSnapshotModel(rx.Model, table=True):
     id: int = Field(primary_key=True)
     id_campaign: int = Field(foreign_key="admission_campaigns.id", nullable=False)
     generated_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("generated_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
 
@@ -606,7 +616,8 @@ class RatingEntryModel(rx.Model, table=True):
     id_form_of_study: int = Field(default=0, nullable=False)
     id_entrant: int = Field(foreign_key="entrants.id", nullable=False)
     position: int = Field(nullable=False)
-    total_points: int = Field(default=0, nullable=False)
+    # Дробна сума балів (DK-47).
+    total_points: float = Field(default=0, nullable=False)
     # 'budget' | 'contract' | 'kvota' | 'rejected' | 'excluded'
     # 'excluded' (DK-43) — статус картки не допускає до рейтингу: рядок унизу, сірий.
     status: str = Field(nullable=False)

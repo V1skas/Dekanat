@@ -1,5 +1,6 @@
 import reflex as rx
 
+from pydantic import BaseModel
 from typing import Sequence, Optional, List, Dict
 from datetime import date, datetime
 
@@ -30,9 +31,12 @@ from Dekanat.services.identity_document_type import IdentityDocumentTypeService
 from Dekanat.services.kinship import KinshipService
 from Dekanat.services.special_condition import SpecialConditionService
 from Dekanat.services.item_zno import ItemZnoService
+from Dekanat.services.app_setting import AppSettingService
 from Dekanat.services.admission_campaign import AdmissionCampaignService
+from Dekanat.utils.clock import now_local
 from Dekanat.services.admission_campaign_speciality import AdmissionCampaignSpecialityService
 from Dekanat.models import AdmissionCampaignModel
+from Dekanat.utils.display import format_grade
 
 
 # Значення query-параметра ?from, з яким картку абітурієнта відкрито зі списку заявок
@@ -47,11 +51,47 @@ def _from_suffix(came_from: str) -> str:
     return f"?from={FROM_APPLICATIONS}" if came_from == FROM_APPLICATIONS else ""
 
 
+# Представлення списку абітурієнтів (DK-49). Перемикаються кнопками над таблицею;
+# кожне вантажить лише свої дані окремим методом, дані іншого представлення в память
+# не тримаються.
+VIEW_GENERAL = "general"       # поточна таблиця з загальною інформацією по заявці
+VIEW_PRIORITIES = "priorities"  # ПІБ + теги спеціальностей по пріоритетах (стовпці 1, 2, 3…)
+
+
+class PriorityCell(BaseModel):
+    """Одна клітинка пласкої сітки представлення «Пріоритетні спеціальності» (DK-49).
+
+    Сітку рендеримо пласким списком клітинок (row-major) через один `rx.foreach`,
+    щоб уникнути вкладеного `rx.foreach` по атрибуту-списку моделі (заборонено Reflex)
+    і при цьому мати динамічну кількість стовпців (пріоритетів)."""
+    text: str = ""
+    kind: str = "tag"       # "header" | "name" | "tag"
+    entrant_id: int = 0     # для kind == "name" — id картки абітурієнта (посилання)
+
+
 # ---------- List page ----------
 
 class ListEntrantState(AppState):
     items: Optional[Sequence[EntrantModel]] = None
     in_progress: bool = True
+
+    # Активне представлення таблиці (DK-49).
+    current_view: str = VIEW_GENERAL
+
+    # Дані представлення «Пріоритетні спеціальності» (DK-49): плаский список клітинок
+    # (заголовок + рядки) та кількість стовпців-пріоритетів. Заповнюється лише коли це
+    # представлення активне; при перемиканні на загальне — очищається.
+    priority_cells: List[PriorityCell] = []
+    priority_max: int = 0
+    # Окремі фільтри представлення пріоритетів (незалежні від фільтрів загального списку).
+    # p_filter_speciality_key — фільтр по пріоритетній спеціальності (№1) — DK-49.
+    p_filter_speciality_key: str = "__all__"
+    p_filter_date_mode: str = "day"  # "day" | "period"
+    p_filter_date_day: str = ""
+    p_filter_date_from: str = ""
+    p_filter_date_to: str = ""
+    # Одноразова ініціалізація дефолтів фільтра пріоритетів (період активної кампанії).
+    p_initialized: bool = False
 
     # Стан панелі фільтрів
     filter_open: bool = False
@@ -61,8 +101,7 @@ class ListEntrantState(AppState):
     filter_entry_base_id: int = 0
     filter_campaign_id: int = 0  # 0 — без фільтра по кампанії
     # "code|id_department"; "__all__" — без фільтра (Radix забороняє value="" в rx.select.item).
-    # filter_speciality_key — будь-який пріоритет; filter_top_speciality_key — лише пріоритет №1 (DK-36).
-    filter_speciality_key: str = "__all__"
+    # filter_top_speciality_key — фільтр по пріоритетній спеціальності (пріоритет №1) — DK-36.
     filter_top_speciality_key: str = "__all__"
     # Фільтр по даті створення (DK-34). Режим "day" — конкретний день; "period" — діапазон.
     filter_date_mode: str = "day"  # "day" | "period"
@@ -136,7 +175,6 @@ class ListEntrantState(AppState):
 
     def _reload_items(self):
         service = EntrantService()
-        spec_id = self._parse_spec_key(self.filter_speciality_key)
         top_id = self._parse_spec_key(self.filter_top_speciality_key)
         self.items = service.get_list_items(
             pib=self.filter_pib.strip() or None,
@@ -145,11 +183,105 @@ class ListEntrantState(AppState):
             entry_base_id=self.filter_entry_base_id or None,
             created_between=self._campaign_range(),
             created_date_between=self._date_range(),
-            priority_speciality_id=spec_id,
             top_priority_speciality_id=top_id,
             sort_field=self.sort_field or None,
             sort_dir=self.sort_dir,
         )
+
+    # --- priority-specialities view (DK-49) ---
+
+    def _p_date_range(self):
+        """Діапазон created_at для фільтра дати представлення пріоритетів (аналог
+        `_date_range`, але на окремих полях `p_filter_*`)."""
+        if self.p_filter_date_mode == "day":
+            if not self.p_filter_date_day:
+                return None
+            try:
+                day = datetime.strptime(self.p_filter_date_day, "%Y-%m-%d")
+            except (ValueError, TypeError):
+                return None
+            return (
+                day.replace(hour=0, minute=0, second=0),
+                day.replace(hour=23, minute=59, second=59),
+            )
+        if not self.p_filter_date_from and not self.p_filter_date_to:
+            return None
+        start_dt = datetime.min
+        end_dt = datetime.max
+        if self.p_filter_date_from:
+            try:
+                start_dt = datetime.strptime(self.p_filter_date_from, "%Y-%m-%d").replace(hour=0, minute=0, second=0)
+            except (ValueError, TypeError):
+                pass
+        if self.p_filter_date_to:
+            try:
+                end_dt = datetime.strptime(self.p_filter_date_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            except (ValueError, TypeError):
+                pass
+        return (start_dt, end_dt)
+
+    def _reload_priority(self):
+        """Перезбирає плаский список клітинок представлення «Пріоритетні спеціальності».
+        Полегшену вибірку тримаємо локально — у стан кладемо лише готові клітинки."""
+        items = EntrantService().get_priority_items(
+            top_priority_speciality_id=self._parse_spec_key(self.p_filter_speciality_key),
+            created_date_between=self._p_date_range(),
+        )
+        if not items:
+            self.priority_cells = []
+            self.priority_max = 0
+            return
+
+        max_p = 0
+        rows: List[tuple] = []  # (entrant_id, pib, {priority: tag})
+        for e in items:
+            pib = e.person.pib if e.person is not None and e.person.pib else "—"
+            by_prio: Dict[int, str] = {}
+            for sp in (e.specialties or []):
+                if sp.priority is None:
+                    continue
+                tag = sp.speciality.tag if sp.speciality is not None and sp.speciality.tag else "—"
+                by_prio.setdefault(sp.priority, tag)
+                if sp.priority > max_p:
+                    max_p = sp.priority
+            rows.append((e.id, pib, by_prio))
+
+        cells: List[PriorityCell] = [PriorityCell(text="ПІБ", kind="header")]
+        for i in range(1, max_p + 1):
+            cells.append(PriorityCell(text=str(i), kind="header"))
+        for entrant_id, pib, by_prio in rows:
+            cells.append(PriorityCell(text=pib, kind="name", entrant_id=entrant_id))
+            for i in range(1, max_p + 1):
+                cells.append(PriorityCell(text=by_prio.get(i, "—"), kind="tag"))
+        self.priority_cells = cells
+        self.priority_max = max_p
+
+    @rx.var
+    def priority_grid_template(self) -> str:
+        """CSS grid-template-columns: широкий стовпець ПІБ + N рівних стовпців-пріоритетів."""
+        if self.priority_max <= 0:
+            return "1fr"
+        return "minmax(12rem, 1.5fr) " + " ".join(["minmax(4rem, 1fr)"] * self.priority_max)
+
+    @rx.event
+    def switch_view(self, view: str):
+        """Перемикання представлення таблиці (DK-49). Дані попереднього представлення
+        очищаємо, щоб не тримати їх у памʼяті, і вантажимо дані нового."""
+        if view not in (VIEW_GENERAL, VIEW_PRIORITIES) or view == self.current_view:
+            return
+        self.current_view = view
+        self.in_progress = True
+        yield
+        try:
+            if view == VIEW_PRIORITIES:
+                self.items = None
+                self._reload_priority()
+            else:
+                self.priority_cells = []
+                self.priority_max = 0
+                self._reload_items()
+        finally:
+            self.in_progress = False
 
     @rx.event
     def on_load(self):
@@ -173,7 +305,21 @@ class ListEntrantState(AppState):
             active = campaign_service.get_active_campaign()
             self.filter_campaign_id = active.id if active is not None else 0
             self._reload_speciality_options()
-            self._reload_items()
+            # Дефолт фільтра пріоритетів — період активної кампанії (одноразово).
+            if not self.p_initialized:
+                if active is not None:
+                    self.p_filter_date_mode = "period"
+                    self.p_filter_date_from = active.start_date or ""
+                    self.p_filter_date_to = active.end_date or ""
+                self.p_initialized = True
+            # Вантажимо дані активного представлення; неактивне — тримаємо порожнім.
+            if self.current_view == VIEW_PRIORITIES:
+                self.items = None
+                self._reload_priority()
+            else:
+                self.priority_cells = []
+                self.priority_max = 0
+                self._reload_items()
             self.in_progress = False
             return
         except Exception:
@@ -274,7 +420,6 @@ class ListEntrantState(AppState):
         self.filter_status_id = 0
         self.filter_entry_base_id = 0
         self.filter_campaign_id = 0
-        self.filter_speciality_key = "__all__"
         self.filter_top_speciality_key = "__all__"
         self.filter_date_mode = "day"
         self.filter_date_day = ""
@@ -369,8 +514,8 @@ class ListEntrantState(AppState):
         self.speciality_options = opts
 
     @rx.event
-    def set_filter_speciality_key(self, value: str):
-        self.filter_speciality_key = value or ""
+    def set_filter_top_speciality_key(self, value: str):
+        self.filter_top_speciality_key = value or ""
         self.in_progress = True
         yield
         try:
@@ -378,13 +523,76 @@ class ListEntrantState(AppState):
         finally:
             self.in_progress = False
 
+    # --- priority-view filters (DK-49) ---
+
     @rx.event
-    def set_filter_top_speciality_key(self, value: str):
-        self.filter_top_speciality_key = value or ""
+    def set_p_filter_speciality_key(self, value: str):
+        self.p_filter_speciality_key = value or "__all__"
         self.in_progress = True
         yield
         try:
-            self._reload_items()
+            self._reload_priority()
+        finally:
+            self.in_progress = False
+
+    @rx.var
+    def is_p_date_mode_period(self) -> bool:
+        return self.p_filter_date_mode == "period"
+
+    @rx.event
+    def set_p_filter_date_mode(self, value: str):
+        self.p_filter_date_mode = "period" if value in ("period", "Період") else "day"
+        self.p_filter_date_day = ""
+        self.p_filter_date_from = ""
+        self.p_filter_date_to = ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_priority()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_p_filter_date_day(self, value: str):
+        self.p_filter_date_day = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_priority()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_p_filter_date_from(self, value: str):
+        self.p_filter_date_from = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_priority()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_p_filter_date_to(self, value: str):
+        self.p_filter_date_to = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_priority()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def clear_priority_filters(self):
+        self.p_filter_speciality_key = "__all__"
+        self.p_filter_date_mode = "day"
+        self.p_filter_date_day = ""
+        self.p_filter_date_from = ""
+        self.p_filter_date_to = ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_priority()
         finally:
             self.in_progress = False
 
@@ -418,6 +626,7 @@ class ListEntrantState(AppState):
             "entry_base": arrow if self.sort_field == "entry_base" else "",
             "source_of_funding": arrow if self.sort_field == "source_of_funding" else "",
             "speciality": arrow if self.sort_field == "speciality" else "",
+            "entrant_group": arrow if self.sort_field == "entrant_group" else "",
             "application_status": arrow if self.sort_field == "application_status" else "",
         }
 
@@ -586,6 +795,18 @@ class EntrantFormState(AppState):
     # без права ENTRANT_EDIT_STATUS (DK-36).
     loaded_status_id: int = 0
     id_entrant_group: int = 0  # 0 means "not assigned"
+    # Група, до якої абітурієнт належав на момент завантаження (edit) — щоб не
+    # рахувати самого абітурієнта за «зайвого» у попередженні про ліміт (DK-48).
+    loaded_entrant_group_id: int = 0
+    # Автопідбір групи (DK-48): якщо підбір запропонував НОВУ групу, її назва
+    # тримається тут до збереження картки (id_entrant_group при цьому = 0). Реальний
+    # запис у БД створюється лише при збереженні.
+    pending_new_group_title: str = ""
+    # Кількість активних абітурієнтів у кожній групі: {str(group_id): count} —
+    # для попередження про досягнутий ліміт при ручному виборі групи (DK-48).
+    entrant_group_counts: Dict[str, int] = {}
+    # Глобальний ліміт розміру екз. групи (з налаштувань) — DK-48.
+    max_entrants_per_group: int = 25
     comment: str = ""
 
     # ---- Dropdown options ----
@@ -682,7 +903,13 @@ class EntrantFormState(AppState):
     rz_open: bool = False
     rz_index: int = -1
     rz_id_items_zno: int = 0
-    rz_points: int = 0
+    # Сирий (введений) бал — редагуємо як рядок, щоб не заважати введенню дробу
+    # (DK-47): зберігаємо буквально введене, парсимо у float лише на збереженні.
+    rz_points_input: str = ""
+    # Калькулятор комплексного балу (DK-47): середнє/сума компонентів (напр. НМТ).
+    rz_calc_open: bool = False
+    rz_calc_mode: str = "avg"  # "avg" | "sum"
+    rz_calc_components: str = ""
 
     # ============================================================
     # On-load: shared dropdown init + branch on mode
@@ -695,8 +922,14 @@ class EntrantFormState(AppState):
         self.entry_base_options = [{"value": str(e.id), "label": e.title} for e in eb]
         ast = ApplicationStatusService().get_list_items()
         self.application_status_options = [{"value": str(a.id), "label": a.title} for a in ast]
-        eg = EntrantsGroupService().get_list_items()
+        eg_service = EntrantsGroupService()
+        eg = eg_service.get_list_items()
         self.entrant_group_options = [{"value": str(g.id), "label": g.title} for g in eg]
+        # Кількості абітурієнтів у групах + глобальний ліміт — для попередження
+        # про досягнутий ліміт при виборі групи в картці (DK-48).
+        raw_counts = eg_service.get_entrant_counts([g.id for g in eg if g.id is not None])
+        self.entrant_group_counts = {str(gid): cnt for gid, cnt in raw_counts.items()}
+        self.max_entrants_per_group = AppSettingService().get_max_entrants_per_group()
         sp = SpecialityService().get_list_items()
         sp_by_key: Dict[str, str] = {
             str(s.id): f"{s.code} {s.title} ({s.tag})" for s in sp
@@ -756,6 +989,8 @@ class EntrantFormState(AppState):
         self.id_application_status = 0
         self.loaded_status_id = 0
         self.id_entrant_group = 0
+        self.loaded_entrant_group_id = 0
+        self.pending_new_group_title = ""
         self.comment = ""
         self.identity_documents = []
         self.documents_about_education = []
@@ -830,6 +1065,7 @@ class EntrantFormState(AppState):
             self.id_application_status = entrant.id_application_status or 0
             self.loaded_status_id = entrant.id_application_status or 0
             self.id_entrant_group = entrant.id_entrant_group or 0
+            self.loaded_entrant_group_id = entrant.id_entrant_group or 0
             self.comment = entrant.comment or ""
 
             self.identity_documents = list(person.identity_document or [])
@@ -896,6 +1132,68 @@ class EntrantFormState(AppState):
             self.id_entrant_group = int(value) if value else 0
         except (ValueError, TypeError):
             self.id_entrant_group = 0
+        # Ручний вибір групи скасовує запропоновану автопідбором нову групу (DK-48).
+        self.pending_new_group_title = ""
+
+    @rx.var
+    def pending_group_note(self) -> str:
+        """Підказка про заплановану до створення нову групу (автопідбір) — DK-48."""
+        if self.pending_new_group_title:
+            return f"Буде створено нову групу: {self.pending_new_group_title}"
+        return ""
+
+    @rx.var
+    def group_limit_warning(self) -> str:
+        """Попередження, якщо в обраній (наявній) групі вже досягнуто ліміту (DK-48).
+        Самого абітурієнта, якщо він уже в цій групі, за «зайвого» не рахуємо."""
+        if self.pending_new_group_title or not self.id_entrant_group:
+            return ""
+        count = self.entrant_group_counts.get(str(self.id_entrant_group), 0)
+        if self.id_entrant_group == self.loaded_entrant_group_id and count > 0:
+            count -= 1
+        if count >= self.max_entrants_per_group:
+            return (
+                f"Увага: у цій групі вже {count} абітурієнт(ів) — "
+                f"досягнуто ліміту ({self.max_entrants_per_group})."
+            )
+        return ""
+
+    @rx.event
+    def on_click_autodetect_group(self):
+        """Автопідбір екзаменаційної групи для цього абітурієнта (DK-48).
+
+        Той самий процес, що й при автоформуванні, але для одного абітурієнта та з
+        урахуванням наявних груп. Бере поточну (в памʼяті форми) базу вступу та
+        спеціальність найвищого пріоритету. Якщо підходящу наявну групу з вільним
+        місцем не знайдено — пропонує нову (запис у БД лише при збереженні картки)."""
+        if not self.specialties:
+            yield rx.toast.warning("Спочатку додайте хоча б одну спеціальність.")
+            return
+        if not self.id_entry_base:
+            yield rx.toast.warning("Спочатку оберіть базу вступу.")
+            return
+        # Спеціальність найвищого пріоритету (найменше число пріоритету).
+        top = min(
+            self.specialties,
+            key=lambda s: s.priority if s.priority is not None else 10_000,
+        )
+        result = EntrantsGroupService().suggest_group_for_entrant(
+            top.id_speciality, self.id_entry_base, top.id_form_of_study,
+            self.max_entrants_per_group,
+        )
+        status = result.get("status")
+        if status == "error":
+            yield rx.toast.error(result.get("message") or "Не вдалося підібрати групу.")
+            return
+        if status == "existing":
+            self.id_entrant_group = int(result.get("group_id") or 0)
+            self.pending_new_group_title = ""
+            yield rx.toast.success(f"Обрано наявну групу: {result.get('title')}")
+            return
+        # status == "new"
+        self.id_entrant_group = 0
+        self.pending_new_group_title = result.get("title") or ""
+        yield rx.toast.info(f"Буде створено нову групу: {self.pending_new_group_title}")
 
     # ============================================================
     # Прості сетери для базових текстових полів форми.
@@ -1120,7 +1418,7 @@ class EntrantFormState(AppState):
 
     @rx.var
     def max_birth_date(self) -> str:
-        return date.today().isoformat()
+        return now_local().date().isoformat()
 
     # ============================================================
     # Display title lookup maps (used in form sub-tables)
@@ -1724,7 +2022,10 @@ class EntrantFormState(AppState):
     def _reset_rz_dialog(self):
         self.rz_index = -1
         self.rz_id_items_zno = 0
-        self.rz_points = 0
+        self.rz_points_input = ""
+        self.rz_calc_open = False
+        self.rz_calc_mode = "avg"
+        self.rz_calc_components = ""
 
     @rx.event
     def open_rz_add(self):
@@ -1736,11 +2037,13 @@ class EntrantFormState(AppState):
         if index < 0 or index >= len(self.results_zno):
             return
         item = self.results_zno[index]
+        self._reset_rz_dialog()
         self.rz_index = index
         self.rz_id_items_zno = item.id_items_zno or 0
         # У діалозі редагуємо сирий (введений) бал, а не домножений (DK-40), щоб
         # повторне збереження не множило вдруге. points_raw бекфілиться з points.
-        self.rz_points = item.points_raw if item.points_raw is not None else (item.points or 0)
+        raw = item.points_raw if item.points_raw is not None else item.points
+        self.rz_points_input = format_grade(raw)
         self.rz_open = True
 
     @rx.event
@@ -1760,34 +2063,90 @@ class EntrantFormState(AppState):
             self.rz_id_items_zno = 0
 
     @rx.event
-    def set_rz_points(self, value: str):
-        try:
-            self.rz_points = int(value) if value else 0
-        except (ValueError, TypeError):
-            self.rz_points = 0
+    def set_rz_points_input(self, value: str):
+        self.rz_points_input = value
 
     @rx.var
     def rz_coefficient_hint(self) -> str:
         coeff = self.item_zno_coeffs.get(str(self.rz_id_items_zno), 1.0)
         return f"Цей бал буде домножено на коефіцієнт предмета (×{coeff})."
 
+    # ---- Complex-grade calculator (avg / sum of components) ----
+
+    @rx.event
+    def toggle_rz_calc(self):
+        self.rz_calc_open = not self.rz_calc_open
+
+    @rx.event
+    def set_rz_calc_mode(self, mode: str):
+        self.rz_calc_mode = mode if mode in ("avg", "sum") else "avg"
+
+    @rx.event
+    def set_rz_calc_components(self, value: str):
+        self.rz_calc_components = value
+
+    @rx.var
+    def is_rz_calc_avg(self) -> bool:
+        return self.rz_calc_mode == "avg"
+
+    def _rz_calc_numbers(self) -> List[float]:
+        nums: List[float] = []
+        raw = (self.rz_calc_components or "").replace(";", " ").replace(",", " ")
+        for tok in raw.split():
+            try:
+                nums.append(float(tok))
+            except (ValueError, TypeError):
+                continue
+        return nums
+
+    def _rz_calc_value(self) -> Optional[float]:
+        nums = self._rz_calc_numbers()
+        if not nums:
+            return None
+        if self.rz_calc_mode == "sum":
+            return round(sum(nums), 2)
+        return round(sum(nums) / len(nums), 2)
+
+    @rx.var
+    def rz_calc_result_str(self) -> str:
+        value = self._rz_calc_value()
+        return format_grade(value) if value is not None else "—"
+
+    @rx.event
+    def rz_calc_apply(self):
+        value = self._rz_calc_value()
+        if value is None:
+            yield rx.toast.warning("Введіть компоненти для розрахунку!")
+            return
+        self.rz_points_input = format_grade(value)
+        self.rz_calc_open = False
+
     @rx.event
     def save_rz(self):
         if not self.rz_id_items_zno:
             yield rx.toast.warning("Оберіть предмет ЗНО!")
             return
-        if self.rz_points < 0 or self.rz_points > 200:
+        raw = (self.rz_points_input or "").strip()
+        if raw == "":
+            yield rx.toast.warning("Введіть бал!")
+            return
+        try:
+            points = float(raw.replace(",", "."))
+        except (ValueError, TypeError):
+            yield rx.toast.warning("Бал має бути числом!")
+            return
+        if points < 0 or points > 200:
             yield rx.toast.warning("Бали мають бути у межах 0-200!")
             return
 
         # Домножуємо введений бал на коефіцієнт предмета при збереженні (DK-40).
         coeff = self.item_zno_coeffs.get(str(self.rz_id_items_zno), 1.0)
-        weighted = int(self.rz_points * coeff + 0.5)
+        weighted = round(points * coeff, 2)
         item = ResultZnoModel(
             id_items_zno=self.rz_id_items_zno,
             id_person=self.entrant_id if self.entrant_id > 0 else 0,
             points=weighted,
-            points_raw=self.rz_points,
+            points_raw=points,
         )
         if 0 <= self.rz_index < len(self.results_zno):
             self.results_zno[self.rz_index] = item
@@ -1897,6 +2256,7 @@ class EntrantFormState(AppState):
                     special_conditions=list(self.special_conditions_person),
                     specialties=list(self.specialties),
                     results_zno=list(self.results_zno),
+                    new_group_title=self.pending_new_group_title or None,
                 )
                 yield rx.toast.success("Запис змінено!")
                 yield rx.redirect(routes.ENTRANT_VIEW + str(saved.id) + _from_suffix(self.came_from))
@@ -1915,6 +2275,7 @@ class EntrantFormState(AppState):
                     special_conditions=list(self.special_conditions_person),
                     specialties=list(self.specialties),
                     results_zno=list(self.results_zno),
+                    new_group_title=self.pending_new_group_title or None,
                 )
                 yield rx.toast.success("Запис додано!")
                 yield rx.redirect(routes.ENTRANT_VIEW + str(saved.id))

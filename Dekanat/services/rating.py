@@ -19,6 +19,7 @@ from Dekanat.models import (
     SpecialConditionPersonModel,
     SpecialConditionModel,
     ApplicationStatusModel,
+    ItemZnoModel,
 )
 
 
@@ -101,6 +102,17 @@ class RatingService:
                     ).where(EntrantModel.created_at <= end_dt)
                 entrants = list(session.exec(entrants_stmt).all())
 
+                # Предмети ЗНО, що враховуються у рейтингу (DK-47). Лише їхні оцінки
+                # входять до суми балів; решта (напр. компоненти НМТ) — ігноруються.
+                rated_item_ids = {
+                    i.id
+                    for i in session.exec(
+                        select(ItemZnoModel)
+                        .where(ItemZnoModel.is_counted_in_rating == True)
+                        .where(ItemZnoModel.is_deleted == False)
+                    ).all()
+                }
+
                 # Які спец. умови вважаються квотою
                 kvota_codes = {
                     sc.subcategory_code
@@ -127,7 +139,11 @@ class RatingService:
                 for ent in entrants:
                     if ent.person is None:
                         continue
-                    total = sum((r.points or 0) for r in (ent.person.results_zno or []))
+                    total = sum(
+                        (r.points or 0)
+                        for r in (ent.person.results_zno or [])
+                        if r.id_items_zno in rated_item_ids
+                    )
                     total = min(total, max_total)
                     has_kvota = any(
                         sc.id_special_condition in kvota_codes
@@ -306,9 +322,20 @@ class RatingService:
                     for q in quotas
                 }
 
+                # Предмети ЗНО, що враховуються у рейтингу (DK-47): у документ ідуть
+                # лише їхні колонки оцінок.
+                rated_item_ids = {
+                    i.id
+                    for i in session.exec(
+                        select(ItemZnoModel)
+                        .where(ItemZnoModel.is_counted_in_rating == True)
+                        .where(ItemZnoModel.is_deleted == False)
+                    ).all()
+                }
+
                 # Оцінки по іспитах: results_zno для всіх осіб знімка (person.id == entrant.id).
                 entrant_ids = [e.id_entrant for e in entries]
-                grades_by_person: Dict[int, Dict[int, int]] = {}
+                grades_by_person: Dict[int, Dict[int, float]] = {}
                 item_titles: Dict[int, str] = {}
                 if entrant_ids:
                     results = session.exec(
@@ -317,6 +344,8 @@ class RatingService:
                         .where(ResultZnoModel.id_person.in_(entrant_ids))  # type: ignore[attr-defined]
                     ).all()
                     for r in results:
+                        if r.id_items_zno not in rated_item_ids:
+                            continue
                         grades_by_person.setdefault(r.id_person, {})[r.id_items_zno] = r.points
                         if r.item_zno is not None:
                             item_titles[r.id_items_zno] = r.item_zno.title

@@ -8,6 +8,9 @@ from Dekanat.states.entrant import (
     ListEntrantState,
     ViewEntrantState,
     EntrantFormState,
+    PriorityCell,
+    VIEW_GENERAL,
+    VIEW_PRIORITIES,
     CITIZENSHIP_OPTIONS,
     SEX_OPTIONS,
 )
@@ -81,6 +84,9 @@ def _list_table_row(item: EntrantModel) -> rx.Component:
             )
         ),
         rx.table.cell(
+            rx.cond(item.entrant_group, item.entrant_group.title, "—")
+        ),
+        rx.table.cell(
             rx.cond(
                 item.specialties,
                 rx.cond(
@@ -128,6 +134,7 @@ def _list_table() -> rx.Component:
                 _sortable_header("Електронна пошта", "email"),
                 _sortable_header("База вступу", "entry_base"),
                 _sortable_header("Джерело фінансування", "source_of_funding"),
+                _sortable_header("Група", "entrant_group"),
                 _sortable_header("Спеціальність", "speciality"),
                 _sortable_header("Статус заяви", "application_status"),
             ),
@@ -144,12 +151,68 @@ def _list_table() -> rx.Component:
     )
 
 
+def _general_view_content() -> rx.Component:
+    return rx.cond(
+        ListEntrantState.items.is_not_none() & (ListEntrantState.items.length() > 0),
+        _list_table(),
+        controls.empty_placeholder(),
+    )
+
+
+# --- Priority-specialities view (DK-49) ---
+# Динамічну кількість стовпців-пріоритетів рендеримо CSS-сіткою з плаского списку
+# клітинок (один rx.foreach) — щоб не тримати вкладений foreach по атрибуту моделі.
+
+def _priority_cell(cell: PriorityCell) -> rx.Component:
+    return rx.cond(
+        cell.kind == "header",
+        rx.box(
+            rx.text(cell.text, weight="bold", color=rx.color("accent", 2), white_space="nowrap"),
+            padding="0.5rem 0.75rem",
+            background_color=rx.color("accent", 9),
+        ),
+        rx.cond(
+            cell.kind == "name",
+            rx.box(
+                rx.link(cell.text, href=routes.ENTRANT_VIEW + cell.entrant_id.to_string()),
+                padding="0.5rem 0.75rem",
+                border_bottom=f"1px solid {rx.color('gray', 4)}",
+            ),
+            rx.box(
+                rx.text(cell.text, white_space="nowrap"),
+                padding="0.5rem 0.75rem",
+                border_bottom=f"1px solid {rx.color('gray', 4)}",
+            ),
+        ),
+    )
+
+
+def _priority_grid() -> rx.Component:
+    return rx.box(
+        rx.foreach(ListEntrantState.priority_cells, _priority_cell),
+        display="grid",
+        grid_template_columns=ListEntrantState.priority_grid_template,
+        width="100%",
+        border=f"1px solid {rx.color('gray', 5)}",
+        border_radius="0.5rem",
+        overflow="hidden",
+    )
+
+
+def _priority_view_content() -> rx.Component:
+    return rx.cond(
+        ListEntrantState.priority_cells.length() > 0,
+        _priority_grid(),
+        controls.empty_placeholder(),
+    )
+
+
 def list_page_content() -> rx.Component:
     return rx.vstack(
         rx.cond(
-            ListEntrantState.items.is_not_none() & (ListEntrantState.items.length() > 0),
-            _list_table(),
-            controls.empty_placeholder(),
+            ListEntrantState.current_view == VIEW_PRIORITIES,
+            _priority_view_content(),
+            _general_view_content(),
         ),
         width="100%",
     )
@@ -166,7 +229,7 @@ def _filter_field(label: str, control: rx.Component) -> rx.Component:
     )
 
 
-def _list_filter_panel() -> rx.Component:
+def _general_filter_panel() -> rx.Component:
     # Контроли розкладені сіткою (1/2/3 колонки за шириною екрана), щоб картка
     # фільтрів займала менше місця по вертикалі.
     return controls.filter_panel(
@@ -221,17 +284,7 @@ def _list_filter_panel() -> rx.Component:
                 ),
             ),
             _filter_field(
-                "Спеціальність у пріоритетах:",
-                _select(
-                    ListEntrantState.speciality_options,
-                    ListEntrantState.filter_speciality_key,
-                    ListEntrantState.set_filter_speciality_key,
-                    placeholder="Будь-яка",
-                    width="100%",
-                ),
-            ),
-            _filter_field(
-                "Пріоритетна спеціальність (№1):",
+                "Пріоритетна спеціальність:",
                 _select(
                     ListEntrantState.speciality_options,
                     ListEntrantState.filter_top_speciality_key,
@@ -304,6 +357,120 @@ def _date_filter() -> rx.Component:
     )
 
 
+# --- Priority-specialities view: its own independent filters (DK-49) ---
+
+def _priority_date_filter() -> rx.Component:
+    """Фільтр по даті створення для представлення пріоритетів (окремі поля p_filter_*)."""
+    return rx.vstack(
+        rx.text("Дата створення:", weight="medium"),
+        rx.radio(
+            ["День", "Період"],
+            value=rx.cond(ListEntrantState.is_p_date_mode_period, "Період", "День"),
+            on_change=ListEntrantState.set_p_filter_date_mode,
+            direction="row",
+            spacing="4",
+        ),
+        rx.cond(
+            ListEntrantState.is_p_date_mode_period,
+            rx.hstack(
+                rx.vstack(
+                    rx.text("З:", size="2"),
+                    rx.input(
+                        type="date",
+                        value=ListEntrantState.p_filter_date_from,
+                        on_change=ListEntrantState.set_p_filter_date_from,
+                        width="100%",
+                    ),
+                    spacing="1",
+                    align="stretch",
+                    width="100%",
+                ),
+                rx.vstack(
+                    rx.text("По:", size="2"),
+                    rx.input(
+                        type="date",
+                        value=ListEntrantState.p_filter_date_to,
+                        on_change=ListEntrantState.set_p_filter_date_to,
+                        width="100%",
+                    ),
+                    spacing="1",
+                    align="stretch",
+                    width="100%",
+                ),
+                spacing="2",
+                width="100%",
+            ),
+            rx.input(
+                type="date",
+                value=ListEntrantState.p_filter_date_day,
+                on_change=ListEntrantState.set_p_filter_date_day,
+                width="100%",
+            ),
+        ),
+        spacing="1",
+        align="stretch",
+        width="100%",
+    )
+
+
+def _priority_filter_panel() -> rx.Component:
+    return controls.filter_panel(
+        ListEntrantState.filter_open,
+        rx.grid(
+            _filter_field(
+                "Пріоритетна спеціальність:",
+                _select(
+                    ListEntrantState.speciality_options,
+                    ListEntrantState.p_filter_speciality_key,
+                    ListEntrantState.set_p_filter_speciality_key,
+                    placeholder="Будь-яка",
+                    width="100%",
+                ),
+            ),
+            _priority_date_filter(),
+            columns=rx.breakpoints(initial="1", sm="2"),
+            spacing="3",
+            width="100%",
+            align="start",
+        ),
+        on_clear=ListEntrantState.clear_priority_filters,
+    )
+
+
+def _view_toggle() -> rx.Component:
+    """Рядок кнопок-перемикачів представлень над таблицею (DK-49): активне —
+    primary, решта — secondary."""
+    return rx.hstack(
+        rx.cond(
+            ListEntrantState.current_view == VIEW_GENERAL,
+            controls.button_primary("Загальна інформація", on_click=ListEntrantState.switch_view(VIEW_GENERAL)),
+            controls.button_secondary("Загальна інформація", on_click=ListEntrantState.switch_view(VIEW_GENERAL)),
+        ),
+        rx.cond(
+            ListEntrantState.current_view == VIEW_PRIORITIES,
+            controls.button_primary("Пріоритетні спеціальності", on_click=ListEntrantState.switch_view(VIEW_PRIORITIES)),
+            controls.button_secondary("Пріоритетні спеціальності", on_click=ListEntrantState.switch_view(VIEW_PRIORITIES)),
+        ),
+        spacing="2",
+        width="100%",
+    )
+
+
+def _filter_area() -> rx.Component:
+    """Область над таблицею: перемикач представлень + панель фільтрів активного
+    представлення. Рендериться між шапкою і контентом (поза skeleton), щоб не блимати."""
+    return rx.vstack(
+        _view_toggle(),
+        rx.cond(
+            ListEntrantState.current_view == VIEW_PRIORITIES,
+            _priority_filter_panel(),
+            _general_filter_panel(),
+        ),
+        spacing="3",
+        width="100%",
+    )
+
+
 @require_login
 def list_page() -> rx.Component:
     return page_wrapper(
@@ -317,7 +484,7 @@ def list_page() -> rx.Component:
             width="100%",
         ),
         rx.skeleton(list_page_content(), loading=ListEntrantState.in_progress, height="100%"),
-        filter_panel=_list_filter_panel(),
+        filter_panel=_filter_area(),
         on_mount=ListEntrantState.on_load,
     )
 
@@ -627,7 +794,7 @@ def view_page_content() -> rx.Component:
                     _v_photo(),
                     rx.vstack(
                         _v_kv("ПІБ", ViewEntrantState.item.person.pib),
-                        _v_kv("Код ЄДБО", rx.cond(ViewEntrantState.item.person.edbo, ViewEntrantState.item.person.edbo, "—")),
+                        _v_kv("ID особи в ЄДБО", rx.cond(ViewEntrantState.item.person.edbo, ViewEntrantState.item.person.edbo, "—")),
                         _v_kv("Громадянство", ViewEntrantState.item.person.citizenship),
                         _v_kv("Стать", ViewEntrantState.item.person.sex),
                         _v_kv("Дата народження", ViewEntrantState.item.person.date_of_birth),
@@ -738,7 +905,7 @@ def _photo_block() -> rx.Component:
 
 def _personal_fields() -> rx.Component:
     return rx.vstack(
-        rx.text("Код ЄДБО:"),
+        rx.text("ID особи в ЄДБО:"),
         rx.input(
             value=EntrantFormState.edbo,
             on_change=EntrantFormState.set_edbo,
@@ -803,8 +970,6 @@ def _personal_fields() -> rx.Component:
                 color="gray",
             ),
         ),
-        rx.text("Група ЗНО:"),
-        _select(EntrantFormState.entrant_group_options, EntrantFormState.id_entrant_group_str, EntrantFormState.set_id_entrant_group, width="100%"),
         rx.text("Коментар:"),
         rx.text_area(value=EntrantFormState.comment, on_change=EntrantFormState.set_comment, resize="vertical", width="100%"),
         spacing="2",
@@ -1062,6 +1227,46 @@ def _f_sp_row(item, idx: int) -> rx.Component:
     )
 
 
+def _f_group_block() -> rx.Component:
+    """Вибір екзаменаційної групи ЗНО — під таблицею спеціальностей (DK-48).
+
+    Кнопка «Визначити автоматично» зʼявляється, коли додано хоча б одну
+    спеціальність. Ручний вибір групи лишається доступним завжди."""
+    return rx.vstack(
+        rx.heading("Група ЗНО", size="3", margin_top="0.5rem"),
+        rx.hstack(
+            _select(
+                EntrantFormState.entrant_group_options,
+                EntrantFormState.id_entrant_group_str,
+                EntrantFormState.set_id_entrant_group,
+                width="100%",
+            ),
+            rx.cond(
+                EntrantFormState.specialties.length() > 0,
+                controls.button_secondary(
+                    rx.icon("wand-sparkles", size=18),
+                    "Визначити автоматично",
+                    on_click=EntrantFormState.on_click_autodetect_group,
+                ),
+            ),
+            align="center",
+            spacing="2",
+            width="100%",
+        ),
+        rx.cond(
+            EntrantFormState.pending_group_note != "",
+            rx.text(EntrantFormState.pending_group_note, size="2", color=rx.color("accent", 11), weight="medium"),
+        ),
+        rx.cond(
+            EntrantFormState.group_limit_warning != "",
+            rx.text(EntrantFormState.group_limit_warning, size="2", color=rx.color("tomato", 11), weight="medium"),
+        ),
+        spacing="1",
+        align="stretch",
+        width="100%",
+    )
+
+
 def _f_sp_section() -> rx.Component:
     return rx.vstack(
         rx.hstack(
@@ -1080,6 +1285,7 @@ def _f_sp_section() -> rx.Component:
             ),
             controls.empty_placeholder(),
         ),
+        _f_group_block(),
         width="100%",
     )
 
@@ -1322,6 +1528,52 @@ def _dlg_sp() -> rx.Component:
     )
 
 
+def _rz_calc_panel() -> rx.Component:
+    """Калькулятор комплексного балу (DK-47): середнє/сума введених компонентів."""
+    return rx.box(
+        rx.vstack(
+            rx.text("Калькулятор комплексного балу", weight="bold", size="2"),
+            rx.text(
+                "Введіть компоненти через пробіл або кому (напр. бали предметів НМТ).",
+                size="1", color="gray",
+            ),
+            rx.input(
+                placeholder="150 160 170 180",
+                value=EntrantFormState.rz_calc_components,
+                on_change=EntrantFormState.set_rz_calc_components,
+                width="100%",
+            ),
+            rx.hstack(
+                rx.cond(
+                    EntrantFormState.is_rz_calc_avg,
+                    controls.button_primary("Середнє", on_click=EntrantFormState.set_rz_calc_mode("avg")),
+                    controls.button_secondary("Середнє", on_click=EntrantFormState.set_rz_calc_mode("avg")),
+                ),
+                rx.cond(
+                    EntrantFormState.is_rz_calc_avg,
+                    controls.button_secondary("Сума", on_click=EntrantFormState.set_rz_calc_mode("sum")),
+                    controls.button_primary("Сума", on_click=EntrantFormState.set_rz_calc_mode("sum")),
+                ),
+                spacing="2",
+            ),
+            rx.hstack(
+                rx.text("Результат:", weight="bold"),
+                rx.text(EntrantFormState.rz_calc_result_str),
+                rx.spacer(),
+                controls.button_secondary("Застосувати", on_click=EntrantFormState.rz_calc_apply),
+                align="center",
+                width="100%",
+            ),
+            spacing="2",
+            align="stretch",
+        ),
+        padding="0.75em",
+        border=f"1px solid {rx.color('accent', 6)}",
+        border_radius="0.5em",
+        width="100%",
+    )
+
+
 def _dlg_rz() -> rx.Component:
     return rx.dialog.root(
         rx.dialog.content(
@@ -1329,9 +1581,16 @@ def _dlg_rz() -> rx.Component:
             rx.vstack(
                 rx.text("*Предмет:"),
                 _select(EntrantFormState.item_zno_options, EntrantFormState.rz_id_items_zno_str, EntrantFormState.set_rz_id_items_zno, width="100%"),
-                rx.text("*Бали:"),
-                rx.input(type="number", value=EntrantFormState.rz_points.to_string(), on_change=EntrantFormState.set_rz_points, width="100%"),
+                rx.hstack(
+                    rx.text("*Бали:"),
+                    rx.spacer(),
+                    controls.button_image_secondary(name_icon="calculator", on_click=EntrantFormState.toggle_rz_calc),
+                    align="center",
+                    width="100%",
+                ),
+                rx.input(type="number", step="any", value=EntrantFormState.rz_points_input, on_change=EntrantFormState.set_rz_points_input, width="100%"),
                 rx.text(EntrantFormState.rz_coefficient_hint, size="2", color="gray"),
+                rx.cond(EntrantFormState.rz_calc_open, _rz_calc_panel()),
                 _dialog_buttons(EntrantFormState.save_rz, EntrantFormState.close_rz),
                 spacing="2",
                 align="stretch",

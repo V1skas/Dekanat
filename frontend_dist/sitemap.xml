@@ -28,6 +28,9 @@
     <loc>http://0.0.0.0/reporting/admission_campaign</loc>
   </url>
   <url>
+    <loc>http://0.0.0.0/reporting/registration_journal</loc>
+  </url>
+  <url>
     <loc>http://0.0.0.0/base/identity_document_type/list</loc>
   </url>
   <url>
@@ -104,9 +107,6 @@
   </url>
   <url>
     <loc>http://0.0.0.0/admission_commission/entrant_exam/add</loc>
-  </url>
-  <url>
-    <loc>http://0.0.0.0/admission_commission/entrant_exam/print</loc>
   </url>
   <url>
     <loc>http://0.0.0.0/admission_commission/entrants_group/list</loc>

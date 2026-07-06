@@ -3,6 +3,7 @@ from typing import Optional
 from sqlmodel import Session, select, delete
 
 from Dekanat.models import AuthTokenModel
+from Dekanat.utils.clock import now_local
 
 
 class AuthTokenDao:
@@ -30,7 +31,7 @@ class AuthTokenDao:
     def delete_expired(session: Session, now: Optional[datetime] = None) -> int:
         """Видаляє всі токени, у яких expires_at <= now. Повертає к-сть видалених."""
         try:
-            current = now or datetime.now()
+            current = now or now_local()
             result = session.exec(
                 delete(AuthTokenModel).where(AuthTokenModel.expires_at <= current)
             )
@@ -42,7 +43,7 @@ class AuthTokenDao:
     @staticmethod
     def touch(token: AuthTokenModel, new_expires_at: datetime, session: Session) -> AuthTokenModel:
         """Продовжує термін дії токена (ковзне вікно)."""
-        token.last_activity_at = datetime.now()
+        token.last_activity_at = now_local()
         token.expires_at = new_expires_at
         session.add(token)
         return token

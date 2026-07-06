@@ -13,6 +13,7 @@ from Dekanat.views import admission_campaign
 from Dekanat.views import admission_campaign_report
 from Dekanat.views import app_setting
 from Dekanat.views import rating
+from Dekanat.views import registration_journal
 from Dekanat.views import application_status
 from Dekanat.views import dashboard
 from Dekanat.views import department
@@ -36,6 +37,7 @@ from Dekanat.states import admission_campaign as admission_campaign_states
 from Dekanat.states import admission_campaign_report as admission_campaign_report_states
 from Dekanat.states import app_setting as app_setting_states
 from Dekanat.states import rating as rating_states
+from Dekanat.states import registration_journal as registration_journal_states
 from Dekanat.states import application_status as application_status_states
 from Dekanat.states import department as department_states
 from Dekanat.states import entrant as entrant_states
@@ -91,6 +93,7 @@ app.add_page(dashboard.admission_commission_dashboard_page, route=routes.DASHBOA
 app.add_page(dashboard.admin_dashboard_page, route=routes.DASHBOARD_ADMIN)
 app.add_page(dashboard.reporting_dashboard_page, route=routes.DASHBOARD_REPORTING)
 app.add_page(admission_campaign_report.list_page, route=routes.REPORT_ADMISSION, on_load=admission_campaign_report_states.ListAdmissionReportState.on_load)
+app.add_page(registration_journal.list_page, route=routes.REPORT_JOURNAL, on_load=registration_journal_states.ListRegistrationJournalState.on_load)
 
 app.add_page(identity_document_type.list_page, route=routes.IDENTITY_DOCUMENT_TYPE_LIST, on_load=identity_document_type_states.ListIdentityDocumentTypeState.on_load)
 app.add_page(identity_document_type.add_page, route=routes.IDENTITY_DOCUMENT_TYPE_ADD, on_load=identity_document_type_states.AddIdentityDocumentTypeState.on_load)
@@ -156,7 +159,6 @@ app.add_page(entrant_exam.list_page, route=routes.ENTRANT_EXAM_LIST, on_load=ent
 app.add_page(entrant_exam.add_page, route=routes.ENTRANT_EXAM_ADD, on_load=entrant_exam_states.AddEntrantExamState.on_load)
 app.add_page(entrant_exam.edit_page, route=routes.ENTRANT_EXAM_EDIT+"[id]", on_load=entrant_exam_states.EditEntrantExamState.on_load)
 app.add_page(entrant_exam.view_page, route=routes.ENTRANT_EXAM_VIEW+"[id]", on_load=entrant_exam_states.ViewEntrantExamState.on_load)
-app.add_page(entrant_exam.print_page, route=routes.ENTRANT_EXAM_PRINT, on_load=entrant_exam_states.PrintEntrantExamState.on_load)
 
 app.add_page(entrants_group.list_page, route=routes.ENTRANTS_GROUP_LIST, on_load=entrants_group_states.ListEntrantsGroupState.on_load)
 app.add_page(entrants_group.auto_generate_page, route=routes.ENTRANTS_GROUP_AUTO, on_load=entrants_group_states.AutoGenerateEntrantsGroupState.on_load)

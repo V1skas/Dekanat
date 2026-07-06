@@ -23,8 +23,8 @@ class ResultZnoService:
         self,
         id_items_zno: int,
         id_person: int,
-        points: Optional[int],
-        points_raw: Optional[int] = None,
+        points: Optional[float],
+        points_raw: Optional[float] = None,
     ) -> None:
         """Якщо `points is None` — видаляє існуючу оцінку. Інакше — створює/оновлює.
         `points` — підсумковий (домножений) бал, `points_raw` — сирий (введений)."""

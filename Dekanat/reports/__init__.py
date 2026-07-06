@@ -23,6 +23,14 @@ from typing import Dict, Type
 from Dekanat.reports.base import BaseReport
 from Dekanat.reports.engine import render_docx, render_xlsx, TEMPLATES_DIR
 from Dekanat.reports.rating import RatingReport, RatingApplicant
+from Dekanat.reports.registration_journal import (
+    RegistrationJournalReport,
+    RegistrationJournalRow,
+)
+from Dekanat.reports.entrant_exam import (
+    ExamScheduleReport,
+    ExamScheduleRow,
+)
 from Dekanat.reports.xlsx_reports import (
     ExamApplicant,
     VidomistReport,
@@ -55,6 +63,10 @@ __all__ = [
     "get_report_class",
     "RatingReport",
     "RatingApplicant",
+    "RegistrationJournalReport",
+    "RegistrationJournalRow",
+    "ExamScheduleReport",
+    "ExamScheduleRow",
     "ExamApplicant",
     "VidomistReport",
     "VykladachamReport",

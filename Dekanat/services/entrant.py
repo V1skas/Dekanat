@@ -5,8 +5,10 @@ from datetime import datetime
 from typing import Optional, Sequence, Tuple
 
 from Dekanat.dao.entrant import EntrantDao
+from Dekanat.utils.clock import now_local
 from Dekanat.models import (
     EntrantModel,
+    EntrantGroupModel,
     PersonModel,
     SpecialtieEntrantModel,
     IdentityDocumentModel,
@@ -62,6 +64,27 @@ class EntrantService:
             print(f"[EntrantService][get_list_items][ERROR] {e}")
             raise
 
+    def get_priority_items(
+        self,
+        top_priority_speciality_id: Optional[int] = None,
+        created_between: Optional[Tuple[datetime, datetime]] = None,
+        created_date_between: Optional[Tuple[datetime, datetime]] = None,
+    ) -> Sequence[EntrantModel]:
+        """Полегшена вибірка для представлення «Пріоритетні спеціальності» (DK-49):
+        абітурієнти з підвантаженими лише ПІБ та пріоритетним списком спеціальностей.
+        Фільтр — по пріоритетній спеціальності (пріоритет №1)."""
+        try:
+            with rx.session() as session:
+                return EntrantDao.get_priority_view(
+                    session,
+                    top_priority_speciality_id=top_priority_speciality_id,
+                    created_between=created_between,
+                    created_date_between=created_date_between,
+                )
+        except Exception as e:
+            print(f"[EntrantService][get_priority_items][ERROR] {e}")
+            raise
+
     def get_by_id(self, id: int) -> Optional[EntrantModel]:
         try:
             with rx.session() as session:
@@ -108,6 +131,20 @@ class EntrantService:
                     "навчання в активній кампанії."
                 )
 
+    @staticmethod
+    def _apply_new_group(entrant: EntrantModel, new_group_title: Optional[str], session) -> None:
+        """Створює нову екзаменаційну групу з переданою назвою у поточній транзакції
+        і привʼязує до неї абітурієнта (DK-48). Викликається лише коли автопідбір у
+        картці запропонував НОВУ групу; наявну групу картка передає через
+        `entrant.id_entrant_group`, тож тут нічого не робимо."""
+        title = (new_group_title or "").strip()
+        if not title:
+            return
+        group = EntrantGroupModel(title=title)
+        session.add(group)
+        session.flush()
+        entrant.id_entrant_group = group.id
+
     def add_one(
         self,
         person: PersonModel,
@@ -120,6 +157,7 @@ class EntrantService:
         special_conditions: list[SpecialConditionPersonModel],
         specialties: list[SpecialtieEntrantModel],
         results_zno: list[ResultZnoModel],
+        new_group_title: Optional[str] = None,
     ) -> EntrantModel:
         try:
             self._validate_mokpp(person)
@@ -132,6 +170,10 @@ class EntrantService:
                 person.id = None  # type: ignore[assignment]
                 saved_person = EntrantDao.add_person(person, session)
                 person_id = saved_person.id
+
+                # Автопідбір групи (DK-48): нова група створюється лише зараз, при
+                # збереженні картки, і одразу привʼязується до абітурієнта.
+                self._apply_new_group(entrant, new_group_title, session)
 
                 entrant.id = person_id  # type: ignore[assignment]
                 saved_entrant = EntrantDao.add_entrant(entrant, session)
@@ -164,6 +206,7 @@ class EntrantService:
         special_conditions: list[SpecialConditionPersonModel],
         specialties: list[SpecialtieEntrantModel],
         results_zno: list[ResultZnoModel],
+        new_group_title: Optional[str] = None,
     ) -> EntrantModel:
         try:
             self._validate_mokpp(person)
@@ -172,6 +215,8 @@ class EntrantService:
                 # Дублікат по ІПН (виключаючи саму картку, що редагується) — DK-36.
                 if person.mokpp and EntrantDao.get_person_by_mokpp(person.mokpp, session, exclude_id=person.id) is not None:
                     raise ValueError(f"Абітурієнт з ІПН {person.mokpp} вже існує.")
+                # Автопідбір групи (DK-48): нову групу створюємо лише зараз.
+                self._apply_new_group(entrant, new_group_title, session)
                 # Preserve timestamps from existing rows and bump status_changed_at only if status really changed.
                 existing_person = session.get(PersonModel, person.id)
                 if existing_person is not None:
@@ -180,7 +225,7 @@ class EntrantService:
                 if existing_entrant is not None:
                     entrant.created_at = existing_entrant.created_at
                     if existing_entrant.id_application_status != entrant.id_application_status:
-                        entrant.application_status_changed_at = datetime.now()
+                        entrant.application_status_changed_at = now_local()
                     else:
                         entrant.application_status_changed_at = existing_entrant.application_status_changed_at
 

@@ -8,6 +8,7 @@ from Dekanat.dao.worker import WorkerDao
 from Dekanat.models import AuthTokenModel, WorkerModel
 from Dekanat.services.app_setting import AppSettingService
 from Dekanat.utils import generators
+from Dekanat.utils.clock import now_local
 
 
 class AuthService:
@@ -15,7 +16,7 @@ class AuthService:
         minutes = AppSettingService().get_session_timeout_minutes()
         if minutes <= 0:
             minutes = 60
-        return datetime.now() + timedelta(minutes=minutes)
+        return now_local() + timedelta(minutes=minutes)
 
     def get_auth_token(self, cache_token: str) -> Optional[AuthTokenModel]:
         """Повертає валідний (не протермінований) токен та продовжує його (ковзне вікно).
@@ -29,7 +30,7 @@ class AuthService:
                 if token is None:
                     session.commit()
                     return None
-                if token.expires_at <= datetime.now():
+                if token.expires_at <= now_local():
                     AuthTokenDao.delete(token, session)
                     session.commit()
                     return None
@@ -88,7 +89,7 @@ class AuthService:
                 token=generators.generate_auth_token(),
                 id_worker=worker.id,
                 expires_at=self._compute_expiry(),
-                last_activity_at=datetime.now(),
+                last_activity_at=now_local(),
             )
             AuthTokenDao.add_one(auth_token, session)
             session.commit()

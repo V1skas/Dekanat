@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import reflex as rx
 from sqlmodel import select
 
+from Dekanat.utils.clock import now_local
 from Dekanat.models import (
     DepartmentModel,
     SpecialityModel,
@@ -107,7 +108,11 @@ def seed_reference_data(session):
     ]
     item_znos = []
     for t in item_zno_titles:
-        i, _ = get_or_create(session, ItemZnoModel, title=t)
+        # Seed-предмети враховуються у рейтингу, щоб знімок рейтингу мав ненульові
+        # бали одразу після сідінгу (DK-47: дефолт False).
+        i, _ = get_or_create(
+            session, ItemZnoModel, defaults={"is_counted_in_rating": True}, title=t
+        )
         item_znos.append(i)
 
     sof_titles = ["Бюджет", "Контракт", "Цільовий прийом"]
@@ -195,7 +200,7 @@ def seed_reference_data(session):
 
 def seed_campaign(session, specialties, entry_bases, forms_of_study):
     print("→ Вступна кампанія + квоти")
-    today = datetime.now().date()
+    today = now_local().date()
     start = today - timedelta(days=30)
     end = today + timedelta(days=60)
 
@@ -331,7 +336,7 @@ def seed_entrants(session, refs, campaign, count=100):
                 title=sc.title,
                 number=f"SC{random.randint(10000, 99999)}",
                 description=None,
-                date_of_issue=datetime.now().strftime("%Y-%m-%d"),
+                date_of_issue=now_local().strftime("%Y-%m-%d"),
             ))
 
         created += 1

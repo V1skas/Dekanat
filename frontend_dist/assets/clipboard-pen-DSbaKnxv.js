@@ -1,0 +1,1 @@
+import"./react-D5nPORWt.js";import{n as e,t}from"./clipboard-pen-DrBUpOY3.js";export{e as __iconNode,t as default};

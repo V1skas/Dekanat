@@ -16,6 +16,7 @@ from Dekanat.models import (
     SpecialtieEntrantModel,
     SpecialityModel,
 )
+from Dekanat.utils.clock import now_local
 
 
 def _spec_label(s: Optional[SpecialityModel]) -> str:
@@ -72,7 +73,7 @@ class AdmissionCampaignReportService:
                     start_d = date.fromisoformat(campaign.start_date)
                     end_d = date.fromisoformat(campaign.end_date)
                 except (ValueError, TypeError):
-                    today = date.today()
+                    today = now_local().date()
                     start_d, end_d = today, today
                 start_dt = datetime.combine(start_d, datetime.min.time())
                 end_dt = datetime.combine(end_d, datetime.max.time())
@@ -90,7 +91,7 @@ class AdmissionCampaignReportService:
                     .where(EntrantModel.created_at <= end_dt)
                 ).all()
 
-                today = date.today()
+                today = now_local().date()
                 today_start = datetime.combine(today, datetime.min.time())
                 today_end = datetime.combine(today, datetime.max.time())
                 week_start = today - timedelta(days=6)  # вкл. сьогодні — 7 днів
