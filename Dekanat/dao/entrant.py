@@ -217,6 +217,39 @@ class EntrantDao:
         return session.exec(statement).all()
 
     @staticmethod
+    def get_priority_view(
+        session: Session,
+        with_del: bool = False,
+        created_between: Optional[Tuple[datetime, datetime]] = None,
+        created_date_between: Optional[Tuple[datetime, datetime]] = None,
+        top_priority_speciality_id: Optional[int] = None,
+    ) -> Sequence[EntrantModel]:
+        """Полегшена вибірка для представлення «Пріоритетні спеціальності» (DK-49).
+
+        На відміну від get_all, підтягує ЛИШЕ person (для ПІБ) та specialties→speciality
+        (для тегів по пріоритетах) — решта звʼязків для цієї таблиці не потрібна, тож не
+        вантажимо їх у память. Фільтр — по пріоритетній спеціальності (пріоритет №1).
+        Сортування — за ПІБ (UA-collation)."""
+        statement = (
+            select(EntrantModel)
+            .options(
+                selectinload(EntrantModel.person),
+                selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.speciality),
+            )
+            .join(PersonModel, EntrantModel.id == PersonModel.id)
+        )
+        if not with_del:
+            statement = statement.where(EntrantModel.is_deleted == False)
+        statement = apply_entrant_filters(
+            statement,
+            created_between=created_between,
+            created_date_between=created_date_between,
+            top_priority_speciality_id=top_priority_speciality_id,
+        )
+        statement = statement.order_by(ua_collate(PersonModel.pib).asc())
+        return session.exec(statement).all()
+
+    @staticmethod
     def get_by_id(id: int, session: Session, with_del: bool = False) -> Optional[EntrantModel]:
         statement = select(EntrantModel).options(*_entrant_loaders()).where(EntrantModel.id == id)
         if not with_del:

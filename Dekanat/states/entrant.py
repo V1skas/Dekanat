@@ -1,5 +1,6 @@
 import reflex as rx
 
+from pydantic import BaseModel
 from typing import Sequence, Optional, List, Dict
 from datetime import date, datetime
 
@@ -50,11 +51,47 @@ def _from_suffix(came_from: str) -> str:
     return f"?from={FROM_APPLICATIONS}" if came_from == FROM_APPLICATIONS else ""
 
 
+# Представлення списку абітурієнтів (DK-49). Перемикаються кнопками над таблицею;
+# кожне вантажить лише свої дані окремим методом, дані іншого представлення в память
+# не тримаються.
+VIEW_GENERAL = "general"       # поточна таблиця з загальною інформацією по заявці
+VIEW_PRIORITIES = "priorities"  # ПІБ + теги спеціальностей по пріоритетах (стовпці 1, 2, 3…)
+
+
+class PriorityCell(BaseModel):
+    """Одна клітинка пласкої сітки представлення «Пріоритетні спеціальності» (DK-49).
+
+    Сітку рендеримо пласким списком клітинок (row-major) через один `rx.foreach`,
+    щоб уникнути вкладеного `rx.foreach` по атрибуту-списку моделі (заборонено Reflex)
+    і при цьому мати динамічну кількість стовпців (пріоритетів)."""
+    text: str = ""
+    kind: str = "tag"       # "header" | "name" | "tag"
+    entrant_id: int = 0     # для kind == "name" — id картки абітурієнта (посилання)
+
+
 # ---------- List page ----------
 
 class ListEntrantState(AppState):
     items: Optional[Sequence[EntrantModel]] = None
     in_progress: bool = True
+
+    # Активне представлення таблиці (DK-49).
+    current_view: str = VIEW_GENERAL
+
+    # Дані представлення «Пріоритетні спеціальності» (DK-49): плаский список клітинок
+    # (заголовок + рядки) та кількість стовпців-пріоритетів. Заповнюється лише коли це
+    # представлення активне; при перемиканні на загальне — очищається.
+    priority_cells: List[PriorityCell] = []
+    priority_max: int = 0
+    # Окремі фільтри представлення пріоритетів (незалежні від фільтрів загального списку).
+    # p_filter_speciality_key — фільтр по пріоритетній спеціальності (№1) — DK-49.
+    p_filter_speciality_key: str = "__all__"
+    p_filter_date_mode: str = "day"  # "day" | "period"
+    p_filter_date_day: str = ""
+    p_filter_date_from: str = ""
+    p_filter_date_to: str = ""
+    # Одноразова ініціалізація дефолтів фільтра пріоритетів (період активної кампанії).
+    p_initialized: bool = False
 
     # Стан панелі фільтрів
     filter_open: bool = False
@@ -64,8 +101,7 @@ class ListEntrantState(AppState):
     filter_entry_base_id: int = 0
     filter_campaign_id: int = 0  # 0 — без фільтра по кампанії
     # "code|id_department"; "__all__" — без фільтра (Radix забороняє value="" в rx.select.item).
-    # filter_speciality_key — будь-який пріоритет; filter_top_speciality_key — лише пріоритет №1 (DK-36).
-    filter_speciality_key: str = "__all__"
+    # filter_top_speciality_key — фільтр по пріоритетній спеціальності (пріоритет №1) — DK-36.
     filter_top_speciality_key: str = "__all__"
     # Фільтр по даті створення (DK-34). Режим "day" — конкретний день; "period" — діапазон.
     filter_date_mode: str = "day"  # "day" | "period"
@@ -139,7 +175,6 @@ class ListEntrantState(AppState):
 
     def _reload_items(self):
         service = EntrantService()
-        spec_id = self._parse_spec_key(self.filter_speciality_key)
         top_id = self._parse_spec_key(self.filter_top_speciality_key)
         self.items = service.get_list_items(
             pib=self.filter_pib.strip() or None,
@@ -148,11 +183,105 @@ class ListEntrantState(AppState):
             entry_base_id=self.filter_entry_base_id or None,
             created_between=self._campaign_range(),
             created_date_between=self._date_range(),
-            priority_speciality_id=spec_id,
             top_priority_speciality_id=top_id,
             sort_field=self.sort_field or None,
             sort_dir=self.sort_dir,
         )
+
+    # --- priority-specialities view (DK-49) ---
+
+    def _p_date_range(self):
+        """Діапазон created_at для фільтра дати представлення пріоритетів (аналог
+        `_date_range`, але на окремих полях `p_filter_*`)."""
+        if self.p_filter_date_mode == "day":
+            if not self.p_filter_date_day:
+                return None
+            try:
+                day = datetime.strptime(self.p_filter_date_day, "%Y-%m-%d")
+            except (ValueError, TypeError):
+                return None
+            return (
+                day.replace(hour=0, minute=0, second=0),
+                day.replace(hour=23, minute=59, second=59),
+            )
+        if not self.p_filter_date_from and not self.p_filter_date_to:
+            return None
+        start_dt = datetime.min
+        end_dt = datetime.max
+        if self.p_filter_date_from:
+            try:
+                start_dt = datetime.strptime(self.p_filter_date_from, "%Y-%m-%d").replace(hour=0, minute=0, second=0)
+            except (ValueError, TypeError):
+                pass
+        if self.p_filter_date_to:
+            try:
+                end_dt = datetime.strptime(self.p_filter_date_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            except (ValueError, TypeError):
+                pass
+        return (start_dt, end_dt)
+
+    def _reload_priority(self):
+        """Перезбирає плаский список клітинок представлення «Пріоритетні спеціальності».
+        Полегшену вибірку тримаємо локально — у стан кладемо лише готові клітинки."""
+        items = EntrantService().get_priority_items(
+            top_priority_speciality_id=self._parse_spec_key(self.p_filter_speciality_key),
+            created_date_between=self._p_date_range(),
+        )
+        if not items:
+            self.priority_cells = []
+            self.priority_max = 0
+            return
+
+        max_p = 0
+        rows: List[tuple] = []  # (entrant_id, pib, {priority: tag})
+        for e in items:
+            pib = e.person.pib if e.person is not None and e.person.pib else "—"
+            by_prio: Dict[int, str] = {}
+            for sp in (e.specialties or []):
+                if sp.priority is None:
+                    continue
+                tag = sp.speciality.tag if sp.speciality is not None and sp.speciality.tag else "—"
+                by_prio.setdefault(sp.priority, tag)
+                if sp.priority > max_p:
+                    max_p = sp.priority
+            rows.append((e.id, pib, by_prio))
+
+        cells: List[PriorityCell] = [PriorityCell(text="ПІБ", kind="header")]
+        for i in range(1, max_p + 1):
+            cells.append(PriorityCell(text=str(i), kind="header"))
+        for entrant_id, pib, by_prio in rows:
+            cells.append(PriorityCell(text=pib, kind="name", entrant_id=entrant_id))
+            for i in range(1, max_p + 1):
+                cells.append(PriorityCell(text=by_prio.get(i, "—"), kind="tag"))
+        self.priority_cells = cells
+        self.priority_max = max_p
+
+    @rx.var
+    def priority_grid_template(self) -> str:
+        """CSS grid-template-columns: широкий стовпець ПІБ + N рівних стовпців-пріоритетів."""
+        if self.priority_max <= 0:
+            return "1fr"
+        return "minmax(12rem, 1.5fr) " + " ".join(["minmax(4rem, 1fr)"] * self.priority_max)
+
+    @rx.event
+    def switch_view(self, view: str):
+        """Перемикання представлення таблиці (DK-49). Дані попереднього представлення
+        очищаємо, щоб не тримати їх у памʼяті, і вантажимо дані нового."""
+        if view not in (VIEW_GENERAL, VIEW_PRIORITIES) or view == self.current_view:
+            return
+        self.current_view = view
+        self.in_progress = True
+        yield
+        try:
+            if view == VIEW_PRIORITIES:
+                self.items = None
+                self._reload_priority()
+            else:
+                self.priority_cells = []
+                self.priority_max = 0
+                self._reload_items()
+        finally:
+            self.in_progress = False
 
     @rx.event
     def on_load(self):
@@ -176,7 +305,21 @@ class ListEntrantState(AppState):
             active = campaign_service.get_active_campaign()
             self.filter_campaign_id = active.id if active is not None else 0
             self._reload_speciality_options()
-            self._reload_items()
+            # Дефолт фільтра пріоритетів — період активної кампанії (одноразово).
+            if not self.p_initialized:
+                if active is not None:
+                    self.p_filter_date_mode = "period"
+                    self.p_filter_date_from = active.start_date or ""
+                    self.p_filter_date_to = active.end_date or ""
+                self.p_initialized = True
+            # Вантажимо дані активного представлення; неактивне — тримаємо порожнім.
+            if self.current_view == VIEW_PRIORITIES:
+                self.items = None
+                self._reload_priority()
+            else:
+                self.priority_cells = []
+                self.priority_max = 0
+                self._reload_items()
             self.in_progress = False
             return
         except Exception:
@@ -277,7 +420,6 @@ class ListEntrantState(AppState):
         self.filter_status_id = 0
         self.filter_entry_base_id = 0
         self.filter_campaign_id = 0
-        self.filter_speciality_key = "__all__"
         self.filter_top_speciality_key = "__all__"
         self.filter_date_mode = "day"
         self.filter_date_day = ""
@@ -372,8 +514,8 @@ class ListEntrantState(AppState):
         self.speciality_options = opts
 
     @rx.event
-    def set_filter_speciality_key(self, value: str):
-        self.filter_speciality_key = value or ""
+    def set_filter_top_speciality_key(self, value: str):
+        self.filter_top_speciality_key = value or ""
         self.in_progress = True
         yield
         try:
@@ -381,13 +523,76 @@ class ListEntrantState(AppState):
         finally:
             self.in_progress = False
 
+    # --- priority-view filters (DK-49) ---
+
     @rx.event
-    def set_filter_top_speciality_key(self, value: str):
-        self.filter_top_speciality_key = value or ""
+    def set_p_filter_speciality_key(self, value: str):
+        self.p_filter_speciality_key = value or "__all__"
         self.in_progress = True
         yield
         try:
-            self._reload_items()
+            self._reload_priority()
+        finally:
+            self.in_progress = False
+
+    @rx.var
+    def is_p_date_mode_period(self) -> bool:
+        return self.p_filter_date_mode == "period"
+
+    @rx.event
+    def set_p_filter_date_mode(self, value: str):
+        self.p_filter_date_mode = "period" if value in ("period", "Період") else "day"
+        self.p_filter_date_day = ""
+        self.p_filter_date_from = ""
+        self.p_filter_date_to = ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_priority()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_p_filter_date_day(self, value: str):
+        self.p_filter_date_day = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_priority()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_p_filter_date_from(self, value: str):
+        self.p_filter_date_from = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_priority()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_p_filter_date_to(self, value: str):
+        self.p_filter_date_to = value or ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_priority()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def clear_priority_filters(self):
+        self.p_filter_speciality_key = "__all__"
+        self.p_filter_date_mode = "day"
+        self.p_filter_date_day = ""
+        self.p_filter_date_from = ""
+        self.p_filter_date_to = ""
+        self.in_progress = True
+        yield
+        try:
+            self._reload_priority()
         finally:
             self.in_progress = False
 

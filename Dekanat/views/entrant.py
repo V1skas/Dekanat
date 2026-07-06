@@ -8,6 +8,9 @@ from Dekanat.states.entrant import (
     ListEntrantState,
     ViewEntrantState,
     EntrantFormState,
+    PriorityCell,
+    VIEW_GENERAL,
+    VIEW_PRIORITIES,
     CITIZENSHIP_OPTIONS,
     SEX_OPTIONS,
 )
@@ -148,12 +151,68 @@ def _list_table() -> rx.Component:
     )
 
 
+def _general_view_content() -> rx.Component:
+    return rx.cond(
+        ListEntrantState.items.is_not_none() & (ListEntrantState.items.length() > 0),
+        _list_table(),
+        controls.empty_placeholder(),
+    )
+
+
+# --- Priority-specialities view (DK-49) ---
+# Динамічну кількість стовпців-пріоритетів рендеримо CSS-сіткою з плаского списку
+# клітинок (один rx.foreach) — щоб не тримати вкладений foreach по атрибуту моделі.
+
+def _priority_cell(cell: PriorityCell) -> rx.Component:
+    return rx.cond(
+        cell.kind == "header",
+        rx.box(
+            rx.text(cell.text, weight="bold", color=rx.color("accent", 2), white_space="nowrap"),
+            padding="0.5rem 0.75rem",
+            background_color=rx.color("accent", 9),
+        ),
+        rx.cond(
+            cell.kind == "name",
+            rx.box(
+                rx.link(cell.text, href=routes.ENTRANT_VIEW + cell.entrant_id.to_string()),
+                padding="0.5rem 0.75rem",
+                border_bottom=f"1px solid {rx.color('gray', 4)}",
+            ),
+            rx.box(
+                rx.text(cell.text, white_space="nowrap"),
+                padding="0.5rem 0.75rem",
+                border_bottom=f"1px solid {rx.color('gray', 4)}",
+            ),
+        ),
+    )
+
+
+def _priority_grid() -> rx.Component:
+    return rx.box(
+        rx.foreach(ListEntrantState.priority_cells, _priority_cell),
+        display="grid",
+        grid_template_columns=ListEntrantState.priority_grid_template,
+        width="100%",
+        border=f"1px solid {rx.color('gray', 5)}",
+        border_radius="0.5rem",
+        overflow="hidden",
+    )
+
+
+def _priority_view_content() -> rx.Component:
+    return rx.cond(
+        ListEntrantState.priority_cells.length() > 0,
+        _priority_grid(),
+        controls.empty_placeholder(),
+    )
+
+
 def list_page_content() -> rx.Component:
     return rx.vstack(
         rx.cond(
-            ListEntrantState.items.is_not_none() & (ListEntrantState.items.length() > 0),
-            _list_table(),
-            controls.empty_placeholder(),
+            ListEntrantState.current_view == VIEW_PRIORITIES,
+            _priority_view_content(),
+            _general_view_content(),
         ),
         width="100%",
     )
@@ -170,7 +229,7 @@ def _filter_field(label: str, control: rx.Component) -> rx.Component:
     )
 
 
-def _list_filter_panel() -> rx.Component:
+def _general_filter_panel() -> rx.Component:
     # Контроли розкладені сіткою (1/2/3 колонки за шириною екрана), щоб картка
     # фільтрів займала менше місця по вертикалі.
     return controls.filter_panel(
@@ -225,17 +284,7 @@ def _list_filter_panel() -> rx.Component:
                 ),
             ),
             _filter_field(
-                "Спеціальність у пріоритетах:",
-                _select(
-                    ListEntrantState.speciality_options,
-                    ListEntrantState.filter_speciality_key,
-                    ListEntrantState.set_filter_speciality_key,
-                    placeholder="Будь-яка",
-                    width="100%",
-                ),
-            ),
-            _filter_field(
-                "Пріоритетна спеціальність (№1):",
+                "Пріоритетна спеціальність:",
                 _select(
                     ListEntrantState.speciality_options,
                     ListEntrantState.filter_top_speciality_key,
@@ -308,6 +357,120 @@ def _date_filter() -> rx.Component:
     )
 
 
+# --- Priority-specialities view: its own independent filters (DK-49) ---
+
+def _priority_date_filter() -> rx.Component:
+    """Фільтр по даті створення для представлення пріоритетів (окремі поля p_filter_*)."""
+    return rx.vstack(
+        rx.text("Дата створення:", weight="medium"),
+        rx.radio(
+            ["День", "Період"],
+            value=rx.cond(ListEntrantState.is_p_date_mode_period, "Період", "День"),
+            on_change=ListEntrantState.set_p_filter_date_mode,
+            direction="row",
+            spacing="4",
+        ),
+        rx.cond(
+            ListEntrantState.is_p_date_mode_period,
+            rx.hstack(
+                rx.vstack(
+                    rx.text("З:", size="2"),
+                    rx.input(
+                        type="date",
+                        value=ListEntrantState.p_filter_date_from,
+                        on_change=ListEntrantState.set_p_filter_date_from,
+                        width="100%",
+                    ),
+                    spacing="1",
+                    align="stretch",
+                    width="100%",
+                ),
+                rx.vstack(
+                    rx.text("По:", size="2"),
+                    rx.input(
+                        type="date",
+                        value=ListEntrantState.p_filter_date_to,
+                        on_change=ListEntrantState.set_p_filter_date_to,
+                        width="100%",
+                    ),
+                    spacing="1",
+                    align="stretch",
+                    width="100%",
+                ),
+                spacing="2",
+                width="100%",
+            ),
+            rx.input(
+                type="date",
+                value=ListEntrantState.p_filter_date_day,
+                on_change=ListEntrantState.set_p_filter_date_day,
+                width="100%",
+            ),
+        ),
+        spacing="1",
+        align="stretch",
+        width="100%",
+    )
+
+
+def _priority_filter_panel() -> rx.Component:
+    return controls.filter_panel(
+        ListEntrantState.filter_open,
+        rx.grid(
+            _filter_field(
+                "Пріоритетна спеціальність:",
+                _select(
+                    ListEntrantState.speciality_options,
+                    ListEntrantState.p_filter_speciality_key,
+                    ListEntrantState.set_p_filter_speciality_key,
+                    placeholder="Будь-яка",
+                    width="100%",
+                ),
+            ),
+            _priority_date_filter(),
+            columns=rx.breakpoints(initial="1", sm="2"),
+            spacing="3",
+            width="100%",
+            align="start",
+        ),
+        on_clear=ListEntrantState.clear_priority_filters,
+    )
+
+
+def _view_toggle() -> rx.Component:
+    """Рядок кнопок-перемикачів представлень над таблицею (DK-49): активне —
+    primary, решта — secondary."""
+    return rx.hstack(
+        rx.cond(
+            ListEntrantState.current_view == VIEW_GENERAL,
+            controls.button_primary("Загальна інформація", on_click=ListEntrantState.switch_view(VIEW_GENERAL)),
+            controls.button_secondary("Загальна інформація", on_click=ListEntrantState.switch_view(VIEW_GENERAL)),
+        ),
+        rx.cond(
+            ListEntrantState.current_view == VIEW_PRIORITIES,
+            controls.button_primary("Пріоритетні спеціальності", on_click=ListEntrantState.switch_view(VIEW_PRIORITIES)),
+            controls.button_secondary("Пріоритетні спеціальності", on_click=ListEntrantState.switch_view(VIEW_PRIORITIES)),
+        ),
+        spacing="2",
+        width="100%",
+    )
+
+
+def _filter_area() -> rx.Component:
+    """Область над таблицею: перемикач представлень + панель фільтрів активного
+    представлення. Рендериться між шапкою і контентом (поза skeleton), щоб не блимати."""
+    return rx.vstack(
+        _view_toggle(),
+        rx.cond(
+            ListEntrantState.current_view == VIEW_PRIORITIES,
+            _priority_filter_panel(),
+            _general_filter_panel(),
+        ),
+        spacing="3",
+        width="100%",
+    )
+
+
 @require_login
 def list_page() -> rx.Component:
     return page_wrapper(
@@ -321,7 +484,7 @@ def list_page() -> rx.Component:
             width="100%",
         ),
         rx.skeleton(list_page_content(), loading=ListEntrantState.in_progress, height="100%"),
-        filter_panel=_list_filter_panel(),
+        filter_panel=_filter_area(),
         on_mount=ListEntrantState.on_load,
     )
 

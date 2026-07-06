@@ -64,6 +64,27 @@ class EntrantService:
             print(f"[EntrantService][get_list_items][ERROR] {e}")
             raise
 
+    def get_priority_items(
+        self,
+        top_priority_speciality_id: Optional[int] = None,
+        created_between: Optional[Tuple[datetime, datetime]] = None,
+        created_date_between: Optional[Tuple[datetime, datetime]] = None,
+    ) -> Sequence[EntrantModel]:
+        """Полегшена вибірка для представлення «Пріоритетні спеціальності» (DK-49):
+        абітурієнти з підвантаженими лише ПІБ та пріоритетним списком спеціальностей.
+        Фільтр — по пріоритетній спеціальності (пріоритет №1)."""
+        try:
+            with rx.session() as session:
+                return EntrantDao.get_priority_view(
+                    session,
+                    top_priority_speciality_id=top_priority_speciality_id,
+                    created_between=created_between,
+                    created_date_between=created_date_between,
+                )
+        except Exception as e:
+            print(f"[EntrantService][get_priority_items][ERROR] {e}")
+            raise
+
     def get_by_id(self, id: int) -> Optional[EntrantModel]:
         try:
             with rx.session() as session:
