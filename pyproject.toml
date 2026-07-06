@@ -1,6 +1,6 @@
 [project]
 name = "dekanat"
-version = "0.5.4"
+version = "0.6"
 description = ""
 readme = "README.md"
 requires-python = ">=3.13.12"
