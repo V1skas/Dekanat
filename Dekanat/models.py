@@ -492,6 +492,13 @@ class ItemZnoModel(rx.Model, table=True):
     # Ваговий коефіцієнт предмета (DK-40): бал, введений оператором або отриманий на
     # тестуванні, домножається на нього при збереженні оцінки. Дефолт 1.0 — без зміни.
     coefficient: float = Field(default=1.0, nullable=False)
+    # Чи враховується оцінка з цього предмета у рейтинговому списку (DK-47). False
+    # (дефолт) — предмет не бере участі у сумі балів рейтингу і не потрапляє колонкою
+    # оцінок у DOCX рейтингу (напр. окремі компоненти НМТ). Вмикається оператором.
+    is_counted_in_rating: bool = Field(
+        default=False,
+        sa_column=Column("is_counted_in_rating", Boolean, nullable=False, server_default=expression.false()),
+    )
     is_deleted: bool = False
 
 
@@ -504,11 +511,12 @@ class ResultZnoModel(rx.Model, table=True):
     id_items_zno: int = Field(foreign_key="item_zno.id")
     id_person: int = Field(foreign_key="persons.id")
     # Підсумковий бал = сирий × коефіцієнт предмета (обчислюється при збереженні, DK-40).
-    points: int
+    # Дробний (DK-47): комплексні бали (напр. середнє за НМТ) не цілі.
+    points: float
     # Сирий бал, введений оператором / отриманий на тестуванні (до множення на
     # коефіцієнт). Потрібен, щоб діалог редагування показував саме те, що ввели,
-    # і повторне збереження не домножувало вдруге (DK-40).
-    points_raw: Optional[int] = Field(default=None, nullable=True)
+    # і повторне збереження не домножувало вдруге (DK-40). Дробний (DK-47).
+    points_raw: Optional[float] = Field(default=None, nullable=True)
 
     # Relationships
     item_zno: Optional['ItemZnoModel'] = Relationship()
@@ -606,7 +614,8 @@ class RatingEntryModel(rx.Model, table=True):
     id_form_of_study: int = Field(default=0, nullable=False)
     id_entrant: int = Field(foreign_key="entrants.id", nullable=False)
     position: int = Field(nullable=False)
-    total_points: int = Field(default=0, nullable=False)
+    # Дробна сума балів (DK-47).
+    total_points: float = Field(default=0, nullable=False)
     # 'budget' | 'contract' | 'kvota' | 'rejected' | 'excluded'
     # 'excluded' (DK-43) — статус картки не допускає до рейтингу: рядок унизу, сірий.
     status: str = Field(nullable=False)

@@ -5,7 +5,25 @@
 більше одного разу, додається номер телефону в дужках (DK-36).
 """
 from collections import Counter
-from typing import Iterable, List, Tuple
+from typing import Any, Iterable, List, Tuple
+
+
+def format_grade(value: Any) -> str:
+    """Дробна оцінка/сума балів для відображення (DK-47).
+
+    Порожнє/None → "". Ціле значення → без дробової частини ("185"). Інакше — до
+    двох знаків після коми з обрізкою хвостових нулів ("185.5", "149.67"). Крапка
+    як десятковий розділювач (узгоджено з number-input у діалогах).
+    """
+    if value is None or value == "":
+        return ""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if f == int(f):
+        return str(int(f))
+    return f"{f:.2f}".rstrip("0").rstrip(".")
 
 
 def disambiguate_pib(entries: Iterable[Tuple[str, str]]) -> List[str]:

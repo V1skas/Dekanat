@@ -107,7 +107,11 @@ def seed_reference_data(session):
     ]
     item_znos = []
     for t in item_zno_titles:
-        i, _ = get_or_create(session, ItemZnoModel, title=t)
+        # Seed-предмети враховуються у рейтингу, щоб знімок рейтингу мав ненульові
+        # бали одразу після сідінгу (DK-47: дефолт False).
+        i, _ = get_or_create(
+            session, ItemZnoModel, defaults={"is_counted_in_rating": True}, title=t
+        )
         item_znos.append(i)
 
     sof_titles = ["Бюджет", "Контракт", "Цільовий прийом"]

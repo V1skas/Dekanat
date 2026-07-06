@@ -17,6 +17,7 @@ def table_row(item: ItemZnoModel) -> rx.Component:
             align="left"
         ),
         rx.table.cell(item.coefficient),
+        rx.table.cell(rx.cond(item.is_counted_in_rating, "Так", "Ні")),
     )
 
 def table() -> rx.Component:
@@ -25,6 +26,7 @@ def table() -> rx.Component:
             rx.table.row(
                 rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
                 rx.table.column_header_cell("Коефіцієнт", color=rx.color("accent", 2)),
+                rx.table.column_header_cell("У рейтингу", color=rx.color("accent", 2)),
             ),
             background_color=rx.color("accent", 9),
         ),
@@ -53,6 +55,11 @@ def view_page_content() -> rx.Component:
             rx.text(ViewItemZnoState.coefficient_str),
             spacing="2",
         ),
+        rx.hstack(
+            rx.text("Враховується у рейтингу:", weight="bold"),
+            rx.text(rx.cond(ViewItemZnoState.is_counted_in_rating, "Так", "Ні")),
+            spacing="2",
+        ),
         height="100%",
         width="100%"
     )
@@ -64,6 +71,12 @@ def add_page_content() -> rx.Component:
         rx.text("*Коефіцієнт"),
         rx.input(type="number", step="any", value=AddItemZnoState.coefficient_str, on_change=AddItemZnoState.set_coefficient, width="100%"),
         rx.text("Бал, введений оператором, буде домножено на цей коефіцієнт.", size="2", color="gray"),
+        rx.checkbox(
+            "Враховувати у рейтингу",
+            checked=AddItemZnoState.is_counted_in_rating,
+            on_change=AddItemZnoState.set_is_counted_in_rating,
+        ),
+        rx.text("Якщо вимкнено — оцінка цього предмета не входить у суму балів рейтингу та не показується колонкою в документі.", size="2", color="gray"),
         align="stretch",
         spacing="3",
         width="100%",
@@ -76,6 +89,12 @@ def edit_page_content() -> rx.Component:
         rx.text("*Коефіцієнт"),
         rx.input(type="number", step="any", value=EditItemZnoState.coefficient_str, on_change=EditItemZnoState.set_coefficient, width="100%"),
         rx.text("Бал, введений оператором, буде домножено на цей коефіцієнт.", size="2", color="gray"),
+        rx.checkbox(
+            "Враховувати у рейтингу",
+            checked=EditItemZnoState.is_counted_in_rating,
+            on_change=EditItemZnoState.set_is_counted_in_rating,
+        ),
+        rx.text("Якщо вимкнено — оцінка цього предмета не входить у суму балів рейтингу та не показується колонкою в документі.", size="2", color="gray"),
         align="stretch",
         spacing="3",
         width="100%",

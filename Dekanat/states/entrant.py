@@ -33,6 +33,7 @@ from Dekanat.services.item_zno import ItemZnoService
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.services.admission_campaign_speciality import AdmissionCampaignSpecialityService
 from Dekanat.models import AdmissionCampaignModel
+from Dekanat.utils.display import format_grade
 
 
 # Значення query-параметра ?from, з яким картку абітурієнта відкрито зі списку заявок
@@ -683,7 +684,13 @@ class EntrantFormState(AppState):
     rz_open: bool = False
     rz_index: int = -1
     rz_id_items_zno: int = 0
-    rz_points: int = 0
+    # Сирий (введений) бал — редагуємо як рядок, щоб не заважати введенню дробу
+    # (DK-47): зберігаємо буквально введене, парсимо у float лише на збереженні.
+    rz_points_input: str = ""
+    # Калькулятор комплексного балу (DK-47): середнє/сума компонентів (напр. НМТ).
+    rz_calc_open: bool = False
+    rz_calc_mode: str = "avg"  # "avg" | "sum"
+    rz_calc_components: str = ""
 
     # ============================================================
     # On-load: shared dropdown init + branch on mode
@@ -1725,7 +1732,10 @@ class EntrantFormState(AppState):
     def _reset_rz_dialog(self):
         self.rz_index = -1
         self.rz_id_items_zno = 0
-        self.rz_points = 0
+        self.rz_points_input = ""
+        self.rz_calc_open = False
+        self.rz_calc_mode = "avg"
+        self.rz_calc_components = ""
 
     @rx.event
     def open_rz_add(self):
@@ -1737,11 +1747,13 @@ class EntrantFormState(AppState):
         if index < 0 or index >= len(self.results_zno):
             return
         item = self.results_zno[index]
+        self._reset_rz_dialog()
         self.rz_index = index
         self.rz_id_items_zno = item.id_items_zno or 0
         # У діалозі редагуємо сирий (введений) бал, а не домножений (DK-40), щоб
         # повторне збереження не множило вдруге. points_raw бекфілиться з points.
-        self.rz_points = item.points_raw if item.points_raw is not None else (item.points or 0)
+        raw = item.points_raw if item.points_raw is not None else item.points
+        self.rz_points_input = format_grade(raw)
         self.rz_open = True
 
     @rx.event
@@ -1761,34 +1773,90 @@ class EntrantFormState(AppState):
             self.rz_id_items_zno = 0
 
     @rx.event
-    def set_rz_points(self, value: str):
-        try:
-            self.rz_points = int(value) if value else 0
-        except (ValueError, TypeError):
-            self.rz_points = 0
+    def set_rz_points_input(self, value: str):
+        self.rz_points_input = value
 
     @rx.var
     def rz_coefficient_hint(self) -> str:
         coeff = self.item_zno_coeffs.get(str(self.rz_id_items_zno), 1.0)
         return f"Цей бал буде домножено на коефіцієнт предмета (×{coeff})."
 
+    # ---- Complex-grade calculator (avg / sum of components) ----
+
+    @rx.event
+    def toggle_rz_calc(self):
+        self.rz_calc_open = not self.rz_calc_open
+
+    @rx.event
+    def set_rz_calc_mode(self, mode: str):
+        self.rz_calc_mode = mode if mode in ("avg", "sum") else "avg"
+
+    @rx.event
+    def set_rz_calc_components(self, value: str):
+        self.rz_calc_components = value
+
+    @rx.var
+    def is_rz_calc_avg(self) -> bool:
+        return self.rz_calc_mode == "avg"
+
+    def _rz_calc_numbers(self) -> List[float]:
+        nums: List[float] = []
+        raw = (self.rz_calc_components or "").replace(";", " ").replace(",", " ")
+        for tok in raw.split():
+            try:
+                nums.append(float(tok))
+            except (ValueError, TypeError):
+                continue
+        return nums
+
+    def _rz_calc_value(self) -> Optional[float]:
+        nums = self._rz_calc_numbers()
+        if not nums:
+            return None
+        if self.rz_calc_mode == "sum":
+            return round(sum(nums), 2)
+        return round(sum(nums) / len(nums), 2)
+
+    @rx.var
+    def rz_calc_result_str(self) -> str:
+        value = self._rz_calc_value()
+        return format_grade(value) if value is not None else "—"
+
+    @rx.event
+    def rz_calc_apply(self):
+        value = self._rz_calc_value()
+        if value is None:
+            yield rx.toast.warning("Введіть компоненти для розрахунку!")
+            return
+        self.rz_points_input = format_grade(value)
+        self.rz_calc_open = False
+
     @rx.event
     def save_rz(self):
         if not self.rz_id_items_zno:
             yield rx.toast.warning("Оберіть предмет ЗНО!")
             return
-        if self.rz_points < 0 or self.rz_points > 200:
+        raw = (self.rz_points_input or "").strip()
+        if raw == "":
+            yield rx.toast.warning("Введіть бал!")
+            return
+        try:
+            points = float(raw.replace(",", "."))
+        except (ValueError, TypeError):
+            yield rx.toast.warning("Бал має бути числом!")
+            return
+        if points < 0 or points > 200:
             yield rx.toast.warning("Бали мають бути у межах 0-200!")
             return
 
         # Домножуємо введений бал на коефіцієнт предмета при збереженні (DK-40).
         coeff = self.item_zno_coeffs.get(str(self.rz_id_items_zno), 1.0)
-        weighted = int(self.rz_points * coeff + 0.5)
+        weighted = round(points * coeff, 2)
         item = ResultZnoModel(
             id_items_zno=self.rz_id_items_zno,
             id_person=self.entrant_id if self.entrant_id > 0 else 0,
             points=weighted,
-            points_raw=self.rz_points,
+            points_raw=points,
         )
         if 0 <= self.rz_index < len(self.results_zno):
             self.results_zno[self.rz_index] = item

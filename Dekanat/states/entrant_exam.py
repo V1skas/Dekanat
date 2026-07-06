@@ -19,7 +19,7 @@ from Dekanat.services.item_zno import ItemZnoService
 from Dekanat.services.worker import WorkerService
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.services.result_zno import ResultZnoService
-from Dekanat.utils.display import disambiguate_pib
+from Dekanat.utils.display import disambiguate_pib, format_grade
 from Dekanat.utils.background import run_blocking
 
 
@@ -672,10 +672,10 @@ class ViewEntrantExamState(AppState):
                 loaded.id_item_zno, person_ids
             )
             self.grades_by_entrant = {
-                str(r.id_person): str(r.points) for r in results
+                str(r.id_person): format_grade(r.points) for r in results
             }
             self.raw_by_entrant = {
-                str(r.id_person): str(r.points_raw if r.points_raw is not None else r.points)
+                str(r.id_person): format_grade(r.points_raw if r.points_raw is not None else r.points)
                 for r in results
             }
             self._reload_grading_rows()
@@ -864,26 +864,26 @@ class ViewEntrantExamState(AppState):
             return
 
         raw = (self.g_grade_input or "").strip()
-        points: Optional[int]
-        weighted: Optional[int]
+        points: Optional[float]
+        weighted: Optional[float]
         if raw == "":
             points = None
             weighted = None
         else:
             try:
-                points = int(raw)
+                points = float(raw.replace(",", "."))
             except ValueError:
-                yield rx.toast.warning("Оцінка має бути цілим числом!")
+                yield rx.toast.warning("Оцінка має бути числом!")
                 return
             # Домножуємо введений бал на коефіцієнт предмета при збереженні (DK-40).
-            weighted = int(points * self.item_coefficient + 0.5)
+            weighted = round(points * self.item_coefficient, 2)
 
         try:
             ResultZnoService().upsert(
                 self.item.id_item_zno, entrant_id, weighted, points_raw=points
             )
             # У таблиці показуємо домножений бал, у діалозі — сирий.
-            self.grades_by_entrant[row["id"]] = "" if weighted is None else str(weighted)
+            self.grades_by_entrant[row["id"]] = "" if weighted is None else format_grade(weighted)
             self.raw_by_entrant[row["id"]] = raw
             self.g_grade_original = raw
             self._reload_grading_rows()

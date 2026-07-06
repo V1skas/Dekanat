@@ -17,7 +17,7 @@ from Dekanat.states.app import AppState
 from Dekanat.models import AdmissionCampaignModel
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.services.rating import RatingService
-from Dekanat.utils.display import disambiguate_pib
+from Dekanat.utils.display import disambiguate_pib, format_grade
 from Dekanat.utils.background import run_blocking
 
 
@@ -188,7 +188,7 @@ class ListRatingState(AppState):
                     "position": str(e.position),
                     "pib": pib,
                     "phone": phone,
-                    "total": str(e.total_points),
+                    "total": format_grade(e.total_points),
                     "status": e.status,
                 }
             )

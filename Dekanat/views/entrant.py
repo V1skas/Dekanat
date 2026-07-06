@@ -1326,6 +1326,52 @@ def _dlg_sp() -> rx.Component:
     )
 
 
+def _rz_calc_panel() -> rx.Component:
+    """Калькулятор комплексного балу (DK-47): середнє/сума введених компонентів."""
+    return rx.box(
+        rx.vstack(
+            rx.text("Калькулятор комплексного балу", weight="bold", size="2"),
+            rx.text(
+                "Введіть компоненти через пробіл або кому (напр. бали предметів НМТ).",
+                size="1", color="gray",
+            ),
+            rx.input(
+                placeholder="150 160 170 180",
+                value=EntrantFormState.rz_calc_components,
+                on_change=EntrantFormState.set_rz_calc_components,
+                width="100%",
+            ),
+            rx.hstack(
+                rx.cond(
+                    EntrantFormState.is_rz_calc_avg,
+                    controls.button_primary("Середнє", on_click=EntrantFormState.set_rz_calc_mode("avg")),
+                    controls.button_secondary("Середнє", on_click=EntrantFormState.set_rz_calc_mode("avg")),
+                ),
+                rx.cond(
+                    EntrantFormState.is_rz_calc_avg,
+                    controls.button_secondary("Сума", on_click=EntrantFormState.set_rz_calc_mode("sum")),
+                    controls.button_primary("Сума", on_click=EntrantFormState.set_rz_calc_mode("sum")),
+                ),
+                spacing="2",
+            ),
+            rx.hstack(
+                rx.text("Результат:", weight="bold"),
+                rx.text(EntrantFormState.rz_calc_result_str),
+                rx.spacer(),
+                controls.button_secondary("Застосувати", on_click=EntrantFormState.rz_calc_apply),
+                align="center",
+                width="100%",
+            ),
+            spacing="2",
+            align="stretch",
+        ),
+        padding="0.75em",
+        border=f"1px solid {rx.color('accent', 6)}",
+        border_radius="0.5em",
+        width="100%",
+    )
+
+
 def _dlg_rz() -> rx.Component:
     return rx.dialog.root(
         rx.dialog.content(
@@ -1333,9 +1379,16 @@ def _dlg_rz() -> rx.Component:
             rx.vstack(
                 rx.text("*Предмет:"),
                 _select(EntrantFormState.item_zno_options, EntrantFormState.rz_id_items_zno_str, EntrantFormState.set_rz_id_items_zno, width="100%"),
-                rx.text("*Бали:"),
-                rx.input(type="number", value=EntrantFormState.rz_points.to_string(), on_change=EntrantFormState.set_rz_points, width="100%"),
+                rx.hstack(
+                    rx.text("*Бали:"),
+                    rx.spacer(),
+                    controls.button_image_secondary(name_icon="calculator", on_click=EntrantFormState.toggle_rz_calc),
+                    align="center",
+                    width="100%",
+                ),
+                rx.input(type="number", step="any", value=EntrantFormState.rz_points_input, on_change=EntrantFormState.set_rz_points_input, width="100%"),
                 rx.text(EntrantFormState.rz_coefficient_hint, size="2", color="gray"),
+                rx.cond(EntrantFormState.rz_calc_open, _rz_calc_panel()),
                 _dialog_buttons(EntrantFormState.save_rz, EntrantFormState.close_rz),
                 spacing="2",
                 align="stretch",

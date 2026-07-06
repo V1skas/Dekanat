@@ -33,9 +33,9 @@ class ResultZnoDao:
     def upsert(
         id_items_zno: int,
         id_person: int,
-        points: int,
+        points: float,
         session: Session,
-        points_raw: Optional[int] = None,
+        points_raw: Optional[float] = None,
     ) -> ResultZnoModel:
         existing = ResultZnoDao.get_one(id_items_zno, id_person, session)
         if existing is not None:

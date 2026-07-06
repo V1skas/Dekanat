@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple
 
 from Dekanat.models import EntrantModel
 from Dekanat.services.entrant import EntrantService
+from Dekanat.utils.display import format_grade
 
 
 # Ключі рядка журналу = поля `RegistrationJournalRow` (і колонки таблиці на сторінці).
@@ -79,8 +80,8 @@ class RegistrationJournalService:
         zno_parts: List[str] = []
         for r in (person.results_zno or []) if person is not None else []:
             title = r.item_zno.title if r.item_zno is not None else ""
-            score = r.points
-            if title or score is not None:
+            score = format_grade(r.points)
+            if title or score:
                 zno_parts.append(f"{title} — {score}".strip(" —"))
         zno = "; ".join(zno_parts)
 
