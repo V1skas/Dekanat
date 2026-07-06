@@ -42,6 +42,7 @@ MAIN: List[MenuItem] = [
     ]),
     MenuItem("Звітність", "chart-line", routes.DASHBOARD_REPORTING, children=[
         MenuItem("Приймальна кампанія", "chart-pie", routes.REPORT_ADMISSION, required_action=Actions.REPORT_ADMISSION_VIEW),
+        MenuItem("Журнал реєстрації", "notebook-text", routes.REPORT_JOURNAL, required_action=Actions.REPORT_JOURNAL_VIEW),
     ]),
     MenuItem("Адміністрування", "shield-user", routes.DASHBOARD_ADMIN, children=[
         MenuItem("Користувачі", "users", routes.WORKERS_LIST, required_action=Actions.WORKER_LIST),

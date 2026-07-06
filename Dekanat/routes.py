@@ -16,6 +16,7 @@ DASHBOARD_ADMIN = ADMIN + "/dashboard"
 DASHBOARD_REPORTING = REPORTING + "/dashboard"
 
 REPORT_ADMISSION = REPORTING + "/admission_campaign"
+REPORT_JOURNAL = REPORTING + "/registration_journal"
 
 ENTRANT = "/contingent/entrants"
 ENTRANT_LIST = ENTRANT+"/list"
