@@ -7,6 +7,7 @@ from sqlmodel import select
 
 from Dekanat.dao.admission_campaign import AdmissionCampaignDao
 from Dekanat.models import AdmissionCampaignModel
+from Dekanat.utils.clock import now_local
 
 
 class AdmissionCampaignService:
@@ -63,7 +64,7 @@ class AdmissionCampaignService:
         """Повертає активну (з-поміж не видалених) кампанію, чий період містить поточну дату.
         Якщо таких декілька — повертається з найпізнішою датою початку.
         Якщо жодної — повертає None."""
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = now_local().strftime("%Y-%m-%d")
         try:
             with rx.session() as session:
                 statement = (

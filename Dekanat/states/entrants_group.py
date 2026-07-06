@@ -10,8 +10,10 @@ from Dekanat.states.app import AppState
 from Dekanat.models import EntrantGroupModel, EntrantModel, EntrantExamModel, AdmissionCampaignModel
 from Dekanat.services.entrants_group import EntrantsGroupService
 from Dekanat.services.admission_campaign import AdmissionCampaignService
+from Dekanat.services.app_setting import AppSettingService
 from Dekanat.utils.display import disambiguate_pib
 from Dekanat.utils.background import run_blocking
+from Dekanat.utils.clock import now_local
 
 
 # ---------- List page ----------
@@ -33,6 +35,10 @@ class ListEntrantsGroupState(AppState):
     select_mode: bool = False
     selected_ids: List[int] = []
 
+    # Сортування списку (DK-48): "title" | "count". Порожнє поле — порядок БД.
+    sort_field: str = ""
+    sort_dir: str = "asc"
+
     def _campaign_range(self):
         if not self.filter_campaign_id:
             return None
@@ -48,14 +54,43 @@ class ListEntrantsGroupState(AppState):
 
     def _reload_items(self):
         service = EntrantsGroupService()
-        self.items = service.get_list_items(
+        items = list(service.get_list_items(
             title=self.filter_title.strip() or None,
             created_between=self._campaign_range(),
-        )
-        ids = [it.id for it in self.items if it.id is not None]
+        ))
+        ids = [it.id for it in items if it.id is not None]
         raw_counts = service.get_entrant_counts(ids)
+        # Сортування за назвою / кількістю абітурієнтів (DK-48). Кількість уже
+        # порахована окремим запитом, тож сортуємо в памʼяті — без ще одного JOIN.
+        if self.sort_field == "title":
+            items.sort(key=lambda it: (it.title or "").lower(), reverse=(self.sort_dir == "desc"))
+        elif self.sort_field == "count":
+            items.sort(key=lambda it: raw_counts.get(it.id, 0), reverse=(self.sort_dir == "desc"))
+        self.items = items
         # Ключі — рядки (foreach віддає item.id.to_string()); дефолт 0 для всіх груп.
         self.counts = {str(gid): str(raw_counts.get(gid, 0)) for gid in ids}
+
+    @rx.event
+    def on_click_sort(self, field: str):
+        if self.sort_field == field:
+            self.sort_dir = "desc" if self.sort_dir == "asc" else "asc"
+        else:
+            self.sort_field = field
+            self.sort_dir = "asc"
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.var
+    def sort_indicator(self) -> Dict[str, str]:
+        arrow = " ↑" if self.sort_dir == "asc" else " ↓"
+        return {
+            "title": arrow if self.sort_field == "title" else "",
+            "count": arrow if self.sort_field == "count" else "",
+        }
 
     @rx.event
     def on_load(self):
@@ -405,6 +440,47 @@ class EditEntrantsGroupState(AppState):
             del self.entrants_in_group[index]
 
     @rx.event
+    def on_click_autofill(self):
+        """Автопідбір абітурієнтів під цю групу за її назвою (DK-48).
+
+        За назвою групи визначаємо, під яку спеціальність/базу/форму вона створена,
+        і додаємо вільних абітурієнтів, що під це підходять, у межах ліміту розміру
+        групи (`max_entrants_per_exam_group`). Ліміт рахуємо від поточного складу
+        форми (з урахуванням уже доданих вручну). Запис у БД — лише при збереженні."""
+        if not self.has_permission(Actions.ENTRANTS_GROUP_EDIT):
+            yield rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
+            return
+        if self.item is None or self.item.id is None:
+            yield rx.toast.warning("Групу не завантажено.")
+            return
+
+        max_size = AppSettingService().get_max_entrants_per_group()
+        free_slots = max_size - len(self.entrants_in_group)
+        if free_slots <= 0:
+            yield rx.toast.warning(f"У групі вже досягнуто ліміту абітурієнтів ({max_size}).")
+            return
+
+        try:
+            exclude = [e.id for e in self.entrants_in_group]
+            matching = list(
+                EntrantsGroupService().suggest_entrants_for_group(self.item.id, exclude_ids=exclude)
+            )
+        except Exception:
+            yield rx.toast.error("Під час автопідбору сталася помилка. Спробуйте ще раз.")
+            return
+
+        if not matching:
+            yield rx.toast.info("Відповідних вільних абітурієнтів за назвою групи не знайдено.")
+            return
+
+        take = matching[:free_slots]
+        self.entrants_in_group = self.entrants_in_group + take
+        msg = f"Додано абітурієнтів: {len(take)}."
+        if len(matching) > len(take):
+            msg += f" Не вмістилось (ліміт {max_size}): {len(matching) - len(take)}."
+        yield rx.toast.success(msg)
+
+    @rx.event
     def on_save(self):
         if not self.has_permission(Actions.ENTRANTS_GROUP_EDIT):
             yield rx.toast.error("У Вас немає дозволу на виконання цієї дії!")
@@ -526,7 +602,6 @@ class ViewEntrantsGroupState(AppState):
         """Блокуюча частина: читання даних + рендер XLSX-відомості групи.
         Виконується у фоновому потоці — жодних мутацій стану / `yield`.
         Повертає `(bytes, filename)` або None, якщо у групі немає абітурієнтів."""
-        from datetime import date
         from Dekanat.reports import (
             ExamApplicant,
             VidomistReport,
@@ -544,7 +619,7 @@ class ViewEntrantsGroupState(AppState):
                 specialty=payload["specialty"],
                 opp=payload.get("opp", ""),
                 subject=payload["subject"],
-                report_date=date.today(),
+                report_date=now_local().date(),
                 applicants=applicants,
             )
         elif kind == "vykladacham":
@@ -639,6 +714,9 @@ class AutoGenerateEntrantsGroupState(AppState):
             yield rx.toast.warning("Немає активної вступної кампанії — спочатку створіть її.")
             yield rx.redirect(routes.ENTRANTS_GROUP_LIST)
             return
+        # Типовий розмір групи — з глобальної настройки (DK-48). Користувач може
+        # перевизначити його на час цього формування.
+        self.max_size = AppSettingService().get_max_entrants_per_group()
         # Скидаємо попередній (можливо, скасований) результат — інакше при
         # повторному заході залишаться старі сформовані групи (DK-42).
         self.generated_groups = []

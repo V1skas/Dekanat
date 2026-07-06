@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import reflex as rx
 from sqlmodel import select
 
+from Dekanat.utils.clock import now_local
 from Dekanat.models import (
     DepartmentModel,
     SpecialityModel,
@@ -199,7 +200,7 @@ def seed_reference_data(session):
 
 def seed_campaign(session, specialties, entry_bases, forms_of_study):
     print("→ Вступна кампанія + квоти")
-    today = datetime.now().date()
+    today = now_local().date()
     start = today - timedelta(days=30)
     end = today + timedelta(days=60)
 
@@ -335,7 +336,7 @@ def seed_entrants(session, refs, campaign, count=100):
                 title=sc.title,
                 number=f"SC{random.randint(10000, 99999)}",
                 description=None,
-                date_of_issue=datetime.now().strftime("%Y-%m-%d"),
+                date_of_issue=now_local().strftime("%Y-%m-%d"),
             ))
 
         created += 1

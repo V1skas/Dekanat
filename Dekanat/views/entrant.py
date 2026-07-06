@@ -807,8 +807,6 @@ def _personal_fields() -> rx.Component:
                 color="gray",
             ),
         ),
-        rx.text("Група ЗНО:"),
-        _select(EntrantFormState.entrant_group_options, EntrantFormState.id_entrant_group_str, EntrantFormState.set_id_entrant_group, width="100%"),
         rx.text("Коментар:"),
         rx.text_area(value=EntrantFormState.comment, on_change=EntrantFormState.set_comment, resize="vertical", width="100%"),
         spacing="2",
@@ -1066,6 +1064,46 @@ def _f_sp_row(item, idx: int) -> rx.Component:
     )
 
 
+def _f_group_block() -> rx.Component:
+    """Вибір екзаменаційної групи ЗНО — під таблицею спеціальностей (DK-48).
+
+    Кнопка «Визначити автоматично» зʼявляється, коли додано хоча б одну
+    спеціальність. Ручний вибір групи лишається доступним завжди."""
+    return rx.vstack(
+        rx.heading("Група ЗНО", size="3", margin_top="0.5rem"),
+        rx.hstack(
+            _select(
+                EntrantFormState.entrant_group_options,
+                EntrantFormState.id_entrant_group_str,
+                EntrantFormState.set_id_entrant_group,
+                width="100%",
+            ),
+            rx.cond(
+                EntrantFormState.specialties.length() > 0,
+                controls.button_secondary(
+                    rx.icon("wand-sparkles", size=18),
+                    "Визначити автоматично",
+                    on_click=EntrantFormState.on_click_autodetect_group,
+                ),
+            ),
+            align="center",
+            spacing="2",
+            width="100%",
+        ),
+        rx.cond(
+            EntrantFormState.pending_group_note != "",
+            rx.text(EntrantFormState.pending_group_note, size="2", color=rx.color("accent", 11), weight="medium"),
+        ),
+        rx.cond(
+            EntrantFormState.group_limit_warning != "",
+            rx.text(EntrantFormState.group_limit_warning, size="2", color=rx.color("tomato", 11), weight="medium"),
+        ),
+        spacing="1",
+        align="stretch",
+        width="100%",
+    )
+
+
 def _f_sp_section() -> rx.Component:
     return rx.vstack(
         rx.hstack(
@@ -1084,6 +1122,7 @@ def _f_sp_section() -> rx.Component:
             ),
             controls.empty_placeholder(),
         ),
+        _f_group_block(),
         width="100%",
     )
 

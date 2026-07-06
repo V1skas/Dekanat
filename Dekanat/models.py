@@ -7,6 +7,8 @@ from datetime import datetime
 
 import reflex as rx
 
+from Dekanat.utils.clock import now_local
+
 
 @rx.ModelRegistry.register
 class RolesActionsModel(rx.Model, table=True):
@@ -74,11 +76,11 @@ class AuthTokenModel(rx.Model, table=True):
     token: str = Field(nullable=False, unique=True)
     id_worker: int = Field(foreign_key="workers.id", nullable=False)
     expires_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("expires_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
     last_activity_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("last_activity_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
 
@@ -240,7 +242,7 @@ class PersonModel(rx.Model, table=True):
     id_source_of_funding: int = Field(foreign_key="source_of_funding.id")
     id_entry_base: int = Field(foreign_key="entry_base.id")
     created_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("created_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
     is_deleted: bool = False
@@ -265,7 +267,7 @@ class EntrantGroupModel(rx.Model, table=True):
     id: int = Field(primary_key=True)
     title: str
     created_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("created_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
     is_deleted: bool = False
@@ -308,11 +310,11 @@ class EntrantModel(rx.Model, table=True):
     id_entrant_group: Optional[int] = Field(default=None, foreign_key="entrants_groups.id", nullable=True)
     comment: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
     created_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("created_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
     application_status_changed_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("application_status_changed_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
     is_deleted: bool = False
@@ -560,7 +562,7 @@ class AdmissionCampaignReportModel(rx.Model, table=True):
     id: int = Field(primary_key=True)
     id_campaign: int = Field(foreign_key="admission_campaigns.id", nullable=False)
     generated_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("generated_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
     # JSON payload зі звітом (числа за день/тиждень/період, серії, розподіл по
@@ -592,7 +594,7 @@ class RatingSnapshotModel(rx.Model, table=True):
     id: int = Field(primary_key=True)
     id_campaign: int = Field(foreign_key="admission_campaigns.id", nullable=False)
     generated_at: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=now_local,
         sa_column=Column("generated_at", DateTime, nullable=False, server_default=func.current_timestamp()),
     )
 

@@ -45,6 +45,23 @@ def _list_row(item: EntrantGroupModel) -> rx.Component:
         rx.table.cell(ListEntrantsGroupState.counts[item.id.to_string()], align="center"),
     )
 
+def _sortable_header(title: str, field: str, **kw) -> rx.Component:
+    """Кликабельний заголовок столбця списку груп з індикатором сортування (DK-48)."""
+    return rx.table.column_header_cell(
+        rx.hstack(
+            rx.text(title, color=rx.color("accent", 2)),
+            rx.text(ListEntrantsGroupState.sort_indicator[field], color=rx.color("accent", 2), weight="bold"),
+            spacing="1",
+            align="center",
+        ),
+        color=rx.color("accent", 2),
+        cursor="pointer",
+        on_click=ListEntrantsGroupState.on_click_sort(field),
+        _hover={"background_color": rx.color("accent", 10)},
+        **kw,
+    )
+
+
 def _list_table() -> rx.Component:
     return rx.table.root(
         rx.table.header(
@@ -53,8 +70,8 @@ def _list_table() -> rx.Component:
                     ListEntrantsGroupState.select_mode,
                     rx.table.column_header_cell("", color=rx.color("accent", 2), width="2.5rem"),
                 ),
-                rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
-                rx.table.column_header_cell("Абітурієнтів", color=rx.color("accent", 2), width="8rem"),
+                _sortable_header("Назва", "title"),
+                _sortable_header("Абітурієнтів", "count", width="8rem"),
             ),
             background_color=rx.color("accent", 9),
         ),
@@ -360,6 +377,11 @@ def edit_page_content() -> rx.Component:
         rx.hstack(
             rx.heading("Абітурієнти у групі", size="4"),
             rx.spacer(),
+            controls.button_secondary(
+                rx.icon("wand-sparkles", size=18),
+                "Автопідбір",
+                on_click=EditEntrantsGroupState.on_click_autofill,
+            ),
             controls.button_image_primary(
                 name_icon="plus",
                 on_click=EditEntrantsGroupState.open_add_entrant_dialog,

@@ -30,7 +30,9 @@ from Dekanat.services.identity_document_type import IdentityDocumentTypeService
 from Dekanat.services.kinship import KinshipService
 from Dekanat.services.special_condition import SpecialConditionService
 from Dekanat.services.item_zno import ItemZnoService
+from Dekanat.services.app_setting import AppSettingService
 from Dekanat.services.admission_campaign import AdmissionCampaignService
+from Dekanat.utils.clock import now_local
 from Dekanat.services.admission_campaign_speciality import AdmissionCampaignSpecialityService
 from Dekanat.models import AdmissionCampaignModel
 from Dekanat.utils.display import format_grade
@@ -588,6 +590,18 @@ class EntrantFormState(AppState):
     # без права ENTRANT_EDIT_STATUS (DK-36).
     loaded_status_id: int = 0
     id_entrant_group: int = 0  # 0 means "not assigned"
+    # Група, до якої абітурієнт належав на момент завантаження (edit) — щоб не
+    # рахувати самого абітурієнта за «зайвого» у попередженні про ліміт (DK-48).
+    loaded_entrant_group_id: int = 0
+    # Автопідбір групи (DK-48): якщо підбір запропонував НОВУ групу, її назва
+    # тримається тут до збереження картки (id_entrant_group при цьому = 0). Реальний
+    # запис у БД створюється лише при збереженні.
+    pending_new_group_title: str = ""
+    # Кількість активних абітурієнтів у кожній групі: {str(group_id): count} —
+    # для попередження про досягнутий ліміт при ручному виборі групи (DK-48).
+    entrant_group_counts: Dict[str, int] = {}
+    # Глобальний ліміт розміру екз. групи (з налаштувань) — DK-48.
+    max_entrants_per_group: int = 25
     comment: str = ""
 
     # ---- Dropdown options ----
@@ -703,8 +717,14 @@ class EntrantFormState(AppState):
         self.entry_base_options = [{"value": str(e.id), "label": e.title} for e in eb]
         ast = ApplicationStatusService().get_list_items()
         self.application_status_options = [{"value": str(a.id), "label": a.title} for a in ast]
-        eg = EntrantsGroupService().get_list_items()
+        eg_service = EntrantsGroupService()
+        eg = eg_service.get_list_items()
         self.entrant_group_options = [{"value": str(g.id), "label": g.title} for g in eg]
+        # Кількості абітурієнтів у групах + глобальний ліміт — для попередження
+        # про досягнутий ліміт при виборі групи в картці (DK-48).
+        raw_counts = eg_service.get_entrant_counts([g.id for g in eg if g.id is not None])
+        self.entrant_group_counts = {str(gid): cnt for gid, cnt in raw_counts.items()}
+        self.max_entrants_per_group = AppSettingService().get_max_entrants_per_group()
         sp = SpecialityService().get_list_items()
         sp_by_key: Dict[str, str] = {
             str(s.id): f"{s.code} {s.title} ({s.tag})" for s in sp
@@ -764,6 +784,8 @@ class EntrantFormState(AppState):
         self.id_application_status = 0
         self.loaded_status_id = 0
         self.id_entrant_group = 0
+        self.loaded_entrant_group_id = 0
+        self.pending_new_group_title = ""
         self.comment = ""
         self.identity_documents = []
         self.documents_about_education = []
@@ -838,6 +860,7 @@ class EntrantFormState(AppState):
             self.id_application_status = entrant.id_application_status or 0
             self.loaded_status_id = entrant.id_application_status or 0
             self.id_entrant_group = entrant.id_entrant_group or 0
+            self.loaded_entrant_group_id = entrant.id_entrant_group or 0
             self.comment = entrant.comment or ""
 
             self.identity_documents = list(person.identity_document or [])
@@ -904,6 +927,68 @@ class EntrantFormState(AppState):
             self.id_entrant_group = int(value) if value else 0
         except (ValueError, TypeError):
             self.id_entrant_group = 0
+        # Ручний вибір групи скасовує запропоновану автопідбором нову групу (DK-48).
+        self.pending_new_group_title = ""
+
+    @rx.var
+    def pending_group_note(self) -> str:
+        """Підказка про заплановану до створення нову групу (автопідбір) — DK-48."""
+        if self.pending_new_group_title:
+            return f"Буде створено нову групу: {self.pending_new_group_title}"
+        return ""
+
+    @rx.var
+    def group_limit_warning(self) -> str:
+        """Попередження, якщо в обраній (наявній) групі вже досягнуто ліміту (DK-48).
+        Самого абітурієнта, якщо він уже в цій групі, за «зайвого» не рахуємо."""
+        if self.pending_new_group_title or not self.id_entrant_group:
+            return ""
+        count = self.entrant_group_counts.get(str(self.id_entrant_group), 0)
+        if self.id_entrant_group == self.loaded_entrant_group_id and count > 0:
+            count -= 1
+        if count >= self.max_entrants_per_group:
+            return (
+                f"Увага: у цій групі вже {count} абітурієнт(ів) — "
+                f"досягнуто ліміту ({self.max_entrants_per_group})."
+            )
+        return ""
+
+    @rx.event
+    def on_click_autodetect_group(self):
+        """Автопідбір екзаменаційної групи для цього абітурієнта (DK-48).
+
+        Той самий процес, що й при автоформуванні, але для одного абітурієнта та з
+        урахуванням наявних груп. Бере поточну (в памʼяті форми) базу вступу та
+        спеціальність найвищого пріоритету. Якщо підходящу наявну групу з вільним
+        місцем не знайдено — пропонує нову (запис у БД лише при збереженні картки)."""
+        if not self.specialties:
+            yield rx.toast.warning("Спочатку додайте хоча б одну спеціальність.")
+            return
+        if not self.id_entry_base:
+            yield rx.toast.warning("Спочатку оберіть базу вступу.")
+            return
+        # Спеціальність найвищого пріоритету (найменше число пріоритету).
+        top = min(
+            self.specialties,
+            key=lambda s: s.priority if s.priority is not None else 10_000,
+        )
+        result = EntrantsGroupService().suggest_group_for_entrant(
+            top.id_speciality, self.id_entry_base, top.id_form_of_study,
+            self.max_entrants_per_group,
+        )
+        status = result.get("status")
+        if status == "error":
+            yield rx.toast.error(result.get("message") or "Не вдалося підібрати групу.")
+            return
+        if status == "existing":
+            self.id_entrant_group = int(result.get("group_id") or 0)
+            self.pending_new_group_title = ""
+            yield rx.toast.success(f"Обрано наявну групу: {result.get('title')}")
+            return
+        # status == "new"
+        self.id_entrant_group = 0
+        self.pending_new_group_title = result.get("title") or ""
+        yield rx.toast.info(f"Буде створено нову групу: {self.pending_new_group_title}")
 
     # ============================================================
     # Прості сетери для базових текстових полів форми.
@@ -1128,7 +1213,7 @@ class EntrantFormState(AppState):
 
     @rx.var
     def max_birth_date(self) -> str:
-        return date.today().isoformat()
+        return now_local().date().isoformat()
 
     # ============================================================
     # Display title lookup maps (used in form sub-tables)
@@ -1966,6 +2051,7 @@ class EntrantFormState(AppState):
                     special_conditions=list(self.special_conditions_person),
                     specialties=list(self.specialties),
                     results_zno=list(self.results_zno),
+                    new_group_title=self.pending_new_group_title or None,
                 )
                 yield rx.toast.success("Запис змінено!")
                 yield rx.redirect(routes.ENTRANT_VIEW + str(saved.id) + _from_suffix(self.came_from))
@@ -1984,6 +2070,7 @@ class EntrantFormState(AppState):
                     special_conditions=list(self.special_conditions_person),
                     specialties=list(self.specialties),
                     results_zno=list(self.results_zno),
+                    new_group_title=self.pending_new_group_title or None,
                 )
                 yield rx.toast.success("Запис додано!")
                 yield rx.redirect(routes.ENTRANT_VIEW + str(saved.id))
