@@ -10,6 +10,7 @@ from Dekanat.models import AdmissionCampaignModel
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.services.admission_campaign_report import AdmissionCampaignReportService
 from Dekanat.utils.background import run_blocking
+from Dekanat.utils.clock import now_local
 
 
 _COMPARE_NONE = "__none__"
@@ -186,6 +187,9 @@ class ListAdmissionReportState(AppState):
         if not self.selected_campaign_id:
             yield rx.toast.warning("Оберіть кампанію.")
             return
+        if self.selected_campaign_ended:
+            yield rx.toast.error("Кампанія вже завершена — формування звіту недоступне.")
+            return
         self.generating = True
         yield
         try:
@@ -229,6 +233,15 @@ class ListAdmissionReportState(AppState):
     @rx.var
     def total_period_compare(self) -> int:
         return int(self.compare_payload.get("totals", {}).get("period", 0))
+
+    @rx.var
+    def selected_campaign_ended(self) -> bool:
+        """Чи завершилася обрана кампанія (end_date у минулому) — DK-51.
+        Для таких кампаній формування звіту заборонене."""
+        campaign = next((c for c in self.campaigns if c.id == self.selected_campaign_id), None)
+        if campaign is None or not campaign.end_date:
+            return False
+        return campaign.end_date < now_local().date().isoformat()
 
     @rx.var
     def has_report(self) -> bool:

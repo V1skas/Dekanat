@@ -54,6 +54,76 @@ def filter_panel(is_open, *fields, on_clear=None) -> rx.Component:
     )
 
 
+# Гвард несохранённых изменений (DK-51). Перехоплює будь-яку навігацію (у т.ч.
+# клієнтську по сайдбару через React Router) і оновлення/закриття вкладки, коли на
+# сторінці додавання/редагування є незбережені зміни. Відкриття посилання в новій
+# вкладці (target=_blank, Ctrl/Cmd/Shift/middle-click) НЕ перехоплюється — за вимогою.
+#
+# Активність визначається МАРШРУТОМ: сторінки додавання закінчуються на "/add",
+# редагування містять "/edit/". Тому гвард автоматично працює на ВСІХ формах
+# додавання/редагування без окремого маркера на кожній. Встановлюється один раз
+# (ідемпотентно) через page_wrapper. «Брудність» відстежуємо в JS: будь-який ввід у
+# нативні поля або вибір у Radix (option/switch/radio/checkbox) виставляє прапорець.
+# Прапорець скидається при кожній зміні маршруту (React Router йде через history API).
+# Кнопки «Зберегти»/«Скасувати» — це <button> з rx.redirect (клієнтська навігація,
+# не <a>), тож не блокуються.
+_UNSAVED_GUARD_SCRIPT = """
+(function(){
+  if(window.__dekanatGuardInit){ return; }
+  window.__dekanatGuardInit=true;
+  window.__dekanatDirty=false;
+  var onForm=function(){ var p=location.pathname; return /\\/add$/.test(p) || /\\/edit\\//.test(p); };
+  var mark=function(){ if(onForm()){ window.__dekanatDirty=true; } };
+  document.addEventListener('input', function(e){
+    var t=e.target;
+    if(t && t.matches && t.matches('input,textarea,select,[contenteditable="true"]')){ mark(); }
+  }, true);
+  document.addEventListener('change', function(e){
+    var t=e.target;
+    if(t && t.matches && t.matches('input,textarea,select')){ mark(); }
+  }, true);
+  document.addEventListener('pointerdown', function(e){
+    var t=e.target;
+    if(t && t.closest && t.closest('[role="option"],[role="switch"],[role="radio"],[role="checkbox"]')){ mark(); }
+  }, true);
+  // Скидаємо прапорець при реальній зміні маршруту (React Router — history API).
+  var lastPath=location.pathname;
+  var reset=function(){ if(location.pathname!==lastPath){ lastPath=location.pathname; window.__dekanatDirty=false; } };
+  ['pushState','replaceState'].forEach(function(m){
+    var orig=history[m];
+    history[m]=function(){ var r=orig.apply(this, arguments); reset(); return r; };
+  });
+  window.addEventListener('popstate', reset);
+  document.addEventListener('click', function(e){
+    if(!onForm() || window.__dekanatDirty!==true){ return; }
+    var a=e.target.closest ? e.target.closest('a[href]') : null;
+    if(!a){ return; }
+    if(a.target==='_blank' || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (typeof e.button==='number' && e.button!==0)){ return; }
+    var href=a.getAttribute('href')||'';
+    if(!href || href==='#'){ return; }
+    if(!window.confirm('Внесені зміни не буде збережено. Ви впевнені, що бажаєте залишити сторінку?')){
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    } else {
+      window.__dekanatDirty=false;
+    }
+  }, true);
+  window.addEventListener('beforeunload', function(e){
+    if(onForm() && window.__dekanatDirty===true){ e.preventDefault(); e.returnValue=''; }
+  });
+})();
+"""
+
+
+def unsaved_changes_guard() -> rx.Component:
+    """Встановлення JS-гварда несохранённых змін (DK-51). Ідемпотентне; рендериться
+    з page_wrapper на кожній сторінці, а гвард сам вмикається лише на маршрутах
+    додавання/редагування."""
+    return rx.box(
+        display="none",
+        on_mount=rx.call_script(_UNSAVED_GUARD_SCRIPT),
+    )
+
+
 def empty_placeholder(message: str = "Записи відсутні") -> rx.Component:
     """Заглушка для порожньої таблиці/списку. Стилізована під картку з пунктирною межею."""
     return rx.box(

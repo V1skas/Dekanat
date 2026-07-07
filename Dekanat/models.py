@@ -309,6 +309,11 @@ class EntrantModel(rx.Model, table=True):
     id_application_status: int = Field(foreign_key="application_statuses.id")
     id_entrant_group: Optional[int] = Field(default=None, foreign_key="entrants_groups.id", nullable=True)
     comment: Optional[str] = Field(default=None, sa_type=Text, nullable=True)
+    # «Подано в електронному вигляді» (DK-51) — маркер способу подачі заяви абітурієнтом.
+    submitted_electronically: bool = Field(
+        default=False,
+        sa_column=Column("submitted_electronically", Boolean, nullable=False, server_default=expression.false()),
+    )
     created_at: datetime = Field(
         default_factory=now_local,
         sa_column=Column("created_at", DateTime, nullable=False, server_default=func.current_timestamp()),

@@ -51,7 +51,7 @@ class AuthState(AppState):
 
         result: Optional[Tuple[WorkerModel, AuthTokenModel]] = self._auth_service.auth(self.worker.login, self.worker.password)
         if result is None:
-            self.error_text = "Помилка авторизації! Невірний логін або пароль."
+            self.error_text = "Помилка авторизації! Неправильний логін або пароль."
             return
 
         self.worker, self.auth_token = result

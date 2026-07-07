@@ -41,6 +41,8 @@ class EntrantService:
         created_date_between: Optional[Tuple[datetime, datetime]] = None,
         priority_speciality_id: Optional[int] = None,
         top_priority_speciality_id: Optional[int] = None,
+        special_condition_code: Optional[str] = None,
+        submitted_electronically: Optional[bool] = None,
         sort_field: Optional[str] = None,
         sort_dir: str = "asc",
     ) -> Sequence[EntrantModel]:
@@ -57,6 +59,8 @@ class EntrantService:
                     created_date_between=created_date_between,
                     priority_speciality_id=priority_speciality_id,
                     top_priority_speciality_id=top_priority_speciality_id,
+                    special_condition_code=special_condition_code,
+                    submitted_electronically=submitted_electronically,
                     sort_field=sort_field,
                     sort_dir=sort_dir,
                 )
@@ -67,17 +71,19 @@ class EntrantService:
     def get_priority_items(
         self,
         top_priority_speciality_id: Optional[int] = None,
+        entry_base_id: Optional[int] = None,
         created_between: Optional[Tuple[datetime, datetime]] = None,
         created_date_between: Optional[Tuple[datetime, datetime]] = None,
     ) -> Sequence[EntrantModel]:
         """Полегшена вибірка для представлення «Пріоритетні спеціальності» (DK-49):
         абітурієнти з підвантаженими лише ПІБ та пріоритетним списком спеціальностей.
-        Фільтр — по пріоритетній спеціальності (пріоритет №1)."""
+        Фільтри — пріоритетна спеціальність (№1) та база вступу (DK-51)."""
         try:
             with rx.session() as session:
                 return EntrantDao.get_priority_view(
                     session,
                     top_priority_speciality_id=top_priority_speciality_id,
+                    entry_base_id=entry_base_id,
                     created_between=created_between,
                     created_date_between=created_date_between,
                 )

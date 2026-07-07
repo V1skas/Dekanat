@@ -72,12 +72,22 @@ def _controls_panel() -> rx.Component:
                 ),
                 rx.spacer(),
                 rx.cond(
+                    ListAdmissionReportState.selected_campaign_ended,
+                    rx.text(
+                        "Кампанія завершена — формування звіту недоступне",
+                        size="2",
+                        color=rx.color("tomato", 11),
+                        weight="medium",
+                    ),
+                ),
+                rx.cond(
                     ListAdmissionReportState.get_user_actions.contains(Actions.REPORT_ADMISSION_GENERATE),
                     controls.button_primary(
                         rx.icon("refresh-cw", size=18),
                         "Сформувати звіт",
                         on_click=ListAdmissionReportState.on_click_generate,
                         loading=ListAdmissionReportState.generating,
+                        disabled=ListAdmissionReportState.selected_campaign_ended,
                     ),
                 ),
                 width="100%",

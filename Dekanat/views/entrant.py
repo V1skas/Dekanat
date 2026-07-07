@@ -65,6 +65,13 @@ def _list_table_row(item: EntrantModel) -> rx.Component:
             align="left",
         ),
         rx.table.cell(
+            rx.cond(
+                item.submitted_electronically,
+                rx.icon("check", size=18, color=rx.color("grass", 9)),
+                rx.text("—"),
+            ),
+        ),
+        rx.table.cell(
             rx.cond(item.created_at, item.created_at.to_string()[1:11], "—")
         ),
         rx.table.cell(rx.cond(item.person, item.person.phone_number, "—")),
@@ -129,6 +136,10 @@ def _list_table() -> rx.Component:
         rx.table.header(
             rx.table.row(
                 _sortable_header("ПІБ", "pib"),
+                rx.table.column_header_cell(
+                    rx.text("Ел. подача", color=rx.color("accent", 2)),
+                    color=rx.color("accent", 2),
+                ),
                 _sortable_header("Дата створення", "created_at"),
                 _sortable_header("Номер телефону", "phone_number"),
                 _sortable_header("Електронна пошта", "email"),
@@ -178,10 +189,20 @@ def _priority_cell(cell: PriorityCell) -> rx.Component:
                 padding="0.5rem 0.75rem",
                 border_bottom=f"1px solid {rx.color('gray', 4)}",
             ),
-            rx.box(
-                rx.text(cell.text, white_space="nowrap"),
-                padding="0.5rem 0.75rem",
-                border_bottom=f"1px solid {rx.color('gray', 4)}",
+            rx.cond(
+                cell.kind == "base",
+                # Назва бази вступу довга — дозволяємо перенос, щоб не налазила на сусідні стовпці.
+                rx.box(
+                    rx.text(cell.text),
+                    padding="0.5rem 0.75rem",
+                    border_bottom=f"1px solid {rx.color('gray', 4)}",
+                    overflow="hidden",
+                ),
+                rx.box(
+                    rx.text(cell.text, white_space="nowrap"),
+                    padding="0.5rem 0.75rem",
+                    border_bottom=f"1px solid {rx.color('gray', 4)}",
+                ),
             ),
         ),
     )
@@ -216,6 +237,14 @@ def list_page_content() -> rx.Component:
         ),
         width="100%",
     )
+
+
+# Опції фільтра «подано в електронному вигляді» (DK-51).
+_SUBMITTED_OPTIONS = [
+    {"value": "__all__", "label": "— Будь-який —"},
+    {"value": "yes", "label": "Так"},
+    {"value": "no", "label": "Ні"},
+]
 
 
 def _filter_field(label: str, control: rx.Component) -> rx.Component:
@@ -290,6 +319,26 @@ def _general_filter_panel() -> rx.Component:
                     ListEntrantState.filter_top_speciality_key,
                     ListEntrantState.set_filter_top_speciality_key,
                     placeholder="Будь-яка",
+                    width="100%",
+                ),
+            ),
+            _filter_field(
+                "Спеціальна умова:",
+                _select(
+                    ListEntrantState.special_condition_options,
+                    ListEntrantState.filter_special_condition_key,
+                    ListEntrantState.set_filter_special_condition_key,
+                    placeholder="Будь-яка",
+                    width="100%",
+                ),
+            ),
+            _filter_field(
+                "Подано в електронному вигляді:",
+                _select(
+                    _SUBMITTED_OPTIONS,
+                    ListEntrantState.filter_submitted,
+                    ListEntrantState.set_filter_submitted,
+                    placeholder="— Будь-який —",
                     width="100%",
                 ),
             ),
@@ -423,6 +472,16 @@ def _priority_filter_panel() -> rx.Component:
                     ListEntrantState.speciality_options,
                     ListEntrantState.p_filter_speciality_key,
                     ListEntrantState.set_p_filter_speciality_key,
+                    placeholder="Будь-яка",
+                    width="100%",
+                ),
+            ),
+            _filter_field(
+                "База вступу:",
+                _select(
+                    ListEntrantState.entry_base_options,
+                    ListEntrantState.p_filter_entry_base_id_str,
+                    ListEntrantState.set_p_filter_entry_base_id,
                     placeholder="Будь-яка",
                     width="100%",
                 ),
@@ -804,6 +863,7 @@ def view_page_content() -> rx.Component:
                         _v_kv("Телефон", ViewEntrantState.item.person.phone_number),
                         _v_kv("E-mail", rx.cond(ViewEntrantState.item.person.email, ViewEntrantState.item.person.email, "—")),
                         _v_kv("Потреба в гуртожитку", rx.cond(ViewEntrantState.item.person.the_need_for_a_dormitory, "Так", "Ні")),
+                        _v_kv("Подано в електронному вигляді", rx.cond(ViewEntrantState.item.submitted_electronically, "Так", "Ні")),
                         _v_kv("Джерело фінансування", rx.cond(ViewEntrantState.item.person.source_of_funding, ViewEntrantState.item.person.source_of_funding.title, "—")),
                         _v_kv("База вступу", rx.cond(ViewEntrantState.item.person.entry_base, ViewEntrantState.item.person.entry_base.title, "—")),
                         _v_kv("Статус заяви", rx.cond(ViewEntrantState.item.application_status, ViewEntrantState.item.application_status.title, "—")),
@@ -949,6 +1009,10 @@ def _personal_fields() -> rx.Component:
         rx.hstack(
             rx.text("Потреба в гуртожитку:"),
             rx.switch(checked=EntrantFormState.the_need_for_a_dormitory, on_change=EntrantFormState.set_the_need_for_a_dormitory),
+        ),
+        rx.hstack(
+            rx.text("Подано в електронному вигляді:"),
+            rx.switch(checked=EntrantFormState.submitted_electronically, on_change=EntrantFormState.set_submitted_electronically),
         ),
         rx.text("*Джерело фінансування:"),
         _select(EntrantFormState.source_of_funding_options, EntrantFormState.id_source_of_funding_str, EntrantFormState.set_id_source_of_funding, width="100%"),
