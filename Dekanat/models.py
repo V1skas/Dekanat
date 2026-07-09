@@ -200,8 +200,12 @@ class SpecialConditionPersonModel(rx.Model, table=True):
     __tablename__ = "special_conditions_person"
 
     # Table columns
-    id_person: int = Field(primary_key=True, foreign_key="persons.id")
-    id_special_condition: str = Field(primary_key=True, foreign_key="special_conditions.subcategory_code")
+    # Сурогатний PK (DK-57): особа може мати кілька документів по одній і тій
+    # самій пільзі (різні номер/дата видачі), тож (id_person, id_special_condition)
+    # більше не є унікальною парою.
+    id: Optional[int] = Field(default=None, primary_key=True)
+    id_person: int = Field(foreign_key="persons.id")
+    id_special_condition: str = Field(foreign_key="special_conditions.subcategory_code")
     title: Optional[str] = Field(default=None, nullable=True)
     number: Optional[str] = Field(default=None, nullable=True)
     description: Optional[str] = Field(default=None, sa_type=Text, nullable=True)

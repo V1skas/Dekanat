@@ -378,6 +378,7 @@ class EntrantDao:
         session.flush()
         for item in items:
             make_transient(item)
+            item.id = None
             item.id_person = person_id
             session.add(item)
 
