@@ -69,6 +69,8 @@ def apply_entrant_filters(
     created_date_between: Optional[Tuple[datetime, datetime]] = None,
     priority_speciality_id: Optional[int] = None,
     top_priority_speciality_id: Optional[int] = None,
+    special_condition_code: Optional[str] = None,
+    submitted_electronically: Optional[bool] = None,
 ):
     """Додає до statement однакові для списку абітурієнтів та списку заявок (DK-35)
     where-предикати. Передбачається, що у statement уже приєднані EntrantModel та
@@ -113,6 +115,21 @@ def apply_entrant_filters(
             .where(top_filter.priority == 1)
             .exists()
         )
+
+    # Фільтр по спеціальній умові особи (DK-51): є хоча б один запис у
+    # special_conditions_person із відповідним кодом умови.
+    if special_condition_code:
+        scp = aliased(SpecialConditionPersonModel)
+        statement = statement.where(
+            select(scp.id_person)
+            .where(scp.id_person == EntrantModel.id)
+            .where(scp.id_special_condition == special_condition_code)
+            .exists()
+        )
+
+    # Фільтр по маркеру «подано в електронному вигляді» (DK-51).
+    if submitted_electronically is not None:
+        statement = statement.where(EntrantModel.submitted_electronically == submitted_electronically)
     return statement
 
 
@@ -188,6 +205,8 @@ class EntrantDao:
         entry_base_id: Optional[int] = None,
         priority_speciality_id: Optional[int] = None,
         top_priority_speciality_id: Optional[int] = None,
+        special_condition_code: Optional[str] = None,
+        submitted_electronically: Optional[bool] = None,
         sort_field: Optional[str] = None,
         sort_dir: str = "asc",
     ) -> Sequence[EntrantModel]:
@@ -209,6 +228,8 @@ class EntrantDao:
             created_date_between=created_date_between,
             priority_speciality_id=priority_speciality_id,
             top_priority_speciality_id=top_priority_speciality_id,
+            special_condition_code=special_condition_code,
+            submitted_electronically=submitted_electronically,
         )
 
         # Сортування. Для полів зі звʼязаних таблиць — окремі outerjoin'и з аліасами,
@@ -223,6 +244,7 @@ class EntrantDao:
         created_between: Optional[Tuple[datetime, datetime]] = None,
         created_date_between: Optional[Tuple[datetime, datetime]] = None,
         top_priority_speciality_id: Optional[int] = None,
+        entry_base_id: Optional[int] = None,
     ) -> Sequence[EntrantModel]:
         """Полегшена вибірка для представлення «Пріоритетні спеціальності» (DK-49).
 
@@ -233,7 +255,7 @@ class EntrantDao:
         statement = (
             select(EntrantModel)
             .options(
-                selectinload(EntrantModel.person),
+                selectinload(EntrantModel.person).selectinload(PersonModel.entry_base),
                 selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.speciality),
             )
             .join(PersonModel, EntrantModel.id == PersonModel.id)
@@ -245,6 +267,7 @@ class EntrantDao:
             created_between=created_between,
             created_date_between=created_date_between,
             top_priority_speciality_id=top_priority_speciality_id,
+            entry_base_id=entry_base_id,
         )
         statement = statement.order_by(ua_collate(PersonModel.pib).asc())
         return session.exec(statement).all()
@@ -355,6 +378,7 @@ class EntrantDao:
         session.flush()
         for item in items:
             make_transient(item)
+            item.id = None
             item.id_person = person_id
             session.add(item)
 

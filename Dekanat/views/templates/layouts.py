@@ -5,6 +5,7 @@ import reflex as rx
 from Dekanat import routes
 from Dekanat.states.app import AppState
 from Dekanat.declared.submenu import MenuItem
+from Dekanat.views.templates import controls
 
 
 def _menu_visibility(items: List[MenuItem]):
@@ -309,7 +310,9 @@ def page_wrapper(
     список оставался устаревшим после add/edit/delete. `on_mount` срабатывает
     надёжно на каждый монтаж компонента и перечитывает данные.
     """
-    children: List[rx.Component] = [page_header]
+    # Гвард несохранённых изменений (DK-51): рендериться на кожній сторінці, але
+    # активується лише на маршрутах додавання/редагування (див. controls).
+    children: List[rx.Component] = [controls.unsaved_changes_guard(), page_header]
     if filter_panel is not None:
         children.append(filter_panel)
     children.append(

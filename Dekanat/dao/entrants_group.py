@@ -8,7 +8,9 @@ from Dekanat.models import (
     EntrantGroupModel,
     EntrantModel,
     EntrantExamModel,
+    PersonModel,
 )
+from Dekanat.utils.db import ua_collate
 
 
 class EntrantsGroupDao:
@@ -54,11 +56,14 @@ class EntrantsGroupDao:
 
     @staticmethod
     def get_entrants_by_group(group_id: int, session: Session) -> Sequence[EntrantModel]:
+        # Сортуємо за ПІБ (UA-collation) — перегляд екзаменаційної групи за алфавітом (DK-51).
         statement = (
             select(EntrantModel)
             .options(selectinload(EntrantModel.person))
+            .join(PersonModel, EntrantModel.id == PersonModel.id)
             .where(EntrantModel.id_entrant_group == group_id)
             .where(EntrantModel.is_deleted == False)
+            .order_by(ua_collate(PersonModel.pib).asc())
         )
         return session.exec(statement).all()
 

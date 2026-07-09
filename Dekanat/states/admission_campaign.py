@@ -1,20 +1,45 @@
 import reflex as rx
 
+from pydantic import BaseModel, Field as PydanticField
 from typing import Sequence, Optional, List, Dict
 
 from Dekanat.actions import Actions
 from Dekanat import routes
 from Dekanat.states.app import AppState
 
-from Dekanat.models import (
-    AdmissionCampaignModel,
-    AdmissionCampaignSpecialityModel,
-)
+from Dekanat.models import AdmissionCampaignModel
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.services.admission_campaign_speciality import AdmissionCampaignSpecialityService
+from Dekanat.services.source_of_funding import SourceOfFundingService
 from Dekanat.services.speciality import SpecialityService
 from Dekanat.services.entry_base import EntryBaseService
 from Dekanat.services.form_of_study import FormOfStudyService
+
+
+class QuotaDraft(BaseModel):
+    """Один рядок квоти (спеціальність+база+форма) у формі редагування кампанії.
+
+    `funding` — кількість місць по кожному ресурсу фінансування (DK-52),
+    ключ — `str(id_source_of_funding)` (Reflex Var-friendly)."""
+
+    id_speciality: int = 0
+    id_entry_base: int = 0
+    id_form_of_study: int = 0
+    funding: Dict[str, int] = PydanticField(default_factory=dict)
+    # Сума місць по всіх ресурсах — рахується руками при зміні funding
+    # (щоб не покладатись на property/computed_field у Reflex Var, DK-52).
+    total_places: int = 0
+
+
+class QuotaView(BaseModel):
+    """Рядок квоти для сторінки перегляду кампанії (read-only, DK-52)."""
+
+    id_speciality: int = 0
+    speciality_label: str = ""
+    entry_base_label: str = ""
+    form_of_study_label: str = ""
+    funding_map: Dict[str, int] = PydanticField(default_factory=dict)
+    total_places: int = 0
 
 
 class ListAdmissionCampaignState(AppState):
@@ -50,13 +75,15 @@ class _CampaignFormBase(AppState):
     #in_process: bool = True
 
     # Список квот по спеціальностям (буферизується у пам'яті, зберігається при on_save)
-    quotas: List[AdmissionCampaignSpecialityModel] = []
+    quotas: List[QuotaDraft] = []
 
     # Довідник для select'а спеціальностей та лейблів у таблиці квот
     speciality_options: List[Dict[str, str]] = []
     # Довідники бази вступу та форми навчання (DK-26)
     entry_base_options: List[Dict[str, str]] = []
     form_of_study_options: List[Dict[str, str]] = []
+    # Активні ресурси фінансування (DK-52), відсортовані за sequence — колонки таблиці квот.
+    funding_resource_options: List[Dict[str, str]] = []
 
     # Стан діалогу квоти
     q_open: bool = False
@@ -64,8 +91,8 @@ class _CampaignFormBase(AppState):
     q_speciality_combined: str = ""  # "code|id_department"
     q_id_entry_base: int = 0
     q_id_form_of_study: int = 0
-    q_budget_places: int = 0
-    q_contract_places: int = 0
+    # Кількість місць по ресурсах фінансування, ключ — str(id_source_of_funding) (DK-52)
+    q_funding_places: Dict[str, int] = {}
 
     @rx.var
     def title(self) -> str:
@@ -115,6 +142,10 @@ class _CampaignFormBase(AppState):
         self.form_of_study_options = [
             {"value": str(f.id), "label": f.title} for f in FormOfStudyService().get_list_items()
         ]
+        self.funding_resource_options = [
+            {"value": str(r.id), "label": r.title}
+            for r in SourceOfFundingService().get_list_items()
+        ]
 
     def _validate(self) -> Optional[str]:
         if not self.item.title or not self.item.title.strip():
@@ -134,8 +165,7 @@ class _CampaignFormBase(AppState):
         self.q_speciality_combined = ""
         self.q_id_entry_base = 0
         self.q_id_form_of_study = 0
-        self.q_budget_places = 0
-        self.q_contract_places = 0
+        self.q_funding_places = {opt["value"]: 0 for opt in self.funding_resource_options}
 
     @rx.event
     def open_q_add(self):
@@ -151,8 +181,9 @@ class _CampaignFormBase(AppState):
         self.q_speciality_combined = str(item.id_speciality) if item.id_speciality else ""
         self.q_id_entry_base = item.id_entry_base or 0
         self.q_id_form_of_study = item.id_form_of_study or 0
-        self.q_budget_places = item.budget_places or 0
-        self.q_contract_places = item.contract_places or 0
+        self.q_funding_places = {
+            opt["value"]: item.funding.get(opt["value"], 0) for opt in self.funding_resource_options
+        }
         self.q_open = True
 
     @rx.event
@@ -193,18 +224,18 @@ class _CampaignFormBase(AppState):
             self.q_id_form_of_study = 0
 
     @rx.event
-    def set_q_budget_places(self, value: str):
+    def set_q_funding_place(self, id_source_of_funding: str, value: str):
         try:
-            self.q_budget_places = int(value) if value else 0
+            places = int(value) if value else 0
         except (ValueError, TypeError):
-            self.q_budget_places = 0
+            places = 0
+        new_map = dict(self.q_funding_places)
+        new_map[id_source_of_funding] = places
+        self.q_funding_places = new_map
 
-    @rx.event
-    def set_q_contract_places(self, value: str):
-        try:
-            self.q_contract_places = int(value) if value else 0
-        except (ValueError, TypeError):
-            self.q_contract_places = 0
+    @rx.var
+    def q_total_places(self) -> int:
+        return sum(self.q_funding_places.values())
 
     @rx.event
     def save_q(self):
@@ -222,7 +253,7 @@ class _CampaignFormBase(AppState):
         if not self.q_id_form_of_study:
             yield rx.toast.warning("Оберіть форму навчання!")
             return
-        if self.q_budget_places < 0 or self.q_contract_places < 0:
+        if any(places < 0 for places in self.q_funding_places.values()):
             yield rx.toast.warning("Кількість місць не може бути від'ємною!")
             return
 
@@ -237,13 +268,13 @@ class _CampaignFormBase(AppState):
                 yield rx.toast.warning("Квота з такою спеціальністю, базою та формою вже додана!")
                 return
 
-        item = AdmissionCampaignSpecialityModel(
-            id_admission_campaign=self.item.id if self.item is not None and self.item.id is not None else 0,
+        funding = dict(self.q_funding_places)
+        item = QuotaDraft(
             id_speciality=id_speciality,
             id_entry_base=self.q_id_entry_base,
             id_form_of_study=self.q_id_form_of_study,
-            budget_places=self.q_budget_places,
-            contract_places=self.q_contract_places,
+            funding=funding,
+            total_places=sum(funding.values()),
         )
         if 0 <= self.q_index < len(self.quotas):
             self.quotas[self.q_index] = item
@@ -294,7 +325,7 @@ class AddAdmissionCampaignState(_CampaignFormBase):
 
         service = AdmissionCampaignService()
         try:
-            self.item = service.add_one(self.item)
+            self.item = service.add_one(self.item, actor_id=self._actor_id())
             if len(self.quotas) > 0:
                 AdmissionCampaignSpecialityService().replace_all_for_campaign(
                     self.item.id, list(self.quotas)
@@ -323,17 +354,21 @@ class EditAdmissionCampaignState(_CampaignFormBase):
             self.quotas = []
             return
         existing = AdmissionCampaignSpecialityService().get_by_campaign(self.item.id)
-        self.quotas = [
-            AdmissionCampaignSpecialityModel(
-                id_admission_campaign=q.id_admission_campaign,
-                id_speciality=q.id_speciality,
-                id_entry_base=q.id_entry_base,
-                id_form_of_study=q.id_form_of_study,
-                budget_places=q.budget_places,
-                contract_places=q.contract_places,
+        resource_ids = [opt["value"] for opt in self.funding_resource_options]
+        drafts = []
+        for q in existing:
+            funding = {rid: 0 for rid in resource_ids}
+            funding.update({str(f.id_source_of_funding): f.places for f in (q.funding or [])})
+            drafts.append(
+                QuotaDraft(
+                    id_speciality=q.id_speciality,
+                    id_entry_base=q.id_entry_base,
+                    id_form_of_study=q.id_form_of_study,
+                    funding=funding,
+                    total_places=sum(funding.values()),
+                )
             )
-            for q in existing
-        ]
+        self.quotas = drafts
 
     @rx.event
     def on_load(self):
@@ -369,7 +404,7 @@ class EditAdmissionCampaignState(_CampaignFormBase):
 
         service = AdmissionCampaignService()
         try:
-            self.item = service.edit_one(self.item)
+            self.item = service.edit_one(self.item, actor_id=self._actor_id())
             AdmissionCampaignSpecialityService().replace_all_for_campaign(
                 self.item.id, list(self.quotas)
             )
@@ -385,7 +420,9 @@ class EditAdmissionCampaignState(_CampaignFormBase):
 
 class ViewAdmissionCampaignState(AppState):
     item: AdmissionCampaignModel = AdmissionCampaignModel()
-    quotas: Sequence[AdmissionCampaignSpecialityModel] = []
+    quotas: List[QuotaView] = []
+    # Активні ресурси фінансування (DK-52) — колонки таблиці квот.
+    funding_resource_options: List[Dict[str, str]] = []
     in_process: bool = True
 
     def _reload_item(self):
@@ -395,10 +432,37 @@ class ViewAdmissionCampaignState(AppState):
             self.item = loaded
 
     def _reload_quotas(self):
+        self.funding_resource_options = [
+            {"value": str(r.id), "label": r.title}
+            for r in SourceOfFundingService().get_list_items()
+        ]
         if self.item is None or self.item.id is None:
             self.quotas = []
             return
-        self.quotas = AdmissionCampaignSpecialityService().get_by_campaign(self.item.id)
+        existing = AdmissionCampaignSpecialityService().get_by_campaign(self.item.id)
+        resource_ids = [opt["value"] for opt in self.funding_resource_options]
+        views = []
+        for q in existing:
+            # Всі активні ресурси мають ключ (навіть 0), щоб рядок Var-lookup у
+            # view не впав на ресурсі, доданому вже після збереження квоти (DK-52).
+            funding_map = {rid: 0 for rid in resource_ids}
+            funding_map.update({str(f.id_source_of_funding): f.places for f in (q.funding or [])})
+            speciality_label = (
+                f"{q.speciality.code} {q.speciality.title} ({q.speciality.tag})"
+                if q.speciality is not None
+                else str(q.id_speciality)
+            )
+            views.append(
+                QuotaView(
+                    id_speciality=q.id_speciality,
+                    speciality_label=speciality_label,
+                    entry_base_label=q.entry_base.title if q.entry_base is not None else "",
+                    form_of_study_label=q.form_of_study.title if q.form_of_study is not None else "",
+                    funding_map=funding_map,
+                    total_places=sum(funding_map.values()),
+                )
+            )
+        self.quotas = views
 
     @rx.event
     def on_load(self):
@@ -433,7 +497,7 @@ class ViewAdmissionCampaignState(AppState):
             return
 
         service = AdmissionCampaignService()
-        if service.delete_one(self.item):
+        if service.delete_one(self.item, actor_id=self._actor_id()):
             yield rx.redirect(routes.ADMISSION_CAMPAIGN_LIST)
             yield rx.toast.success("Видалено!")
         else:

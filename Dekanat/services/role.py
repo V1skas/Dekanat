@@ -1,10 +1,18 @@
 import reflex as rx
 
+from types import SimpleNamespace
 from typing import Optional, Sequence, List
 from sqlmodel import select
 
 from Dekanat.dao.role import RoleDao
 from Dekanat.models import ActionModel, RoleModel, WorkerModel, WorkersRolesModel
+from Dekanat.audit import (
+    record_action,
+    FieldChange,
+    RoleCreated,
+    RoleUpdated,
+    RoleDeleted,
+)
 
 
 class RoleService:
@@ -24,12 +32,14 @@ class RoleService:
             print(f"[RoleService][get_by_id][ERROR] {e}")
             raise
 
-    def add_one(self, title: str, description: Optional[str], action_ids: List[int]) -> int:
+    def add_one(self, title: str, description: Optional[str], action_ids: List[int], actor_id: Optional[int] = None) -> int:
         try:
             with rx.session() as session:
                 actions = [a for a in (session.get(ActionModel, aid) for aid in action_ids) if a is not None]
                 role = RoleModel(title=title, description=description, actions=actions)
                 session.add(role)
+                session.flush()
+                record_action(session, actor_id, role.id, RoleCreated(title=title, description=description))
                 session.commit()
                 session.refresh(role)
                 return role.id
@@ -37,12 +47,14 @@ class RoleService:
             print(f"[RoleService][add_one][ERROR] {e}")
             raise
 
-    def edit_one(self, id: int, title: str, description: Optional[str], action_ids: List[int]) -> bool:
+    def edit_one(self, id: int, title: str, description: Optional[str], action_ids: List[int], actor_id: Optional[int] = None) -> bool:
         try:
             with rx.session() as session:
                 role = RoleDao.get_by_id(id, session, with_relationship=True)
                 if role is None:
                     return False
+                old_snap = SimpleNamespace(title=role.title, description=role.description)
+                old_action_codes = sorted(a.code for a in (role.actions or []))
                 role.title = title
                 role.description = description
                 actions = [a for a in (session.get(ActionModel, aid) for aid in action_ids) if a is not None]
@@ -60,19 +72,28 @@ class RoleService:
                     for w in workers:
                         w.permissions_version = (w.permissions_version or 0) + 1
                         session.add(w)
+                session.flush()
+
+                action = RoleUpdated.from_diff(old_snap, role)
+                new_action_codes = sorted(a.code for a in (role.actions or []))
+                if new_action_codes != old_action_codes:
+                    action.actions = FieldChange(old=old_action_codes, new=new_action_codes)
+                record_action(session, actor_id, id, action)
+
                 session.commit()
             return True
         except Exception as e:
             print(f"[RoleService][edit_one][ERROR] {e}")
             raise
 
-    def delete_one(self, item: RoleModel) -> bool:
+    def delete_one(self, item: RoleModel, actor_id: Optional[int] = None) -> bool:
         """Видаляє роль перманентно — разом з її призначеннями працівникам та діями."""
         try:
             with rx.session() as session:
                 role = RoleDao.get_by_id(item.id, session)
                 if role is None:
                     return False
+                record_action(session, actor_id, role.id, RoleDeleted(title=role.title))
                 RoleDao.hard_delete(role, session)
                 session.commit()
             return True

@@ -1,1 +1,0 @@
-import"./react-D5nPORWt.js";import{n as e,t}from"./id-card-B2pMXPqx.js";export{e as __iconNode,t as default};

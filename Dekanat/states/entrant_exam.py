@@ -534,7 +534,7 @@ class AddEntrantExamState(_ExamFormBase):
             return
 
         try:
-            self.item = EntrantExamService().add_one(self.item, list(self.responsible_worker_ids))
+            self.item = EntrantExamService().add_one(self.item, list(self.responsible_worker_ids), actor_id=self._actor_id())
             yield rx.toast.success("Запис додано!")
             yield rx.redirect(routes.ENTRANT_EXAM_VIEW + str(self.item.id))
         except Exception:
@@ -589,7 +589,7 @@ class EditEntrantExamState(_ExamFormBase):
             return
 
         try:
-            self.item = EntrantExamService().edit_one(self.item, list(self.responsible_worker_ids))
+            self.item = EntrantExamService().edit_one(self.item, list(self.responsible_worker_ids), actor_id=self._actor_id())
             yield rx.toast.success("Запис змінено!")
             yield rx.redirect(routes.ENTRANT_EXAM_VIEW + str(self.item.id))
         except Exception:
@@ -722,7 +722,7 @@ class ViewEntrantExamState(AppState):
             return
 
         service = EntrantExamService()
-        if service.delete_one(self.item):
+        if service.delete_one(self.item, actor_id=self._actor_id()):
             yield rx.redirect(routes.ENTRANT_EXAM_LIST)
             yield rx.toast.success("Видалено!")
         else:

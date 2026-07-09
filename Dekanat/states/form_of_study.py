@@ -83,7 +83,7 @@ class AddFormOfStudyState(AppState):
 
         service = FormOfStudyService()
         try:
-            self.item = service.add_one(self.item)
+            self.item = service.add_one(self.item, actor_id=self._actor_id())
             yield rx.toast.success("Запис додано!")
             yield rx.redirect(routes.FORM_OF_STUDY_VIEW + str(self.item.id))
         except Exception:
@@ -151,7 +151,7 @@ class EditFormOfStudyState(AppState):
 
         service = FormOfStudyService()
         try:
-            self.item = service.edit_one(self.item)
+            self.item = service.edit_one(self.item, actor_id=self._actor_id())
             yield rx.toast.success("Запис змінено!")
             yield rx.redirect(routes.FORM_OF_STUDY_VIEW + str(self.item.id))
         except Exception:
@@ -204,7 +204,7 @@ class ViewFormOfStudyState(AppState):
             return
 
         service = FormOfStudyService()
-        if service.delete_one(self.item):
+        if service.delete_one(self.item, actor_id=self._actor_id()):
             yield rx.redirect(routes.FORM_OF_STUDY_LIST)
             yield rx.toast.success("Видалено!")
         else:

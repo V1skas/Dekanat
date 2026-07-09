@@ -86,6 +86,8 @@ class ListEntrantState(AppState):
     # Окремі фільтри представлення пріоритетів (незалежні від фільтрів загального списку).
     # p_filter_speciality_key — фільтр по пріоритетній спеціальності (№1) — DK-49.
     p_filter_speciality_key: str = "__all__"
+    # Фільтр по базі вступу у представленні пріоритетів (DK-51). 0 — без фільтра.
+    p_filter_entry_base_id: int = 0
     p_filter_date_mode: str = "day"  # "day" | "period"
     p_filter_date_day: str = ""
     p_filter_date_from: str = ""
@@ -103,6 +105,11 @@ class ListEntrantState(AppState):
     # "code|id_department"; "__all__" — без фільтра (Radix забороняє value="" в rx.select.item).
     # filter_top_speciality_key — фільтр по пріоритетній спеціальності (пріоритет №1) — DK-36.
     filter_top_speciality_key: str = "__all__"
+    # Фільтр по спеціальній умові особи (DK-51). "__all__" — без фільтра.
+    filter_special_condition_key: str = "__all__"
+    # Фільтр по маркеру «подано в електронному вигляді» (DK-51):
+    # "__all__" | "yes" | "no".
+    filter_submitted: str = "__all__"
     # Фільтр по даті створення (DK-34). Режим "day" — конкретний день; "period" — діапазон.
     filter_date_mode: str = "day"  # "day" | "period"
     filter_date_day: str = ""  # YYYY-MM-DD; порожньо — без фільтра
@@ -112,6 +119,8 @@ class ListEntrantState(AppState):
     entry_base_options: List[Dict[str, str]] = []
     # Опции спеціальностей — обмежені квотами активної кампанії (як у формі абітурієнта).
     speciality_options: List[Dict[str, str]] = []
+    # Опції спеціальних умов для фільтра (DK-51).
+    special_condition_options: List[Dict[str, str]] = []
     campaigns: List[AdmissionCampaignModel] = []
 
     # Сортування. sort_field == "" — за замовчуванням (created_at desc).
@@ -173,9 +182,22 @@ class ListEntrantState(AppState):
         except (ValueError, TypeError):
             return None
 
+    def _submitted_filter(self) -> Optional[bool]:
+        """Фільтр по маркеру «подано в електронному вигляді» (DK-51)."""
+        if self.filter_submitted == "yes":
+            return True
+        if self.filter_submitted == "no":
+            return False
+        return None
+
     def _reload_items(self):
         service = EntrantService()
         top_id = self._parse_spec_key(self.filter_top_speciality_key)
+        cond_code = (
+            self.filter_special_condition_key
+            if self.filter_special_condition_key and self.filter_special_condition_key != "__all__"
+            else None
+        )
         self.items = service.get_list_items(
             pib=self.filter_pib.strip() or None,
             phone=self.filter_phone.strip() or None,
@@ -184,6 +206,8 @@ class ListEntrantState(AppState):
             created_between=self._campaign_range(),
             created_date_between=self._date_range(),
             top_priority_speciality_id=top_id,
+            special_condition_code=cond_code,
+            submitted_electronically=self._submitted_filter(),
             sort_field=self.sort_field or None,
             sort_dir=self.sort_dir,
         )
@@ -225,6 +249,7 @@ class ListEntrantState(AppState):
         Полегшену вибірку тримаємо локально — у стан кладемо лише готові клітинки."""
         items = EntrantService().get_priority_items(
             top_priority_speciality_id=self._parse_spec_key(self.p_filter_speciality_key),
+            entry_base_id=self.p_filter_entry_base_id or None,
             created_date_between=self._p_date_range(),
         )
         if not items:
@@ -233,9 +258,14 @@ class ListEntrantState(AppState):
             return
 
         max_p = 0
-        rows: List[tuple] = []  # (entrant_id, pib, {priority: tag})
+        rows: List[tuple] = []  # (entrant_id, pib, base, {priority: tag})
         for e in items:
             pib = e.person.pib if e.person is not None and e.person.pib else "—"
+            base = (
+                e.person.entry_base.title
+                if e.person is not None and e.person.entry_base is not None and e.person.entry_base.title
+                else "—"
+            )
             by_prio: Dict[int, str] = {}
             for sp in (e.specialties or []):
                 if sp.priority is None:
@@ -244,13 +274,17 @@ class ListEntrantState(AppState):
                 by_prio.setdefault(sp.priority, tag)
                 if sp.priority > max_p:
                     max_p = sp.priority
-            rows.append((e.id, pib, by_prio))
+            rows.append((e.id, pib, base, by_prio))
 
-        cells: List[PriorityCell] = [PriorityCell(text="ПІБ", kind="header")]
+        cells: List[PriorityCell] = [
+            PriorityCell(text="ПІБ", kind="header"),
+            PriorityCell(text="База вступу", kind="header"),
+        ]
         for i in range(1, max_p + 1):
             cells.append(PriorityCell(text=str(i), kind="header"))
-        for entrant_id, pib, by_prio in rows:
+        for entrant_id, pib, base, by_prio in rows:
             cells.append(PriorityCell(text=pib, kind="name", entrant_id=entrant_id))
+            cells.append(PriorityCell(text=base, kind="base"))
             for i in range(1, max_p + 1):
                 cells.append(PriorityCell(text=by_prio.get(i, "—"), kind="tag"))
         self.priority_cells = cells
@@ -258,10 +292,11 @@ class ListEntrantState(AppState):
 
     @rx.var
     def priority_grid_template(self) -> str:
-        """CSS grid-template-columns: широкий стовпець ПІБ + N рівних стовпців-пріоритетів."""
+        """CSS grid-template-columns: широкий стовпець ПІБ + стовпець бази вступу +
+        N рівних стовпців-пріоритетів."""
         if self.priority_max <= 0:
             return "1fr"
-        return "minmax(12rem, 1.5fr) " + " ".join(["minmax(4rem, 1fr)"] * self.priority_max)
+        return "minmax(12rem, 1.5fr) minmax(8rem, 1fr) " + " ".join(["minmax(4rem, 1fr)"] * self.priority_max)
 
     @rx.event
     def switch_view(self, view: str):
@@ -300,6 +335,12 @@ class ListEntrantState(AppState):
                 {"value": str(b.id), "label": b.title}
                 for b in EntryBaseService().get_list_items()
             ]
+            # Спеціальні умови для фільтра (DK-51). Перший пункт — sentinel «__all__».
+            self.special_condition_options = [{"value": "__all__", "label": "— Будь-яка —"}]
+            self.special_condition_options.extend(
+                {"value": s.subcategory_code, "label": f"{s.subcategory_code} {s.title}"}
+                for s in SpecialConditionService().get_list_items()
+            )
             campaign_service = AdmissionCampaignService()
             self.campaigns = list(campaign_service.get_list_items())
             active = campaign_service.get_active_campaign()
@@ -414,6 +455,26 @@ class ListEntrantState(AppState):
             self.in_progress = False
 
     @rx.event
+    def set_filter_special_condition_key(self, value: str):
+        self.filter_special_condition_key = value or "__all__"
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.event
+    def set_filter_submitted(self, value: str):
+        self.filter_submitted = value if value in ("__all__", "yes", "no") else "__all__"
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
+    @rx.event
     def clear_filters(self):
         self.filter_pib = ""
         self.filter_phone = ""
@@ -421,6 +482,8 @@ class ListEntrantState(AppState):
         self.filter_entry_base_id = 0
         self.filter_campaign_id = 0
         self.filter_top_speciality_key = "__all__"
+        self.filter_special_condition_key = "__all__"
+        self.filter_submitted = "__all__"
         self.filter_date_mode = "day"
         self.filter_date_day = ""
         self.filter_date_from = ""
@@ -536,6 +599,23 @@ class ListEntrantState(AppState):
             self.in_progress = False
 
     @rx.var
+    def p_filter_entry_base_id_str(self) -> str:
+        return str(self.p_filter_entry_base_id) if self.p_filter_entry_base_id else ""
+
+    @rx.event
+    def set_p_filter_entry_base_id(self, value: str):
+        try:
+            self.p_filter_entry_base_id = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.p_filter_entry_base_id = 0
+        self.in_progress = True
+        yield
+        try:
+            self._reload_priority()
+        finally:
+            self.in_progress = False
+
+    @rx.var
     def is_p_date_mode_period(self) -> bool:
         return self.p_filter_date_mode == "period"
 
@@ -585,6 +665,7 @@ class ListEntrantState(AppState):
     @rx.event
     def clear_priority_filters(self):
         self.p_filter_speciality_key = "__all__"
+        self.p_filter_entry_base_id = 0
         self.p_filter_date_mode = "day"
         self.p_filter_date_day = ""
         self.p_filter_date_from = ""
@@ -687,7 +768,7 @@ class ViewEntrantState(AppState):
             return
 
         service = EntrantService()
-        if service.delete_one(self.item):
+        if service.delete_one(self.item, actor_id=self._actor_id()):
             yield rx.redirect(self.back_route)
             yield rx.toast.success("Видалено!")
         else:
@@ -808,6 +889,8 @@ class EntrantFormState(AppState):
     # Глобальний ліміт розміру екз. групи (з налаштувань) — DK-48.
     max_entrants_per_group: int = 25
     comment: str = ""
+    # «Подано в електронному вигляді» (DK-51).
+    submitted_electronically: bool = False
 
     # ---- Dropdown options ----
     source_of_funding_options: List[Dict[str, str]] = []
@@ -992,6 +1075,7 @@ class EntrantFormState(AppState):
         self.loaded_entrant_group_id = 0
         self.pending_new_group_title = ""
         self.comment = ""
+        self.submitted_electronically = False
         self.identity_documents = []
         self.documents_about_education = []
         self.military_accountings = []
@@ -1067,6 +1151,7 @@ class EntrantFormState(AppState):
             self.id_entrant_group = entrant.id_entrant_group or 0
             self.loaded_entrant_group_id = entrant.id_entrant_group or 0
             self.comment = entrant.comment or ""
+            self.submitted_electronically = bool(entrant.submitted_electronically)
 
             self.identity_documents = list(person.identity_document or [])
             self.documents_about_education = list(person.document_about_education or [])
@@ -1249,6 +1334,10 @@ class EntrantFormState(AppState):
     @rx.event
     def set_the_need_for_a_dormitory(self, value: bool):
         self.the_need_for_a_dormitory = value
+
+    @rx.event
+    def set_submitted_electronically(self, value: bool):
+        self.submitted_electronically = value
 
     # ---- iddoc dialog ----
     @rx.event
@@ -2214,6 +2303,7 @@ class EntrantFormState(AppState):
             id_application_status=self.id_application_status,
             id_entrant_group=self.id_entrant_group if self.id_entrant_group > 0 else None,
             comment=self.comment.strip() or None,  # type: ignore[arg-type]
+            submitted_electronically=self.submitted_electronically,
             is_deleted=False,
         )
 
@@ -2257,6 +2347,7 @@ class EntrantFormState(AppState):
                     specialties=list(self.specialties),
                     results_zno=list(self.results_zno),
                     new_group_title=self.pending_new_group_title or None,
+                    actor_id=self._actor_id(),
                 )
                 yield rx.toast.success("Запис змінено!")
                 yield rx.redirect(routes.ENTRANT_VIEW + str(saved.id) + _from_suffix(self.came_from))
@@ -2276,6 +2367,7 @@ class EntrantFormState(AppState):
                     specialties=list(self.specialties),
                     results_zno=list(self.results_zno),
                     new_group_title=self.pending_new_group_title or None,
+                    actor_id=self._actor_id(),
                 )
                 yield rx.toast.success("Запис додано!")
                 yield rx.redirect(routes.ENTRANT_VIEW + str(saved.id))

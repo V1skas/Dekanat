@@ -148,7 +148,7 @@ class ListAppSettingState(AppState):
                 )
                 for d in self.drafts
             ]
-            AppSettingService().save_all(items)
+            AppSettingService().save_all(items, actor_id=self._actor_id())
             yield rx.toast.success("Налаштування збережено!")
         except Exception:
             yield rx.toast.error("Під час збереження сталася помилка. Спробуйте ще раз.")

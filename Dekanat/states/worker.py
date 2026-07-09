@@ -151,6 +151,7 @@ class AddWorkerState(AppState):
                 photo=self.photo or None,
                 role_ids=self.selected_role_ids,
                 action_ids=self.selected_action_ids,
+                actor_id=self._actor_id(),
             )
             yield rx.toast.success("Запис додано!")
             yield rx.redirect(routes.WORKERS_VIEW+str(new_id))
@@ -283,6 +284,7 @@ class EditWorkerState(AppState):
                 photo=self.photo or None,
                 role_ids=self.selected_role_ids,
                 action_ids=self.selected_action_ids,
+                actor_id=self._actor_id(),
             )
             if not ok:
                 yield rx.toast.error("Запис не знайдено!")
@@ -368,7 +370,7 @@ class ViewWorkerState(AppState):
             return
 
         service = WorkerService()
-        if service.delete_one(self.item):
+        if service.delete_one(self.item, actor_id=self._actor_id()):
             yield rx.redirect(routes.WORKERS_LIST)
             yield rx.toast.success("Видалено!")
         else:

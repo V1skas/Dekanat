@@ -1,6 +1,7 @@
 import reflex as rx
 
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Optional, Sequence, Tuple
 
 from sqlmodel import select
@@ -8,6 +9,12 @@ from sqlmodel import select
 from Dekanat.dao.admission_campaign import AdmissionCampaignDao
 from Dekanat.models import AdmissionCampaignModel
 from Dekanat.utils.clock import now_local
+from Dekanat.audit import (
+    record_action,
+    AdmissionCampaignCreated,
+    AdmissionCampaignUpdated,
+    AdmissionCampaignDeleted,
+)
 
 
 class AdmissionCampaignService:
@@ -27,10 +34,14 @@ class AdmissionCampaignService:
             print(f"[AdmissionCampaignService][get_by_id][ERROR] {e}")
             raise
 
-    def add_one(self, item: AdmissionCampaignModel) -> AdmissionCampaignModel:
+    def add_one(self, item: AdmissionCampaignModel, actor_id: Optional[int] = None) -> AdmissionCampaignModel:
         try:
             with rx.session() as session:
                 managed = AdmissionCampaignDao.add_one(item, session)
+                session.flush()
+                record_action(session, actor_id, managed.id, AdmissionCampaignCreated(
+                    title=managed.title, start_date=managed.start_date, end_date=managed.end_date,
+                ))
                 session.commit()
                 session.refresh(managed)
                 return managed
@@ -38,10 +49,18 @@ class AdmissionCampaignService:
             print(f"[AdmissionCampaignService][add_one][ERROR] {e}")
             raise
 
-    def edit_one(self, item: AdmissionCampaignModel) -> AdmissionCampaignModel:
+    def edit_one(self, item: AdmissionCampaignModel, actor_id: Optional[int] = None) -> AdmissionCampaignModel:
         try:
             with rx.session() as session:
+                old = AdmissionCampaignDao.get_by_id(item.id, session)
+                old_snap = SimpleNamespace(
+                    title=old.title if old else None,
+                    start_date=old.start_date if old else None,
+                    end_date=old.end_date if old else None,
+                )
                 managed = AdmissionCampaignDao.edit_one(item, session)
+                session.flush()
+                record_action(session, actor_id, item.id, AdmissionCampaignUpdated.from_diff(old_snap, managed))
                 session.commit()
                 session.refresh(managed)
                 return managed
@@ -49,11 +68,12 @@ class AdmissionCampaignService:
             print(f"[AdmissionCampaignService][edit_one][ERROR] {e}")
             raise
 
-    def delete_one(self, item: AdmissionCampaignModel) -> bool:
+    def delete_one(self, item: AdmissionCampaignModel, actor_id: Optional[int] = None) -> bool:
         try:
             with rx.session() as session:
                 item.is_deleted = True
                 AdmissionCampaignDao.edit_one(item, session)
+                record_action(session, actor_id, item.id, AdmissionCampaignDeleted(title=item.title))
                 session.commit()
             return True
         except Exception as e:

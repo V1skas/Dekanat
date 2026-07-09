@@ -10,6 +10,8 @@ from Dekanat.models import AdmissionCampaignModel
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.services.admission_campaign_report import AdmissionCampaignReportService
 from Dekanat.utils.background import run_blocking
+from Dekanat.utils.clock import now_local
+from Dekanat.states.audit import AuditHistoryState
 
 
 _COMPARE_NONE = "__none__"
@@ -89,6 +91,7 @@ class ListAdmissionReportState(AppState):
             self.compare_campaign_id = 0
             self._reload_primary()
             self._reload_compare()
+            yield AuditHistoryState.load_for_key("admission_campaign_reports", self.selected_campaign_id, Actions.REPORT_ADMISSION_HISTORY_VIEW.value, Actions.REPORT_ADMISSION_HISTORY_DETAIL.value)
         except Exception as ex:
             print(f"[ListAdmissionReportState][on_load][ERROR] {ex}")
             yield rx.toast.error("Під час завантаження сталася помилка.")
@@ -160,6 +163,7 @@ class ListAdmissionReportState(AppState):
             self.compare_campaign_id = 0
         self._reload_primary()
         self._reload_compare()
+        yield AuditHistoryState.load_for_key("admission_campaign_reports", self.selected_campaign_id, Actions.REPORT_ADMISSION_HISTORY_VIEW.value, Actions.REPORT_ADMISSION_HISTORY_DETAIL.value)
 
     @rx.event
     def set_compare_campaign_id(self, value: str):
@@ -186,15 +190,20 @@ class ListAdmissionReportState(AppState):
         if not self.selected_campaign_id:
             yield rx.toast.warning("Оберіть кампанію.")
             return
+        if self.selected_campaign_ended:
+            yield rx.toast.error("Кампанія вже завершена — формування звіту недоступне.")
+            return
         self.generating = True
         yield
         try:
             campaign_id = self.selected_campaign_id
+            actor_id = self._actor_id()
             service = AdmissionCampaignReportService()
             payload = await run_blocking(service.compute_payload, campaign_id)
-            service.persist_payload(campaign_id, payload)
+            service.persist_payload(campaign_id, payload, actor_id=actor_id)
             self._reload_primary()
             yield rx.toast.success("Звіт сформовано.")
+            yield AuditHistoryState.load_for_key("admission_campaign_reports", campaign_id, Actions.REPORT_ADMISSION_HISTORY_VIEW.value, Actions.REPORT_ADMISSION_HISTORY_DETAIL.value)
         except Exception as ex:
             print(f"[ListAdmissionReportState][on_click_generate][ERROR] {ex}")
             yield rx.toast.error("Під час формування звіту сталася помилка.")
@@ -229,6 +238,15 @@ class ListAdmissionReportState(AppState):
     @rx.var
     def total_period_compare(self) -> int:
         return int(self.compare_payload.get("totals", {}).get("period", 0))
+
+    @rx.var
+    def selected_campaign_ended(self) -> bool:
+        """Чи завершилася обрана кампанія (end_date у минулому) — DK-51.
+        Для таких кампаній формування звіту заборонене."""
+        campaign = next((c for c in self.campaigns if c.id == self.selected_campaign_id), None)
+        if campaign is None or not campaign.end_date:
+            return False
+        return campaign.end_date < now_local().date().isoformat()
 
     @rx.var
     def has_report(self) -> bool:

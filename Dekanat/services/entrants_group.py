@@ -2,6 +2,7 @@ import math
 import reflex as rx
 
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Optional, Sequence, Tuple, List, Dict
 
 from sqlmodel import select
@@ -21,6 +22,13 @@ from Dekanat.models import (
 )
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.utils.clock import now_local
+from Dekanat.audit import (
+    record_action,
+    GroupCreated,
+    GroupUpdated,
+    GroupDeleted,
+    GroupMembersChanged,
+)
 
 
 class EntrantsGroupService:
@@ -49,13 +57,37 @@ class EntrantsGroupService:
             print(f"[EntrantsGroupService][get_by_id][ERROR] {e}")
             raise
 
-    def add_one(self, item: EntrantGroupModel, entrant_ids: Optional[list[int]] = None) -> EntrantGroupModel:
+    @staticmethod
+    def _pibs_for_ids(session, ids) -> List[str]:
+        """ПІБ абітурієнтів за їх id (для журналу зміни складу). id абітурієнта == id особи."""
+        id_list = [i for i in (ids or [])]
+        if not id_list:
+            return []
+        rows = session.exec(
+            select(PersonModel.pib).where(PersonModel.id.in_(id_list))  # type: ignore[attr-defined]
+        ).all()
+        return sorted(rows)
+
+    @staticmethod
+    def _current_member_ids(session, group_id: int) -> List[int]:
+        return list(session.exec(
+            select(EntrantModel.id)
+            .where(EntrantModel.id_entrant_group == group_id)
+            .where(EntrantModel.is_deleted == False)
+        ).all())
+
+    def add_one(self, item: EntrantGroupModel, entrant_ids: Optional[list[int]] = None, actor_id: Optional[int] = None) -> EntrantGroupModel:
         try:
             with rx.session() as session:
                 managed = EntrantsGroupDao.add_one(item, session)
                 session.flush()
                 if entrant_ids:
                     EntrantsGroupDao.replace_entrants(managed.id, entrant_ids, session)
+                record_action(session, actor_id, managed.id, GroupCreated(title=managed.title))
+                if entrant_ids:
+                    record_action(session, actor_id, managed.id, GroupMembersChanged(
+                        added=self._pibs_for_ids(session, entrant_ids),
+                    ))
                 session.commit()
                 session.refresh(managed)
                 return managed
@@ -63,12 +95,26 @@ class EntrantsGroupService:
             print(f"[EntrantsGroupService][add_one][ERROR] {e}")
             raise
 
-    def edit_one(self, item: EntrantGroupModel, entrant_ids: Optional[list[int]] = None) -> EntrantGroupModel:
+    def edit_one(self, item: EntrantGroupModel, entrant_ids: Optional[list[int]] = None, actor_id: Optional[int] = None) -> EntrantGroupModel:
         try:
             with rx.session() as session:
+                old = EntrantsGroupDao.get_by_id(item.id, session)
+                old_snap = SimpleNamespace(title=old.title if old else None)
+                old_member_ids = set(self._current_member_ids(session, item.id)) if entrant_ids is not None else set()
                 managed = EntrantsGroupDao.edit_one(item, session)
                 if entrant_ids is not None:
                     EntrantsGroupDao.replace_entrants(managed.id, entrant_ids, session)
+                session.flush()
+                record_action(session, actor_id, item.id, GroupUpdated.from_diff(old_snap, managed))
+                if entrant_ids is not None:
+                    new_ids = set(entrant_ids)
+                    added = new_ids - old_member_ids
+                    removed = old_member_ids - new_ids
+                    if added or removed:
+                        record_action(session, actor_id, item.id, GroupMembersChanged(
+                            added=self._pibs_for_ids(session, added),
+                            removed=self._pibs_for_ids(session, removed),
+                        ))
                 session.commit()
                 session.refresh(managed)
                 return managed
@@ -76,11 +122,12 @@ class EntrantsGroupService:
             print(f"[EntrantsGroupService][edit_one][ERROR] {e}")
             raise
 
-    def delete_one(self, item: EntrantGroupModel) -> bool:
+    def delete_one(self, item: EntrantGroupModel, actor_id: Optional[int] = None) -> bool:
         try:
             with rx.session() as session:
                 item.is_deleted = True
                 EntrantsGroupDao.edit_one(item, session)
+                record_action(session, actor_id, item.id, GroupDeleted(title=item.title))
                 session.commit()
             return True
         except Exception as e:
@@ -491,7 +538,7 @@ class EntrantsGroupService:
             result.sort(key=lambda r: r["pib"].lower())
             return result
 
-    def bulk_create_with_entrants(self, groups: List[Dict]) -> int:
+    def bulk_create_with_entrants(self, groups: List[Dict], actor_id: Optional[int] = None) -> int:
         """Зберігає підготовлені групи з їх складом в одній транзакції.
 
         Очікує `groups` у форматі `preview_auto_groups`. Групи з ненульовим `id`
@@ -504,18 +551,24 @@ class EntrantsGroupService:
             with rx.session() as session:
                 processed = 0
                 for g in groups:
-                    ids = [e["id"] for e in g.get("entrants", [])]
+                    entrants = g.get("entrants", [])
+                    ids = [e["id"] for e in entrants]
+                    added_pibs = sorted(e.get("pib", f"#{e['id']}") for e in entrants)
                     existing_id = g.get("id") or 0
                     if existing_id:
                         # Дозаповнення наявної групи — тільки дописуємо нових.
                         if ids:
                             EntrantsGroupDao.append_entrants(existing_id, ids, session)
+                            record_action(session, actor_id, existing_id, GroupMembersChanged(added=added_pibs))
                     else:
                         group = EntrantGroupModel(title=g["title"])
                         session.add(group)
                         session.flush()
                         if ids:
                             EntrantsGroupDao.replace_entrants(group.id, ids, session)
+                        record_action(session, actor_id, group.id, GroupCreated(title=group.title))
+                        if ids:
+                            record_action(session, actor_id, group.id, GroupMembersChanged(added=added_pibs))
                     processed += 1
                 session.commit()
                 return processed

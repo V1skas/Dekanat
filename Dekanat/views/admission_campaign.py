@@ -9,11 +9,14 @@ from Dekanat.states.admission_campaign import (
     AddAdmissionCampaignState,
     EditAdmissionCampaignState,
     ViewAdmissionCampaignState,
+    QuotaDraft,
+    QuotaView,
 )
-from Dekanat.models import AdmissionCampaignModel, AdmissionCampaignSpecialityModel
+from Dekanat.models import AdmissionCampaignModel
 
 from Dekanat.views.templates.layouts import page_wrapper, header_subpage
 from Dekanat.views.templates import controls
+from Dekanat.views.templates.audit import audit_history_section
 from Dekanat.views.auth import require_login
 
 
@@ -63,9 +66,24 @@ def list_page_content() -> rx.Component:
 # Helpers for quotas table
 # ============================================================
 
-def _quotas_header(*titles: str) -> rx.Component:
+def _funding_column_header(opt: Dict[str, str]) -> rx.Component:
+    return rx.table.column_header_cell(opt["label"], color=rx.color("accent", 2))
+
+
+def _quotas_header_dynamic(resource_options, *, with_actions: bool) -> rx.Component:
+    """Заголовок таблиці квот: фіксовані колонки + по одній на активний
+    ресурс фінансування + "Всього" (+ "Дії" для форми) (DK-52)."""
+    cells = [
+        rx.table.column_header_cell("Спеціальність", color=rx.color("accent", 2)),
+        rx.table.column_header_cell("База вступу", color=rx.color("accent", 2)),
+        rx.table.column_header_cell("Форма навчання", color=rx.color("accent", 2)),
+        rx.foreach(resource_options, _funding_column_header),
+        rx.table.column_header_cell("Всього", color=rx.color("accent", 2)),
+    ]
+    if with_actions:
+        cells.append(rx.table.column_header_cell("Дії", color=rx.color("accent", 2)))
     return rx.table.header(
-        rx.table.row(*[rx.table.column_header_cell(t, color=rx.color("accent", 2)) for t in titles]),
+        rx.table.row(*cells),
         background_color=rx.color("accent", 9),
     )
 
@@ -76,21 +94,16 @@ def _select_item(opt: Dict[str, str]) -> rx.Component:
 
 # ---------- View page ----------
 
-def _view_quota_row(item: AdmissionCampaignSpecialityModel) -> rx.Component:
+def _view_quota_row(item: QuotaView) -> rx.Component:
     return rx.table.row(
-        rx.table.row_header_cell(
-            rx.cond(
-                item.speciality,
-                item.speciality.code + " " + item.speciality.title + " (" + item.speciality.tag + ")",
-                "—",
-            ),
-            align="left",
+        rx.table.row_header_cell(item.speciality_label, align="left"),
+        rx.table.cell(item.entry_base_label),
+        rx.table.cell(item.form_of_study_label),
+        rx.foreach(
+            ViewAdmissionCampaignState.funding_resource_options,
+            lambda opt: rx.table.cell(item.funding_map[opt["value"]].to_string()),
         ),
-        rx.table.cell(rx.cond(item.entry_base, item.entry_base.title, "—")),
-        rx.table.cell(rx.cond(item.form_of_study, item.form_of_study.title, "—")),
-        rx.table.cell(item.budget_places),
-        rx.table.cell(item.contract_places),
-        rx.table.cell(item.budget_places + item.contract_places),
+        rx.table.cell(item.total_places),
     )
 
 
@@ -100,7 +113,7 @@ def _view_quotas_section() -> rx.Component:
         rx.cond(
             ViewAdmissionCampaignState.quotas.length() > 0,
             rx.table.root(
-                _quotas_header("Спеціальність", "База вступу", "Форма навчання", "Бюджет", "Контракт", "Всього"),
+                _quotas_header_dynamic(ViewAdmissionCampaignState.funding_resource_options, with_actions=False),
                 rx.table.body(rx.foreach(ViewAdmissionCampaignState.quotas, _view_quota_row)),
                 variant="surface",
                 width="100%",
@@ -139,7 +152,7 @@ def view_page_content() -> rx.Component:
 # ---------- Add / Edit form helpers ----------
 
 def _form_quota_row_factory(form_state):
-    def _row(item: AdmissionCampaignSpecialityModel, idx: int) -> rx.Component:
+    def _row(item: QuotaDraft, idx: int) -> rx.Component:
         return rx.table.row(
             rx.table.row_header_cell(
                 form_state.speciality_labels[item.id_speciality.to_string()],
@@ -147,9 +160,11 @@ def _form_quota_row_factory(form_state):
             ),
             rx.table.cell(form_state.entry_base_labels[item.id_entry_base.to_string()]),
             rx.table.cell(form_state.form_labels[item.id_form_of_study.to_string()]),
-            rx.table.cell(item.budget_places),
-            rx.table.cell(item.contract_places),
-            rx.table.cell(item.budget_places + item.contract_places),
+            rx.foreach(
+                form_state.funding_resource_options,
+                lambda opt: rx.table.cell(item.funding[opt["value"]].to_string()),
+            ),
+            rx.table.cell(item.total_places),
             rx.table.cell(
                 rx.hstack(
                     controls.button_image_primary(
@@ -179,7 +194,7 @@ def _form_quotas_section(form_state) -> rx.Component:
         rx.cond(
             form_state.quotas.length() > 0,
             rx.table.root(
-                _quotas_header("Спеціальність", "База вступу", "Форма навчання", "Бюджет", "Контракт", "Всього", "Дії"),
+                _quotas_header_dynamic(form_state.funding_resource_options, with_actions=True),
                 rx.table.body(rx.foreach(form_state.quotas, _form_quota_row_factory(form_state))),
                 variant="surface",
                 width="100%",
@@ -190,6 +205,23 @@ def _form_quotas_section(form_state) -> rx.Component:
         align="stretch",
         width="100%",
     )
+
+
+def _funding_place_field(form_state):
+    def _field(opt: Dict[str, str]) -> rx.Component:
+        return rx.vstack(
+            rx.text(opt["label"] + ":"),
+            rx.input(
+                type="number",
+                value=form_state.q_funding_places[opt["value"]].to_string(),
+                on_change=lambda v: form_state.set_q_funding_place(opt["value"], v),
+                width="100%",
+            ),
+            spacing="1",
+            width="100%",
+        )
+
+    return _field
 
 
 def _quota_dialog(form_state) -> rx.Component:
@@ -239,19 +271,11 @@ def _quota_dialog(form_state) -> rx.Component:
                     on_change=form_state.set_q_id_form_of_study,
                     width="100%",
                 ),
-                rx.text("*Бюджетних місць:"),
-                rx.input(
-                    type="number",
-                    value=form_state.q_budget_places.to_string(),
-                    on_change=form_state.set_q_budget_places,
-                    width="100%",
-                ),
-                rx.text("*Контрактних місць:"),
-                rx.input(
-                    type="number",
-                    value=form_state.q_contract_places.to_string(),
-                    on_change=form_state.set_q_contract_places,
-                    width="100%",
+                rx.foreach(form_state.funding_resource_options, _funding_place_field(form_state)),
+                rx.hstack(
+                    rx.text("Всього місць:", weight="bold"),
+                    rx.text(form_state.q_total_places.to_string()),
+                    spacing="2",
                 ),
                 rx.hstack(
                     rx.dialog.close(
@@ -371,7 +395,13 @@ def view_page() -> rx.Component:
             left=controls.button_back(routes.ADMISSION_CAMPAIGN_LIST),
             width="100%",
         ),
-        rx.skeleton(view_page_content(), loading=ViewAdmissionCampaignState.in_process, height="100%"),
+        rx.vstack(
+            rx.skeleton(view_page_content(), loading=ViewAdmissionCampaignState.in_process, height="100%"),
+            audit_history_section(Actions.ADMISSION_CAMPAIGN_HISTORY_VIEW.value, Actions.ADMISSION_CAMPAIGN_HISTORY_DETAIL.value),
+            width="100%",
+            align="stretch",
+            spacing="4",
+        ),
     )
 
 

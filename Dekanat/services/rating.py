@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from Dekanat.dao.rating import RatingDao
 from Dekanat.services.app_setting import AppSettingService
 from Dekanat.utils.display import disambiguate_pib
+from Dekanat.audit import record_action, RatingGenerated
 from Dekanat.models import (
     RatingSnapshotModel,
     RatingEntryModel,
@@ -20,12 +21,13 @@ from Dekanat.models import (
     SpecialConditionModel,
     ApplicationStatusModel,
     ItemZnoModel,
+    SourceOfFundingModel,
+    SourceOfFundingEligibilityModel,
 )
 
 
 # Status constants for entries
-STATUS_BUDGET = "budget"
-STATUS_CONTRACT = "contract"
+STATUS_ASSIGNED = "assigned"
 STATUS_KVOTA = "kvota"
 STATUS_REJECTED = "rejected"
 # DK-43: картка, чий статус заявки не допускає до рейтингу — рядок унизу, сірий.
@@ -72,9 +74,37 @@ class RatingService:
 
                 quotas = session.exec(
                     select(AdmissionCampaignSpecialityModel)
-                    .options(selectinload(AdmissionCampaignSpecialityModel.speciality))
+                    .options(
+                        selectinload(AdmissionCampaignSpecialityModel.speciality),
+                        selectinload(AdmissionCampaignSpecialityModel.funding),
+                    )
                     .where(AdmissionCampaignSpecialityModel.id_admission_campaign == id_campaign)
                 ).all()
+
+                # Ресурси фінансування (DK-52): пріоритет (sequence) і на які ще
+                # ресурси може "перестрибнути" власник кожного ресурсу.
+                resources = {
+                    r.id: r
+                    for r in session.exec(
+                        select(SourceOfFundingModel).where(SourceOfFundingModel.is_deleted == False)
+                    ).all()
+                }
+                eligibility_rows = session.exec(select(SourceOfFundingEligibilityModel)).all()
+                eligible_map: Dict[int, List[int]] = {}
+                for row in eligibility_rows:
+                    eligible_map.setdefault(row.id_source_of_funding, []).append(
+                        row.id_eligible_source_of_funding
+                    )
+
+                def _chain(id_resource: int) -> List[int]:
+                    own_seq = resources[id_resource].sequence if id_resource in resources else 0
+                    targets = [
+                        t
+                        for t in eligible_map.get(id_resource, [])
+                        if t in resources and resources[t].sequence > own_seq
+                    ]
+                    targets.sort(key=lambda t: resources[t].sequence)
+                    return [id_resource] + targets
 
                 # Усі абітурієнти, створені у межах активної кампанії
                 from datetime import datetime
@@ -160,89 +190,113 @@ class RatingService:
                         "allowed": ent.id_application_status in allowed_status_ids,
                         "base": ent.person.id_entry_base,
                         "specs": spec_keys,
+                        "own_resource": ent.person.id_source_of_funding,
                     }
 
-                # Будуємо рейтинг для кожної квоти кампанії (спеціальність+база+форма)
+                # Будуємо рейтинг для кожної квоти кампанії (спеціальність+база+форма).
+                # Кожен ресурс фінансування квоти дає окрему групу/таблицю (DK-52):
+                # членство в групі — за ВЛАСНИМ ресурсом абітурієнта (для квоти —
+                # завжди ресурс з найменшим sequence), а фінальний статус/ресурс,
+                # у конкурс якого абітурієнт фактично потрапив, може відрізнятись
+                # (перестрибування за ланцюжком eligible_for).
                 entries: List[RatingEntryModel] = []
                 for q in quotas:
                     applicants = [
                         info
                         for info in entrant_info.values()
                         if info["base"] == q.id_entry_base
-                        and (q.id_speciality, q.id_form_of_study)
-                        in info["specs"]
+                        and (q.id_speciality, q.id_form_of_study) in info["specs"]
                     ]
-                    # Не допущені за статусом заявки (DK-43) — не ранжуються нарівні
-                    # з рештою, а йдуть у самий низ зі статусом STATUS_EXCLUDED.
-                    allowed = [a for a in applicants if a["allowed"]]
-                    excluded = sorted(
-                        [a for a in applicants if not a["allowed"]],
-                        key=lambda a: a["total"],
-                        reverse=True,
+                    if not applicants:
+                        continue
+
+                    # Ресурси, сконфігуровані для цієї квоти, за sequence asc.
+                    quota_resources = sorted(
+                        (f for f in (q.funding or []) if f.id_source_of_funding in resources),
+                        key=lambda f: resources[f.id_source_of_funding].sequence,
                     )
-                    # Кандидати з квотою — нагору; в межах груп сортування за балом desc
-                    kvotas = sorted(
+                    if not quota_resources:
+                        continue
+                    r1_id = quota_resources[0].id_source_of_funding
+                    remaining = {f.id_source_of_funding: f.places or 0 for f in quota_resources}
+                    configured_ids = set(remaining.keys())
+
+                    allowed = [a for a in applicants if a["allowed"]]
+                    excluded = [a for a in applicants if not a["allowed"]]
+
+                    # Група/статус/призначений ресурс кожного абітурієнта.
+                    # (group, status, assigned, total, position_bucket)
+                    rows: List[Dict] = []
+
+                    # 1. Квота — завжди у групі r1, ніколи не відхиляється.
+                    kvota_applicants = sorted(
                         [a for a in allowed if a["kvota"]],
                         key=lambda a: a["total"],
                         reverse=True,
                     )
-                    others = sorted(
-                        [a for a in allowed if not a["kvota"]],
-                        key=lambda a: a["total"],
-                        reverse=True,
-                    )
-                    ordered = kvotas + others + excluded
+                    for a in kvota_applicants:
+                        remaining[r1_id] = max(0, remaining[r1_id] - 1)
+                        rows.append({
+                            "info": a, "group": r1_id, "assigned": r1_id, "status": STATUS_KVOTA,
+                        })
 
-                    for pos, info in enumerate(ordered, start=1):
-                        if not info["allowed"]:
-                            status = STATUS_EXCLUDED
-                        elif info["kvota"]:
-                            status = STATUS_KVOTA
-                        else:
-                            status = ""
-                        entries.append(
-                            RatingEntryModel(
-                                id_snapshot=0,  # set later
-                                id_speciality=q.id_speciality,
-                                id_entry_base=q.id_entry_base,
-                                id_form_of_study=q.id_form_of_study,
-                                id_entrant=info["id"],
-                                position=pos,
-                                total_points=info["total"],
-                                status=status,
-                            )
+                    # 2. Решта (не квота) — по власних ресурсах, у порядку sequence asc,
+                    # щоб спіловер "з'їдав" місця наступного ресурсу РАНІШЕ, ніж
+                    # почнеться ранжування його рідних кандидатів.
+                    non_kvota_allowed = [a for a in allowed if not a["kvota"]]
+                    for f in quota_resources:
+                        rid = f.id_source_of_funding
+                        native = sorted(
+                            [a for a in non_kvota_allowed if a["own_resource"] == rid],
+                            key=lambda a: a["total"],
+                            reverse=True,
                         )
+                        chain = _chain(rid)
+                        for a in native:
+                            landed = None
+                            for target in chain:
+                                if target in configured_ids and remaining.get(target, 0) > 0:
+                                    remaining[target] -= 1
+                                    landed = target
+                                    break
+                            if landed is not None:
+                                rows.append({
+                                    "info": a, "group": rid, "assigned": landed, "status": STATUS_ASSIGNED,
+                                })
+                            else:
+                                rows.append({
+                                    "info": a, "group": rid, "assigned": None, "status": STATUS_REJECTED,
+                                })
 
-                # Виставляємо статуси не-квота-абітурієнтам за лічильниками місць.
-                # Групуємо вже сформовані entries за кортежем квоти (спеціальність+база+форма).
-                by_spec: Dict[Tuple[int, int, int], List[RatingEntryModel]] = {}
-                for e in entries:
-                    by_spec.setdefault(
-                        (e.id_speciality, e.id_entry_base, e.id_form_of_study),
-                        [],
-                    ).append(e)
-                for q in quotas:
-                    key = (q.id_speciality, q.id_entry_base, q.id_form_of_study)
-                    spec_entries = by_spec.get(key, [])
-                    budget_left = q.budget_places or 0
-                    contract_left = q.contract_places or 0
-                    # Перший прохід: квоти вже мають статус STATUS_KVOTA та з'їдають бюджет
-                    for e in spec_entries:
-                        if e.status == STATUS_KVOTA:
-                            budget_left = max(0, budget_left - 1)
-                    # Другий прохід: виставляємо статуси не-квота-абітурієнтам у порядку position.
-                    # Не допущені (STATUS_EXCLUDED, DK-43) місць не займають і статус зберігають.
-                    for e in sorted(spec_entries, key=lambda x: x.position):
-                        if e.status in (STATUS_KVOTA, STATUS_EXCLUDED):
-                            continue
-                        if budget_left > 0:
-                            e.status = STATUS_BUDGET
-                            budget_left -= 1
-                        elif contract_left > 0:
-                            e.status = STATUS_CONTRACT
-                            contract_left -= 1
-                        else:
-                            e.status = STATUS_REJECTED
+                    # 3. Не допущені за статусом заявки (DK-43) — групуються за власним
+                    # ресурсом, у конкурсі участі не беруть.
+                    for a in excluded:
+                        group = a["own_resource"] if a["own_resource"] in configured_ids else r1_id
+                        rows.append({"info": a, "group": group, "assigned": None, "status": STATUS_EXCLUDED})
+
+                    # Позиція — в межах кожної групи: kvota, потім assigned, потім
+                    # rejected, потім excluded, у кожному блоці — за балом desc.
+                    order_key = {STATUS_KVOTA: 0, STATUS_ASSIGNED: 1, STATUS_REJECTED: 2, STATUS_EXCLUDED: 3}
+                    by_group: Dict[int, List[Dict]] = {}
+                    for r in rows:
+                        by_group.setdefault(r["group"], []).append(r)
+                    for gid, group_rows in by_group.items():
+                        group_rows.sort(key=lambda r: (order_key[r["status"]], -r["info"]["total"]))
+                        for pos, r in enumerate(group_rows, start=1):
+                            entries.append(
+                                RatingEntryModel(
+                                    id_snapshot=0,  # set later
+                                    id_speciality=q.id_speciality,
+                                    id_entry_base=q.id_entry_base,
+                                    id_form_of_study=q.id_form_of_study,
+                                    id_entrant=r["info"]["id"],
+                                    position=pos,
+                                    total_points=r["info"]["total"],
+                                    id_source_of_funding=gid,
+                                    id_assigned_source_of_funding=r["assigned"],
+                                    status=r["status"],
+                                )
+                            )
 
                 # Обчислені рядки повертаємо — запис робить persist_entries.
                 return entries
@@ -251,7 +305,7 @@ class RatingService:
             raise
 
     def persist_entries(
-        self, id_campaign: int, entries: List[RatingEntryModel]
+        self, id_campaign: int, entries: List[RatingEntryModel], actor_id: Optional[int] = None
     ) -> Tuple[RatingSnapshotModel, List[RatingEntryModel]]:
         """Зберігає обчислені рядки: видаляє попередній знімок кампанії, створює
         новий і записує рядки, потім перечитує з relationships. Виконується на
@@ -263,6 +317,10 @@ class RatingService:
 
                 snapshot = RatingSnapshotModel(id_campaign=id_campaign)
                 RatingDao.add_snapshot(snapshot, entries, session)
+                session.flush()
+                record_action(session, actor_id, id_campaign, RatingGenerated(
+                    id_campaign=id_campaign, snapshot_id=snapshot.id, entries_count=len(entries),
+                ))
                 session.commit()
                 session.refresh(snapshot)
 
@@ -314,12 +372,22 @@ class RatingService:
                         selectinload(AdmissionCampaignSpecialityModel.speciality),
                         selectinload(AdmissionCampaignSpecialityModel.entry_base),
                         selectinload(AdmissionCampaignSpecialityModel.form_of_study),
+                        selectinload(AdmissionCampaignSpecialityModel.funding),
                     )
                     .where(AdmissionCampaignSpecialityModel.id_admission_campaign == id_campaign)
                 ).all()
                 quota_map = {
                     (q.id_speciality, q.id_entry_base, q.id_form_of_study): q
                     for q in quotas
+                }
+
+                # Ресурс з найменшим sequence ("r1") — офіційна форма МОН має лише
+                # 2 фіксовані колонки (бюджет/контракт), тому DOCX свідомо не
+                # узагальнюємо на N ресурсів (DK-52): r1 мапиться на "бюджет",
+                # решта — на "контракт". Порядок групи у документі — за sequence.
+                resource_sequence = {
+                    r.id: r.sequence
+                    for r in session.exec(select(SourceOfFundingModel)).all()
                 }
 
                 # Предмети ЗНО, що враховуються у рейтингу (DK-47): у документ ідуть
@@ -389,11 +457,24 @@ class RatingService:
                     ordered_items = sorted(item_ids)
                     exams = [item_titles.get(i, f"#{i}") for i in ordered_items]
 
-                    budget_places = q.budget_places if q is not None else 0
-                    contract_places = q.contract_places if q is not None else 0
+                    quota_funding = list(q.funding or []) if q is not None else []
+                    r1_id = (
+                        min(quota_funding, key=lambda f: resource_sequence.get(f.id_source_of_funding, 0)).id_source_of_funding
+                        if quota_funding
+                        else None
+                    )
+                    budget_places = next(
+                        (f.places for f in quota_funding if f.id_source_of_funding == r1_id), 0
+                    )
+                    total_places = sum(f.places for f in quota_funding)
 
+                    # Комбінований порядок для документа: групи за sequence ресурсу,
+                    # у межах групи — вже порахована position (DK-52).
                     applicants: List[Dict] = []
-                    for e in sorted(ranked_entries, key=lambda x: x.position):
+                    for e in sorted(
+                        ranked_entries,
+                        key=lambda x: (resource_sequence.get(x.id_source_of_funding, 0), x.position),
+                    ):
                         pgrades = grades_by_person.get(e.id_entrant, {})
                         grades = [pgrades.get(i, 0) for i in ordered_items]
                         pib = (
@@ -411,9 +492,10 @@ class RatingService:
                                 "pib": pib,
                                 "phone": phone,
                                 "grades": grades,
-                                # Квота проходить на бюджет → budget=True; контракт окремо.
-                                "budget": e.status in (STATUS_BUDGET, STATUS_KVOTA),
-                                "contract": e.status == STATUS_CONTRACT,
+                                # Квота/асайн на r1 → budget=True; будь-який інший ресурс — контракт.
+                                "budget": e.status in (STATUS_KVOTA, STATUS_ASSIGNED)
+                                and e.id_assigned_source_of_funding == r1_id,
+                                "contract": e.status == STATUS_ASSIGNED and e.id_assigned_source_of_funding != r1_id,
                             }
                         )
 
@@ -436,7 +518,7 @@ class RatingService:
                             "specialty": spec_title,
                             "admission_base": base_title,
                             "budget_places": budget_places,
-                            "total_places": budget_places + contract_places,
+                            "total_places": total_places,
                             "report_date": snapshot.generated_at.date(),
                             "exams": exams,
                             "applicants": applicants,
