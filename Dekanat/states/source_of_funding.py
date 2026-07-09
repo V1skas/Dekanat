@@ -76,7 +76,7 @@ class AddSourceOfFundingState(AppState):
 
         service = SourceOfFundingService()
         try:
-            self.item = service.add_one(self.item)
+            self.item = service.add_one(self.item, actor_id=self._actor_id())
             yield rx.toast.success("Запис додано!")
             yield rx.redirect(routes.SOURCE_OF_FUNDING_VIEW + str(self.item.id))
         except Exception:
@@ -136,7 +136,7 @@ class EditSourceOfFundingState(AppState):
 
         service = SourceOfFundingService()
         try:
-            self.item = service.edit_one(self.item)
+            self.item = service.edit_one(self.item, actor_id=self._actor_id())
             yield rx.toast.success("Запис змінено!")
             yield rx.redirect(routes.SOURCE_OF_FUNDING_VIEW + str(self.item.id))
         except Exception:
@@ -189,7 +189,7 @@ class ViewSourceOfFundingState(AppState):
             return
 
         service = SourceOfFundingService()
-        if service.delete_one(self.item):
+        if service.delete_one(self.item, actor_id=self._actor_id()):
             yield rx.redirect(routes.SOURCE_OF_FUNDING_LIST)
             yield rx.toast.success("Видалено!")
         else:

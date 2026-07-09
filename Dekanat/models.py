@@ -630,3 +630,30 @@ class RatingEntryModel(rx.Model, table=True):
     # Relationships
     speciality: Optional['SpecialityModel'] = Relationship()
     entrant: Optional['EntrantModel'] = Relationship()
+
+
+@rx.ModelRegistry.register
+class AuditLogModel(rx.Model, table=True):
+    __tablename__ = "audit_log"
+
+    # Table columns
+    id: int = Field(primary_key=True)
+    # Актор дії. Nullable — про запас для безакторних/системних записів; звичайні
+    # дії завжди пишуться з id залогіненого воркера (DK-55).
+    id_worker: Optional[int] = Field(default=None, foreign_key="workers.id", nullable=True)
+    # "create" | "update" | "delete" | "generate" | "assign"
+    action: str = Field(nullable=False)
+    # Імʼя таблиці сутності, напр. "entrants", "kinship".
+    table_name: str = Field(nullable=False)
+    # Ідентифікатор зміненого запису як рядок — уніфікує int/composite/строкові PK
+    # (special_conditions, speciality тощо).
+    record_id: str = Field(nullable=False)
+    # JSON-payload дії (див. Dekanat/audit). Text, бо JSON довший за VARCHAR(255).
+    changes: str = Field(sa_column=Column("changes", Text, nullable=False))
+    created_at: datetime = Field(
+        default_factory=now_local,
+        sa_column=Column("created_at", DateTime, nullable=False, server_default=func.current_timestamp()),
+    )
+
+    # Relationships
+    worker: Optional['WorkerModel'] = Relationship()

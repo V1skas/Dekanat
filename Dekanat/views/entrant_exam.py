@@ -13,6 +13,7 @@ from Dekanat.states.entrant_exam import (
 
 from Dekanat.views.templates.layouts import page_wrapper, header_subpage
 from Dekanat.views.templates import controls
+from Dekanat.views.templates.audit import audit_history_section
 from Dekanat.views.auth import require_login
 
 
@@ -588,7 +589,13 @@ def view_page() -> rx.Component:
             left=controls.button_back(routes.ENTRANT_EXAM_LIST),
             width="100%",
         ),
-        rx.skeleton(view_page_content(), loading=ViewEntrantExamState.in_process, height="100%"),
+        rx.vstack(
+            rx.skeleton(view_page_content(), loading=ViewEntrantExamState.in_process, height="100%"),
+            audit_history_section("entrants_exams"),
+            width="100%",
+            align="stretch",
+            spacing="4",
+        ),
     )
 
 

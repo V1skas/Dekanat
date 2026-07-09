@@ -83,7 +83,7 @@ class AddEntryBaseState(AppState):
 
         service = EntryBaseService()
         try:
-            self.item = service.add_one(self.item)
+            self.item = service.add_one(self.item, actor_id=self._actor_id())
             yield rx.toast.success("Запис додано!")
             yield rx.redirect(routes.ENTRY_BASE_VIEW + str(self.item.id))
         except Exception:
@@ -151,7 +151,7 @@ class EditEntryBaseState(AppState):
 
         service = EntryBaseService()
         try:
-            self.item = service.edit_one(self.item)
+            self.item = service.edit_one(self.item, actor_id=self._actor_id())
             yield rx.toast.success("Запис змінено!")
             yield rx.redirect(routes.ENTRY_BASE_VIEW + str(self.item.id))
         except Exception:
@@ -208,7 +208,7 @@ class ViewEntryBaseState(AppState):
             return
 
         service = EntryBaseService()
-        if service.delete_one(self.item):
+        if service.delete_one(self.item, actor_id=self._actor_id()):
             yield rx.redirect(routes.ENTRY_BASE_LIST)
             yield rx.toast.success("Видалено!")
         else:

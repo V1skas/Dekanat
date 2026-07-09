@@ -41,6 +41,11 @@ class AppState(rx.State):
     def set_user_menu_open(self, value: bool):
         self.user_menu_open = value
 
+    def _actor_id(self) -> Optional[int]:
+        """Id залогіненого воркера для журналу дій (DK-55). None — якщо сесія без
+        воркера (не має ставатись у мутуючих обробниках: там спершу йде перевірка прав)."""
+        return self.worker.id if self.worker is not None else None
+
     def has_permission(self, action: Actions) -> bool:
         try:
             if not self.is_auth:

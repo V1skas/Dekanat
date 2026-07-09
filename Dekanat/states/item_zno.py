@@ -101,7 +101,7 @@ class AddItemZnoState(AppState):
 
         service = ItemZnoService()
         try:
-            self.item = service.add_one(self.item)
+            self.item = service.add_one(self.item, actor_id=self._actor_id())
             yield rx.toast.success("Запис додано!")
             yield rx.redirect(routes.ITEM_ZNO_VIEW + str(self.item.id))
         except Exception:
@@ -187,7 +187,7 @@ class EditItemZnoState(AppState):
 
         service = ItemZnoService()
         try:
-            self.item = service.edit_one(self.item)
+            self.item = service.edit_one(self.item, actor_id=self._actor_id())
             yield rx.toast.success("Запис змінено!")
             yield rx.redirect(routes.ITEM_ZNO_VIEW + str(self.item.id))
         except Exception:
@@ -240,7 +240,7 @@ class ViewItemZnoState(AppState):
             return
 
         service = ItemZnoService()
-        if service.delete_one(self.item):
+        if service.delete_one(self.item, actor_id=self._actor_id()):
             yield rx.redirect(routes.ITEM_ZNO_LIST)
             yield rx.toast.success("Видалено!")
         else:

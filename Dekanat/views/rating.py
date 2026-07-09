@@ -7,6 +7,7 @@ from Dekanat.states.rating import ListRatingState, RatingGroup
 
 from Dekanat.views.templates.layouts import page_wrapper, header_subpage
 from Dekanat.views.templates import controls
+from Dekanat.views.templates.audit import audit_history_section_for_key
 from Dekanat.views.auth import require_login
 
 
@@ -290,6 +291,7 @@ def list_page_content() -> rx.Component:
             ),
             controls.empty_placeholder("Рейтинг порожній. Натисніть «Сформувати рейтинг»."),
         ),
+        audit_history_section_for_key("rating_snapshots", ListRatingState.selected_campaign_id),
         spacing="3",
         align="stretch",
         width="100%",

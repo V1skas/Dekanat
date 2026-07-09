@@ -1,9 +1,16 @@
 import reflex as rx
 
+from types import SimpleNamespace
 from typing import Optional, Sequence
 
 from Dekanat.dao.source_of_funding import SourceOfFundingDao
 from Dekanat.models import SourceOfFundingModel
+from Dekanat.audit import (
+    record_action,
+    SourceOfFundingCreated,
+    SourceOfFundingUpdated,
+    SourceOfFundingDeleted,
+)
 
 
 class SourceOfFundingService:
@@ -23,10 +30,12 @@ class SourceOfFundingService:
             print(f"[SourceOfFundingService][get_by_id][ERROR] {e}")
             raise
 
-    def add_one(self, item: SourceOfFundingModel) -> SourceOfFundingModel:
+    def add_one(self, item: SourceOfFundingModel, actor_id: Optional[int] = None) -> SourceOfFundingModel:
         try:
             with rx.session() as session:
                 SourceOfFundingDao.add_one(item, session)
+                session.flush()
+                record_action(session, actor_id, item.id, SourceOfFundingCreated(title=item.title))
                 session.commit()
                 session.refresh(item)
             return item
@@ -34,10 +43,14 @@ class SourceOfFundingService:
             print(f"[SourceOfFundingService][add_one][ERROR] {e}")
             raise
 
-    def edit_one(self, item: SourceOfFundingModel) -> SourceOfFundingModel:
+    def edit_one(self, item: SourceOfFundingModel, actor_id: Optional[int] = None) -> SourceOfFundingModel:
         try:
             with rx.session() as session:
+                old = SourceOfFundingDao.get_by_id(item.id, session)
+                old_snap = SimpleNamespace(title=old.title if old else None)
                 managed = SourceOfFundingDao.edit_one(item, session)
+                session.flush()
+                record_action(session, actor_id, item.id, SourceOfFundingUpdated.from_diff(old_snap, managed))
                 session.commit()
                 session.refresh(managed)
             return managed
@@ -45,11 +58,12 @@ class SourceOfFundingService:
             print(f"[SourceOfFundingService][edit_one][ERROR] {e}")
             raise
 
-    def delete_one(self, item: SourceOfFundingModel) -> bool:
+    def delete_one(self, item: SourceOfFundingModel, actor_id: Optional[int] = None) -> bool:
         try:
             with rx.session() as session:
                 item.is_deleted = True
                 SourceOfFundingDao.edit_one(item, session)
+                record_action(session, actor_id, item.id, SourceOfFundingDeleted(title=item.title))
                 session.commit()
             return True
         except Exception as e:

@@ -1,10 +1,20 @@
 import reflex as rx
 
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Optional, Sequence, List, Tuple, Dict
 
+from sqlmodel import select
+
 from Dekanat.dao.entrant_exam import EntrantExamDao
-from Dekanat.models import EntrantExamModel
+from Dekanat.models import EntrantExamModel, EntrantExamWorkerModel
+from Dekanat.audit import (
+    record_action,
+    FieldChange,
+    ExamCreated,
+    ExamUpdated,
+    ExamDeleted,
+)
 
 
 # День тижня українською за Python-індексом (Пн=0 … Нд=6).
@@ -115,12 +125,19 @@ class EntrantExamService:
             print(f"[EntrantExamService][get_by_group][ERROR] {e}")
             raise
 
-    def add_one(self, item: EntrantExamModel, worker_ids: List[int]) -> EntrantExamModel:
+    def add_one(self, item: EntrantExamModel, worker_ids: List[int], actor_id: Optional[int] = None) -> EntrantExamModel:
         try:
             with rx.session() as session:
                 managed = EntrantExamDao.add_one(item, session)
                 session.flush()
                 EntrantExamDao.replace_workers(managed.id, worker_ids, session)
+                record_action(session, actor_id, managed.id, ExamCreated(
+                    id_group=managed.id_group,
+                    id_item_zno=managed.id_item_zno,
+                    date=managed.date,
+                    time_start=managed.time_start,
+                    time_end=managed.time_end,
+                ))
                 session.commit()
                 session.refresh(managed)
                 return managed
@@ -128,12 +145,34 @@ class EntrantExamService:
             print(f"[EntrantExamService][add_one][ERROR] {e}")
             raise
 
-    def edit_one(self, item: EntrantExamModel, worker_ids: List[int]) -> EntrantExamModel:
+    def edit_one(self, item: EntrantExamModel, worker_ids: List[int], actor_id: Optional[int] = None) -> EntrantExamModel:
         try:
             with rx.session() as session:
+                # Старий стан читаємо БЕЗ eager-load: `session.get` тягне лише рядок,
+                # а список відповідальних — окремим скалярним запитом по M2M. Інакше
+                # `get_by_id` підвантажив би `item_zno`/`group`/`responsible_workers`
+                # у пишучу сесію, і `session.merge(item)` (item несе ці ж relationship)
+                # впав би на identity-map конфлікті (як у картці абітурієнта) — DK-55.
+                old = session.get(EntrantExamModel, item.id)
+                old_snap = SimpleNamespace(
+                    id_group=old.id_group if old else None,
+                    id_item_zno=old.id_item_zno if old else None,
+                    date=old.date if old else None,
+                    time_start=old.time_start if old else None,
+                    time_end=old.time_end if old else None,
+                    description=old.description if old else None,
+                )
+                old_worker_ids = sorted(session.exec(
+                    select(EntrantExamWorkerModel.id_worker).where(EntrantExamWorkerModel.id_exam == item.id)
+                ).all()) if old is not None else []
                 managed = EntrantExamDao.edit_one(item, session)
                 session.flush()
                 EntrantExamDao.replace_workers(managed.id, worker_ids, session)
+                action = ExamUpdated.from_diff(old_snap, managed)
+                new_worker_ids = sorted(worker_ids)
+                if new_worker_ids != old_worker_ids:
+                    action.responsible_workers = FieldChange(old=old_worker_ids, new=new_worker_ids)
+                record_action(session, actor_id, item.id, action)
                 session.commit()
                 session.refresh(managed)
                 return managed
@@ -141,11 +180,14 @@ class EntrantExamService:
             print(f"[EntrantExamService][edit_one][ERROR] {e}")
             raise
 
-    def delete_one(self, item: EntrantExamModel) -> bool:
+    def delete_one(self, item: EntrantExamModel, actor_id: Optional[int] = None) -> bool:
         try:
             with rx.session() as session:
                 item.is_deleted = True
                 EntrantExamDao.edit_one(item, session)
+                record_action(session, actor_id, item.id, ExamDeleted(
+                    id_group=item.id_group, id_item_zno=item.id_item_zno, date=item.date,
+                ))
                 session.commit()
             return True
         except Exception as e:

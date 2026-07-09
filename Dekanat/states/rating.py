@@ -19,6 +19,7 @@ from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.services.rating import RatingService
 from Dekanat.utils.display import disambiguate_pib, format_grade
 from Dekanat.utils.background import run_blocking
+from Dekanat.states.audit import AuditHistoryState
 
 
 class ListRatingState(AppState):
@@ -74,6 +75,7 @@ class ListRatingState(AppState):
             self._reload_speciality_options()
             self._load_latest_snapshot()
             self.in_progress = False
+            yield AuditHistoryState.load_for_key("rating_snapshots", self.selected_campaign_id)
         except Exception:
             self.in_progress = False
             yield rx.toast.error("Під час виконання запиту сталася помилка :( Спробуйте знову.")
@@ -220,6 +222,7 @@ class ListRatingState(AppState):
         self.selected_form_key = "__all__"
         self._reload_speciality_options()
         self._load_latest_snapshot()
+        yield AuditHistoryState.load_for_key("rating_snapshots", self.selected_campaign_id)
 
     @rx.event
     def toggle_filter_collapsed(self):
@@ -270,15 +273,17 @@ class ListRatingState(AppState):
         yield
         try:
             campaign_id = self.selected_campaign_id
+            actor_id = self._actor_id()
             service = RatingService()
             entries = await run_blocking(service.compute_entries, campaign_id)
-            snapshot, fresh_entries = service.persist_entries(campaign_id, entries)
+            snapshot, fresh_entries = service.persist_entries(campaign_id, entries, actor_id=actor_id)
             try:
                 self.generated_at_display = snapshot.generated_at.strftime("%Y-%m-%d %H:%M:%S")
             except AttributeError:
                 self.generated_at_display = str(snapshot.generated_at)
             self._fill_from_entries(fresh_entries)
             yield rx.toast.success("Рейтинг сформовано!")
+            yield AuditHistoryState.load_for_key("rating_snapshots", campaign_id)
         except Exception:
             yield rx.toast.error("Під час формування рейтингу сталася помилка. Спробуйте ще раз.")
         finally:

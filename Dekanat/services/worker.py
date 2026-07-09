@@ -2,11 +2,19 @@ import os
 
 import reflex as rx
 
+from types import SimpleNamespace
 from typing import Optional, Sequence, List
 
 from Dekanat.models import ActionModel, RoleModel, WorkerModel
 from Dekanat.dao.worker import WorkerDao
 from Dekanat.utils.generators import generate_password_hash
+from Dekanat.audit import (
+    record_action,
+    FieldChange,
+    WorkerCreated,
+    WorkerUpdated,
+    WorkerDeleted,
+)
 
 
 class WorkerService:
@@ -60,6 +68,7 @@ class WorkerService:
         photo: Optional[str],
         role_ids: List[int],
         action_ids: List[int],
+        actor_id: Optional[int] = None,
     ) -> int:
         try:
             with rx.session() as session:
@@ -81,6 +90,10 @@ class WorkerService:
                     actions=actions,
                 )
                 session.add(worker)
+                session.flush()
+                record_action(session, actor_id, worker.id, WorkerCreated(
+                    pib=pib, login=login, email=email, phone_number=phone_number,
+                ))
                 session.commit()
                 session.refresh(worker)
                 return worker.id
@@ -99,12 +112,20 @@ class WorkerService:
         photo: Optional[str],
         role_ids: List[int],
         action_ids: List[int],
+        actor_id: Optional[int] = None,
     ) -> bool:
         try:
             with rx.session() as session:
                 worker = WorkerDao.get_by_id_with_roles_and_actions(id, session)
                 if worker is None:
                     return False
+
+                # Знімок старих значень до мутації (для diff журналу).
+                old_snap = SimpleNamespace(
+                    pib=worker.pib, login=worker.login,
+                    email=worker.email, phone_number=worker.phone_number,
+                )
+                old_roles = sorted(r.title for r in (worker.roles or []))
 
                 worker.pib = pib
                 worker.login = login
@@ -123,13 +144,21 @@ class WorkerService:
                 worker.permissions_version = (worker.permissions_version or 0) + 1
 
                 session.add(worker)
+                session.flush()
+
+                action = WorkerUpdated.from_diff(old_snap, worker)
+                new_roles = sorted(r.title for r in (worker.roles or []))
+                if new_roles != old_roles:
+                    action.roles = FieldChange(old=old_roles, new=new_roles)
+                record_action(session, actor_id, id, action)
+
                 session.commit()
             return True
         except Exception as e:
             print(f"[WorkerService][edit_one][ERROR] {e}")
             raise
 
-    def delete_one(self, item: WorkerModel) -> bool:
+    def delete_one(self, item: WorkerModel, actor_id: Optional[int] = None) -> bool:
         try:
             with rx.session() as session:
                 worker = WorkerDao.get_by_id(item.id, session)
@@ -137,6 +166,9 @@ class WorkerService:
                     return False
                 worker.is_deleted = True
                 session.add(worker)
+                record_action(session, actor_id, worker.id, WorkerDeleted(
+                    pib=worker.pib, login=worker.login,
+                ))
                 session.commit()
             return True
         except Exception as e:

@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from Dekanat.dao.rating import RatingDao
 from Dekanat.services.app_setting import AppSettingService
 from Dekanat.utils.display import disambiguate_pib
+from Dekanat.audit import record_action, RatingGenerated
 from Dekanat.models import (
     RatingSnapshotModel,
     RatingEntryModel,
@@ -251,7 +252,7 @@ class RatingService:
             raise
 
     def persist_entries(
-        self, id_campaign: int, entries: List[RatingEntryModel]
+        self, id_campaign: int, entries: List[RatingEntryModel], actor_id: Optional[int] = None
     ) -> Tuple[RatingSnapshotModel, List[RatingEntryModel]]:
         """Зберігає обчислені рядки: видаляє попередній знімок кампанії, створює
         новий і записує рядки, потім перечитує з relationships. Виконується на
@@ -263,6 +264,10 @@ class RatingService:
 
                 snapshot = RatingSnapshotModel(id_campaign=id_campaign)
                 RatingDao.add_snapshot(snapshot, entries, session)
+                session.flush()
+                record_action(session, actor_id, id_campaign, RatingGenerated(
+                    id_campaign=id_campaign, snapshot_id=snapshot.id, entries_count=len(entries),
+                ))
                 session.commit()
                 session.refresh(snapshot)
 

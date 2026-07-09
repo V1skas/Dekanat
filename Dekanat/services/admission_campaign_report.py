@@ -17,6 +17,7 @@ from Dekanat.models import (
     SpecialityModel,
 )
 from Dekanat.utils.clock import now_local
+from Dekanat.audit import record_action, AdmissionReportGenerated
 
 
 def _spec_label(s: Optional[SpecialityModel]) -> str:
@@ -253,7 +254,7 @@ class AdmissionCampaignReportService:
             print(f"[AdmissionCampaignReportService][compute_payload][ERROR] {e}")
             raise
 
-    def persist_payload(self, id_campaign: int, payload: Dict) -> Tuple[Dict, datetime]:
+    def persist_payload(self, id_campaign: int, payload: Dict, actor_id: Optional[int] = None) -> Tuple[Dict, datetime]:
         """Зберігає обчислений payload як новий знімок, перезаписуючи попередній
         (історія не зберігається). Виконується на event loop, а не в потоці (DK-44)."""
         try:
@@ -264,6 +265,7 @@ class AdmissionCampaignReportService:
                     payload=json.dumps(payload, ensure_ascii=False),
                 )
                 AdmissionCampaignReportDao.add_one(snap, session)
+                record_action(session, actor_id, id_campaign, AdmissionReportGenerated(id_campaign=id_campaign))
                 session.commit()
                 session.refresh(snap)
                 return payload, snap.generated_at

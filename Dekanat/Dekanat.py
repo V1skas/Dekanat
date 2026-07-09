@@ -33,6 +33,7 @@ from Dekanat.views import speciality
 from Dekanat.views import worker
 
 from Dekanat.states.auth import AuthState
+from Dekanat.states.audit import AuditHistoryState
 from Dekanat.states import admission_campaign as admission_campaign_states
 from Dekanat.states import admission_campaign_report as admission_campaign_report_states
 from Dekanat.states import app_setting as app_setting_states
@@ -98,79 +99,79 @@ app.add_page(registration_journal.list_page, route=routes.REPORT_JOURNAL, on_loa
 app.add_page(identity_document_type.list_page, route=routes.IDENTITY_DOCUMENT_TYPE_LIST, on_load=identity_document_type_states.ListIdentityDocumentTypeState.on_load)
 app.add_page(identity_document_type.add_page, route=routes.IDENTITY_DOCUMENT_TYPE_ADD, on_load=identity_document_type_states.AddIdentityDocumentTypeState.on_load)
 app.add_page(identity_document_type.edit_page, route=routes.IDENTITY_DOCUMENT_TYPE_EDIT+"[id]", on_load=identity_document_type_states.EditIdentityDocumentTypeState.on_load)
-app.add_page(identity_document_type.view_page, route=routes.IDENTITY_DOCUMENT_TYPE_VIEW+"[id]", on_load=identity_document_type_states.ViewIdentityDocumentTypeState.on_load)
+app.add_page(identity_document_type.view_page, route=routes.IDENTITY_DOCUMENT_TYPE_VIEW+"[id]", on_load=[identity_document_type_states.ViewIdentityDocumentTypeState.on_load, AuditHistoryState.load("identity_document_type")])
 
 app.add_page(kinship.list_page, route=routes.KINSHIP_LIST, on_load=kinship_states.ListKinshipState.on_load)
 app.add_page(kinship.add_page, route=routes.KINSHIP_ADD, on_load=kinship_states.AddKinshipState.on_load)
 app.add_page(kinship.edit_page, route=routes.KINSHIP_EDIT+"[id]", on_load=kinship_states.EditKinshipState.on_load)
-app.add_page(kinship.view_page, route=routes.KINSHIP_VIEW+"[id]", on_load=kinship_states.ViewKinshipState.on_load)
+app.add_page(kinship.view_page, route=routes.KINSHIP_VIEW+"[id]", on_load=[kinship_states.ViewKinshipState.on_load, AuditHistoryState.load("kinship")])
 
 app.add_page(special_condition.list_page, route=routes.SPECIAL_CONDITION_LIST, on_load=special_condition_states.ListSpecialConditionState.on_load)
 app.add_page(special_condition.add_page, route=routes.SPECIAL_CONDITION_ADD, on_load=special_condition_states.AddSpecialConditionState.on_load)
 app.add_page(special_condition.edit_page, route=routes.SPECIAL_CONDITION_EDIT+"[code]", on_load=special_condition_states.EditSpecialConditionState.on_load)
-app.add_page(special_condition.view_page, route=routes.SPECIAL_CONDITION_VIEW+"[code]", on_load=special_condition_states.ViewSpecialConditionState.on_load)
+app.add_page(special_condition.view_page, route=routes.SPECIAL_CONDITION_VIEW+"[code]", on_load=[special_condition_states.ViewSpecialConditionState.on_load, AuditHistoryState.load("special_conditions", "code")])
 
 app.add_page(source_of_funding.list_page, route=routes.SOURCE_OF_FUNDING_LIST, on_load=source_of_funding_states.ListSourceOfFundingState.on_load)
 app.add_page(source_of_funding.add_page, route=routes.SOURCE_OF_FUNDING_ADD, on_load=source_of_funding_states.AddSourceOfFundingState.on_load)
 app.add_page(source_of_funding.edit_page, route=routes.SOURCE_OF_FUNDING_EDIT+"[id]", on_load=source_of_funding_states.EditSourceOfFundingState.on_load)
-app.add_page(source_of_funding.view_page, route=routes.SOURCE_OF_FUNDING_VIEW+"[id]", on_load=source_of_funding_states.ViewSourceOfFundingState.on_load)
+app.add_page(source_of_funding.view_page, route=routes.SOURCE_OF_FUNDING_VIEW+"[id]", on_load=[source_of_funding_states.ViewSourceOfFundingState.on_load, AuditHistoryState.load("source_of_funding")])
 
 app.add_page(department.list_page, route=routes.DEPARTMENT_LIST, on_load=department_states.ListDepartmentState.on_load)
 app.add_page(department.add_page, route=routes.DEPARTMENT_ADD, on_load=department_states.AddDepartmentState.on_load)
 app.add_page(department.edit_page, route=routes.DEPARTMENT_EDIT+"[id]", on_load=department_states.EditDepartmentState.on_load)
-app.add_page(department.view_page, route=routes.DEPARTMENT_VIEW+"[id]", on_load=department_states.ViewDepartmentState.on_load)
+app.add_page(department.view_page, route=routes.DEPARTMENT_VIEW+"[id]", on_load=[department_states.ViewDepartmentState.on_load, AuditHistoryState.load("departments")])
 
 app.add_page(speciality.list_page, route=routes.SPECIALITY_LIST, on_load=speciality_states.ListSpecialityState.on_load)
 app.add_page(speciality.add_page, route=routes.SPECIALITY_ADD, on_load=speciality_states.AddSpecialityState.on_load)
 app.add_page(speciality.edit_page, route=routes.SPECIALITY_EDIT+"[spec_id]", on_load=speciality_states.EditSpecialityState.on_load)
-app.add_page(speciality.view_page, route=routes.SPECIALITY_VIEW+"[spec_id]", on_load=speciality_states.ViewSpecialityState.on_load)
+app.add_page(speciality.view_page, route=routes.SPECIALITY_VIEW+"[spec_id]", on_load=[speciality_states.ViewSpecialityState.on_load, AuditHistoryState.load("specialties", "spec_id")])
 
 app.add_page(application_status.list_page, route=routes.APPLICATION_STATUS_LIST, on_load=application_status_states.ListApplicationStatusState.on_load)
 app.add_page(application_status.add_page, route=routes.APPLICATION_STATUS_ADD, on_load=application_status_states.AddApplicationStatusState.on_load)
 app.add_page(application_status.edit_page, route=routes.APPLICATION_STATUS_EDIT+"[id]", on_load=application_status_states.EditApplicationStatusState.on_load)
-app.add_page(application_status.view_page, route=routes.APPLICATION_STATUS_VIEW+"[id]", on_load=application_status_states.ViewApplicationStatusState.on_load)
+app.add_page(application_status.view_page, route=routes.APPLICATION_STATUS_VIEW+"[id]", on_load=[application_status_states.ViewApplicationStatusState.on_load, AuditHistoryState.load("application_statuses")])
 
 app.add_page(role.list_page, route=routes.ROLES_LIST, on_load=role_states.ListRoleState.on_load)
 app.add_page(role.add_page, route=routes.ROLES_ADD, on_load=role_states.AddRoleState.on_load)
 app.add_page(role.edit_page, route=routes.ROLES_EDIT+"[id]", on_load=role_states.EditRoleState.on_load)
-app.add_page(role.view_page, route=routes.ROLES_VIEW+"[id]", on_load=role_states.ViewRoleState.on_load)
+app.add_page(role.view_page, route=routes.ROLES_VIEW+"[id]", on_load=[role_states.ViewRoleState.on_load, AuditHistoryState.load("roles")])
 
 app.add_page(worker.list_page, route=routes.WORKERS_LIST, on_load=worker_states.ListWorkerState.on_load)
 app.add_page(worker.add_page, route=routes.WORKERS_ADD, on_load=worker_states.AddWorkerState.on_load)
 app.add_page(worker.edit_page, route=routes.WORKERS_EDIT+"[id]", on_load=worker_states.EditWorkerState.on_load)
-app.add_page(worker.view_page, route=routes.WORKERS_VIEW+"[id]", on_load=worker_states.ViewWorkerState.on_load)
+app.add_page(worker.view_page, route=routes.WORKERS_VIEW+"[id]", on_load=[worker_states.ViewWorkerState.on_load, AuditHistoryState.load("workers")])
 
 app.add_page(item_zno.list_page, route=routes.ITEM_ZNO_LIST, on_load=item_zno_states.ListItemZnoState.on_load)
 app.add_page(item_zno.add_page, route=routes.ITEM_ZNO_ADD, on_load=item_zno_states.AddItemZnoState.on_load)
 app.add_page(item_zno.edit_page, route=routes.ITEM_ZNO_EDIT+"[id]", on_load=item_zno_states.EditItemZnoState.on_load)
-app.add_page(item_zno.view_page, route=routes.ITEM_ZNO_VIEW+"[id]", on_load=item_zno_states.ViewItemZnoState.on_load)
+app.add_page(item_zno.view_page, route=routes.ITEM_ZNO_VIEW+"[id]", on_load=[item_zno_states.ViewItemZnoState.on_load, AuditHistoryState.load("item_zno")])
 
 app.add_page(entry_base.list_page, route=routes.ENTRY_BASE_LIST, on_load=entry_base_states.ListEntryBaseState.on_load)
 app.add_page(entry_base.add_page, route=routes.ENTRY_BASE_ADD, on_load=entry_base_states.AddEntryBaseState.on_load)
 app.add_page(entry_base.edit_page, route=routes.ENTRY_BASE_EDIT+"[id]", on_load=entry_base_states.EditEntryBaseState.on_load)
-app.add_page(entry_base.view_page, route=routes.ENTRY_BASE_VIEW+"[id]", on_load=entry_base_states.ViewEntryBaseState.on_load)
+app.add_page(entry_base.view_page, route=routes.ENTRY_BASE_VIEW+"[id]", on_load=[entry_base_states.ViewEntryBaseState.on_load, AuditHistoryState.load("entry_base")])
 
 app.add_page(form_of_study.list_page, route=routes.FORM_OF_STUDY_LIST, on_load=form_of_study_states.ListFormOfStudyState.on_load)
 app.add_page(form_of_study.add_page, route=routes.FORM_OF_STUDY_ADD, on_load=form_of_study_states.AddFormOfStudyState.on_load)
 app.add_page(form_of_study.edit_page, route=routes.FORM_OF_STUDY_EDIT+"[id]", on_load=form_of_study_states.EditFormOfStudyState.on_load)
-app.add_page(form_of_study.view_page, route=routes.FORM_OF_STUDY_VIEW+"[id]", on_load=form_of_study_states.ViewFormOfStudyState.on_load)
+app.add_page(form_of_study.view_page, route=routes.FORM_OF_STUDY_VIEW+"[id]", on_load=[form_of_study_states.ViewFormOfStudyState.on_load, AuditHistoryState.load("forms_of_study")])
 
 app.add_page(entrant_exam.list_page, route=routes.ENTRANT_EXAM_LIST, on_load=entrant_exam_states.ListEntrantExamState.on_load)
 app.add_page(entrant_exam.add_page, route=routes.ENTRANT_EXAM_ADD, on_load=entrant_exam_states.AddEntrantExamState.on_load)
 app.add_page(entrant_exam.edit_page, route=routes.ENTRANT_EXAM_EDIT+"[id]", on_load=entrant_exam_states.EditEntrantExamState.on_load)
-app.add_page(entrant_exam.view_page, route=routes.ENTRANT_EXAM_VIEW+"[id]", on_load=entrant_exam_states.ViewEntrantExamState.on_load)
+app.add_page(entrant_exam.view_page, route=routes.ENTRANT_EXAM_VIEW+"[id]", on_load=[entrant_exam_states.ViewEntrantExamState.on_load, AuditHistoryState.load("entrants_exams")])
 
 app.add_page(entrants_group.list_page, route=routes.ENTRANTS_GROUP_LIST, on_load=entrants_group_states.ListEntrantsGroupState.on_load)
 app.add_page(entrants_group.auto_generate_page, route=routes.ENTRANTS_GROUP_AUTO, on_load=entrants_group_states.AutoGenerateEntrantsGroupState.on_load)
 app.add_page(entrants_group.print_page, route=routes.ENTRANTS_GROUP_PRINT, on_load=entrants_group_states.PrintEntrantsGroupState.on_load)
 app.add_page(entrants_group.add_page, route=routes.ENTRANTS_GROUP_ADD, on_load=entrants_group_states.AddEntrantsGroupState.on_load)
 app.add_page(entrants_group.edit_page, route=routes.ENTRANTS_GROUP_EDIT+"[id]", on_load=entrants_group_states.EditEntrantsGroupState.on_load)
-app.add_page(entrants_group.view_page, route=routes.ENTRANTS_GROUP_VIEW+"[id]", on_load=entrants_group_states.ViewEntrantsGroupState.on_load)
+app.add_page(entrants_group.view_page, route=routes.ENTRANTS_GROUP_VIEW+"[id]", on_load=[entrants_group_states.ViewEntrantsGroupState.on_load, AuditHistoryState.load("entrants_groups")])
 
 app.add_page(entrant.list_page, route=routes.ENTRANT_LIST, on_load=entrant_states.ListEntrantState.on_load)
 app.add_page(entrant.add_page, route=routes.ENTRANT_ADD, on_load=entrant_states.EntrantFormState.on_load_add)
 app.add_page(entrant.edit_page, route=routes.ENTRANT_EDIT+"[id]", on_load=entrant_states.EntrantFormState.on_load_edit)
-app.add_page(entrant.view_page, route=routes.ENTRANT_VIEW+"[id]", on_load=entrant_states.ViewEntrantState.on_load)
+app.add_page(entrant.view_page, route=routes.ENTRANT_VIEW+"[id]", on_load=[entrant_states.ViewEntrantState.on_load, AuditHistoryState.load("entrants")])
 
 app.add_page(entrant_application.list_page, route=routes.ENTRANT_APPLICATION_LIST, on_load=entrant_application_states.ListEntrantApplicationState.on_load)
 
@@ -181,4 +182,4 @@ app.add_page(app_setting.list_page, route=routes.SETTINGS, on_load=app_setting_s
 app.add_page(admission_campaign.list_page, route=routes.ADMISSION_CAMPAIGN_LIST, on_load=admission_campaign_states.ListAdmissionCampaignState.on_load)
 app.add_page(admission_campaign.add_page, route=routes.ADMISSION_CAMPAIGN_ADD, on_load=admission_campaign_states.AddAdmissionCampaignState.on_load)
 app.add_page(admission_campaign.edit_page, route=routes.ADMISSION_CAMPAIGN_EDIT+"[id]", on_load=admission_campaign_states.EditAdmissionCampaignState.on_load)
-app.add_page(admission_campaign.view_page, route=routes.ADMISSION_CAMPAIGN_VIEW+"[id]", on_load=admission_campaign_states.ViewAdmissionCampaignState.on_load)
+app.add_page(admission_campaign.view_page, route=routes.ADMISSION_CAMPAIGN_VIEW+"[id]", on_load=[admission_campaign_states.ViewAdmissionCampaignState.on_load, AuditHistoryState.load("admission_campaigns")])

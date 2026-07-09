@@ -336,7 +336,7 @@ class AddEntrantsGroupState(AppState):
         service = EntrantsGroupService()
         try:
             entrant_ids = [e.id for e in self.entrants_in_group]
-            self.item = service.add_one(self.item, entrant_ids=entrant_ids)
+            self.item = service.add_one(self.item, entrant_ids=entrant_ids, actor_id=self._actor_id())
             yield rx.toast.success("Запис додано!")
             yield rx.redirect(routes.ENTRANTS_GROUP_VIEW + str(self.item.id))
         except Exception:
@@ -493,7 +493,7 @@ class EditEntrantsGroupState(AppState):
         service = EntrantsGroupService()
         try:
             entrant_ids = [e.id for e in self.entrants_in_group]
-            self.item = service.edit_one(self.item, entrant_ids=entrant_ids)
+            self.item = service.edit_one(self.item, entrant_ids=entrant_ids, actor_id=self._actor_id())
             yield rx.toast.success("Запис змінено!")
             yield rx.redirect(routes.ENTRANTS_GROUP_VIEW + str(self.item.id))
         except Exception:
@@ -637,7 +637,7 @@ class ViewEntrantsGroupState(AppState):
             return
 
         service = EntrantsGroupService()
-        if service.delete_one(self.item):
+        if service.delete_one(self.item, actor_id=self._actor_id()):
             yield rx.redirect(routes.ENTRANTS_GROUP_LIST)
             yield rx.toast.success("Видалено!")
         else:
@@ -949,11 +949,11 @@ class AutoGenerateEntrantsGroupState(AppState):
                 {
                     "id": g.id,
                     "title": g.title,
-                    "entrants": [{"id": e.id} for e in g.entrants],
+                    "entrants": [{"id": e.id, "pib": e.pib} for e in g.entrants],
                 }
                 for g in non_empty
             ]
-            count = EntrantsGroupService().bulk_create_with_entrants(payload)
+            count = EntrantsGroupService().bulk_create_with_entrants(payload, actor_id=self._actor_id())
             msg = f"Збережено груп: {count}."
             if skipped:
                 msg += f" Пропущено порожніх: {skipped}."

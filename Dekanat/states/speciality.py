@@ -141,7 +141,7 @@ class AddSpecialityState(AppState):
 
         service = SpecialityService()
         try:
-            self.item = service.add_one(self.item)
+            self.item = service.add_one(self.item, actor_id=self._actor_id())
             yield rx.toast.success("Запис додано!")
             yield rx.redirect(f"{routes.SPECIALITY_VIEW}{self.item.id}")
         except ValueError as e:
@@ -269,7 +269,7 @@ class EditSpecialityState(AppState):
 
         service = SpecialityService()
         try:
-            self.item = service.edit_one(self.item)
+            self.item = service.edit_one(self.item, actor_id=self._actor_id())
             yield rx.toast.success("Запис змінено!")
             yield rx.redirect(f"{routes.SPECIALITY_VIEW}{self.item.id}")
         except ValueError as e:
@@ -329,7 +329,7 @@ class ViewSpecialityState(AppState):
             return
 
         service = SpecialityService()
-        if service.delete_one(self.item):
+        if service.delete_one(self.item, actor_id=self._actor_id()):
             yield rx.redirect(routes.SPECIALITY_LIST)
             yield rx.toast.success("Видалено!")
         else:

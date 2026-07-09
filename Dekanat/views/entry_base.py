@@ -7,6 +7,7 @@ from Dekanat.models import EntryBaseModel
 
 from Dekanat.views.templates.layouts import page_wrapper, header_subpage
 from Dekanat.views.templates import controls
+from Dekanat.views.templates.audit import audit_history_section
 from Dekanat.views.auth import require_login
 
 
@@ -100,7 +101,13 @@ def view_page() -> rx.Component:
             left=controls.button_back(routes.ENTRY_BASE_LIST),
             width="100%"
         ),
-        rx.skeleton(view_page_content(), loading=ViewEntryBaseState.in_process, height="100%")
+        rx.vstack(
+            rx.skeleton(view_page_content(), loading=ViewEntryBaseState.in_process, height="100%"),
+            audit_history_section("entry_base"),
+            width="100%",
+            align="stretch",
+            spacing="4",
+        )
     )
 
 @require_login

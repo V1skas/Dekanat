@@ -1,9 +1,11 @@
 import reflex as rx
 
+from types import SimpleNamespace
 from typing import Optional, List, Sequence, Dict
 
 from Dekanat.dao.app_setting import AppSettingDao
 from Dekanat.models import AppSettingModel
+from Dekanat.audit import record_action, AppSettingUpdated
 
 
 # Категории и ключи настроек
@@ -70,11 +72,15 @@ class AppSettingService:
         except (ValueError, TypeError):
             return fallback
 
-    def save_all(self, items: List[AppSettingModel]) -> None:
+    def save_all(self, items: List[AppSettingModel], actor_id: Optional[int] = None) -> None:
         try:
             with rx.session() as session:
                 for it in items:
+                    existing = AppSettingDao.get_by_key(it.key, session)
+                    old_snap = SimpleNamespace(value=existing.value if existing else None)
                     AppSettingDao.upsert(it, session)
+                    session.flush()
+                    record_action(session, actor_id, it.key, AppSettingUpdated.from_diff(old_snap, it))
                 session.commit()
         except Exception as e:
             print(f"[AppSettingService][save_all][ERROR] {e}")

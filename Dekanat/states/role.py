@@ -96,7 +96,7 @@ class AddRoleState(AppState):
 
         service = RoleService()
         try:
-            new_id = service.add_one(self.title, self.description or None, self.selected_action_ids)
+            new_id = service.add_one(self.title, self.description or None, self.selected_action_ids, actor_id=self._actor_id())
             yield rx.toast.success("Запис додано!")
             yield rx.redirect(routes.ROLES_VIEW+str(new_id))
         except Exception:
@@ -178,7 +178,7 @@ class EditRoleState(AppState):
 
         service = RoleService()
         try:
-            ok = service.edit_one(self.role_id, self.title, self.description or None, self.selected_action_ids)
+            ok = service.edit_one(self.role_id, self.title, self.description or None, self.selected_action_ids, actor_id=self._actor_id())
             if not ok:
                 yield rx.toast.error("Запис не знайдено!")
                 return
@@ -248,7 +248,7 @@ class ViewRoleState(AppState):
             return
 
         service = RoleService()
-        if service.delete_one(self.item):
+        if service.delete_one(self.item, actor_id=self._actor_id()):
             yield rx.redirect(routes.ROLES_LIST)
             yield rx.toast.success("Видалено!")
         else:

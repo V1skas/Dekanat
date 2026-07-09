@@ -768,7 +768,7 @@ class ViewEntrantState(AppState):
             return
 
         service = EntrantService()
-        if service.delete_one(self.item):
+        if service.delete_one(self.item, actor_id=self._actor_id()):
             yield rx.redirect(self.back_route)
             yield rx.toast.success("Видалено!")
         else:
@@ -2347,6 +2347,7 @@ class EntrantFormState(AppState):
                     specialties=list(self.specialties),
                     results_zno=list(self.results_zno),
                     new_group_title=self.pending_new_group_title or None,
+                    actor_id=self._actor_id(),
                 )
                 yield rx.toast.success("Запис змінено!")
                 yield rx.redirect(routes.ENTRANT_VIEW + str(saved.id) + _from_suffix(self.came_from))
@@ -2366,6 +2367,7 @@ class EntrantFormState(AppState):
                     specialties=list(self.specialties),
                     results_zno=list(self.results_zno),
                     new_group_title=self.pending_new_group_title or None,
+                    actor_id=self._actor_id(),
                 )
                 yield rx.toast.success("Запис додано!")
                 yield rx.redirect(routes.ENTRANT_VIEW + str(saved.id))

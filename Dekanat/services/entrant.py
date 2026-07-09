@@ -2,6 +2,7 @@ import reflex as rx
 import base64
 
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Optional, Sequence, Tuple
 
 from Dekanat.dao.entrant import EntrantDao
@@ -19,6 +20,50 @@ from Dekanat.models import (
     SpecialConditionPersonModel,
     ResultZnoModel,
 )
+from Dekanat.audit import (
+    record_action,
+    EntrantCreated,
+    EntrantUpdated,
+    EntrantDeleted,
+    GroupCreated,
+    GroupMembersChanged,
+)
+
+
+# Дочірні колекції особи/абітурієнта → (укр. підпис, ключові поля підпису).
+# Використовується, щоб позначити у журналі, які колекції змінились при
+# збереженні картки (без поштучного логування — DK-55).
+_ENTRANT_COLLECTIONS = [
+    ("Спеціальності", ("id_speciality", "id_form_of_study", "priority")),
+    ("Результати ЗНО", ("id_items_zno", "points_raw", "points")),
+    ("Документи, що посвідчують особу", ("number", "series", "id_type")),
+    ("Документи про освіту", ("title", "number", "series", "date_of_issue")),
+    ("Військовий облік", ("number", "series")),
+    ("Медичні довідки", ("number", "date_of_issue")),
+    ("Відомості про родичів", ("id_kinship", "pib", "phone_number")),
+    ("Спеціальні умови", ("id_special_condition", "number", "date_of_issue")),
+]
+
+
+def _entrant_snapshot(person: PersonModel, entrant: EntrantModel) -> SimpleNamespace:
+    """Зведений знімок скалярних полів особи + абітурієнта (примітиви) для diff журналу."""
+    return SimpleNamespace(
+        pib=person.pib, edbo=person.edbo, citizenship=person.citizenship, sex=person.sex,
+        date_of_birth=person.date_of_birth,
+        place_of_registration_city=person.place_of_registration_city,
+        place_of_registration=person.place_of_registration, mokpp=person.mokpp,
+        email=person.email, phone_number=person.phone_number,
+        the_need_for_a_dormitory=person.the_need_for_a_dormitory,
+        id_source_of_funding=person.id_source_of_funding, id_entry_base=person.id_entry_base,
+        id_application_status=entrant.id_application_status, comment=entrant.comment,
+        submitted_electronically=entrant.submitted_electronically,
+        id_entrant_group=entrant.id_entrant_group,
+    )
+
+
+def _collection_sig(items, fields) -> list:
+    """Підпис колекції — відсортований список кортежів скалярних полів (примітиви)."""
+    return sorted(tuple(getattr(i, f, None) for f in fields) for i in (items or []))
 
 
 def photo_to_data_url(photo_bytes: Optional[bytes], mime: Optional[str]) -> str:
@@ -151,6 +196,62 @@ class EntrantService:
         session.flush()
         entrant.id_entrant_group = group.id
 
+    @staticmethod
+    def _log_group_assignment(
+        session,
+        actor_id: Optional[int],
+        new_group_id: Optional[int],
+        old_group_id: Optional[int],
+        pib: str,
+        new_group_title: Optional[str],
+    ) -> None:
+        """Окремий запис журналу про призначення абітурієнту екзам. групи з картки
+        (DK-55). Якщо група щойно створена автопідбором — спершу GroupCreated."""
+        if new_group_id is None or new_group_id == old_group_id:
+            return
+        title = (new_group_title or "").strip()
+        if title:
+            record_action(session, actor_id, new_group_id, GroupCreated(title=title))
+        record_action(session, actor_id, new_group_id, GroupMembersChanged(added=[pib]))
+
+    @staticmethod
+    def _collection_sigs(old_full) -> list:
+        """Підписи дочірніх колекцій завантаженого абітурієнта у порядку `_ENTRANT_COLLECTIONS`."""
+        if old_full is None:
+            return [[] for _ in _ENTRANT_COLLECTIONS]
+        person = old_full.person
+        raw = [
+            (old_full.specialties, ("id_speciality", "id_form_of_study", "priority")),
+            (person.results_zno if person else [], ("id_items_zno", "points_raw", "points")),
+            (person.identity_document if person else [], ("number", "series", "id_type")),
+            (person.document_about_education if person else [], ("title", "number", "series", "date_of_issue")),
+            (person.military_accounting if person else [], ("number", "series")),
+            (person.medical_reference if person else [], ("number", "date_of_issue")),
+            (person.information_about_relatives if person else [], ("id_kinship", "pib", "phone_number")),
+            (person.special_conditions if person else [], ("id_special_condition", "number", "date_of_issue")),
+        ]
+        return [_collection_sig(items, fields) for items, fields in raw]
+
+    def _read_old_snapshot(self, person_id: int):
+        """Знімок старого стану картки в ОКРЕМІЙ read-only сесії (DK-55).
+
+        Повертає лише примітиви (`SimpleNamespace` скалярів, id групи, підписи
+        колекцій), тож жоден ORM-обʼєкт (напр. `item_zno`) не потрапляє у пишучу
+        сесію `edit_one` — інакше буде identity-map конфлікт із `item_zno`, які
+        несуть вхідні результати ЗНО. Сесія повністю закривається до відкриття
+        пишучої, тож блокування SQLite не виникає (сесії не одночасні)."""
+        with rx.session() as session:
+            old_full = EntrantDao.get_by_id(person_id, session)
+            if old_full is None:
+                return None, None, [[] for _ in _ENTRANT_COLLECTIONS]
+            old_group_id = old_full.id_entrant_group
+            old_snap = (
+                _entrant_snapshot(old_full.person, old_full)
+                if old_full.person is not None else None
+            )
+            old_sigs = self._collection_sigs(old_full)
+            return old_snap, old_group_id, old_sigs
+
     def add_one(
         self,
         person: PersonModel,
@@ -164,6 +265,7 @@ class EntrantService:
         specialties: list[SpecialtieEntrantModel],
         results_zno: list[ResultZnoModel],
         new_group_title: Optional[str] = None,
+        actor_id: Optional[int] = None,
     ) -> EntrantModel:
         try:
             self._validate_mokpp(person)
@@ -193,6 +295,14 @@ class EntrantService:
                 EntrantDao.replace_results_zno(person_id, results_zno, session)
                 EntrantDao.replace_specialties(person_id, specialties, session)
 
+                record_action(session, actor_id, person_id, EntrantCreated(
+                    pib=person.pib, edbo=person.edbo,
+                    id_application_status=entrant.id_application_status,
+                ))
+                self._log_group_assignment(
+                    session, actor_id, entrant.id_entrant_group, None, person.pib, new_group_title,
+                )
+
                 session.commit()
                 session.refresh(saved_entrant)
                 return saved_entrant
@@ -213,14 +323,21 @@ class EntrantService:
         specialties: list[SpecialtieEntrantModel],
         results_zno: list[ResultZnoModel],
         new_group_title: Optional[str] = None,
+        actor_id: Optional[int] = None,
     ) -> EntrantModel:
         try:
             self._validate_mokpp(person)
             self._validate_specialties(person, specialties)
+
+            # Знімок старого стану — в ОКРЕМІЙ read-only сесії (примітиви), щоб
+            # ORM-обʼєкти (item_zno тощо) не потрапили у пишучу сесію (DK-55).
+            old_snap, old_group_id, old_sigs = self._read_old_snapshot(person.id)
+
             with rx.session() as session:
                 # Дублікат по ІПН (виключаючи саму картку, що редагується) — DK-36.
                 if person.mokpp and EntrantDao.get_person_by_mokpp(person.mokpp, session, exclude_id=person.id) is not None:
                     raise ValueError(f"Абітурієнт з ІПН {person.mokpp} вже існує.")
+
                 # Автопідбір групи (DK-48): нову групу створюємо лише зараз.
                 self._apply_new_group(entrant, new_group_title, session)
                 # Preserve timestamps from existing rows and bump status_changed_at only if status really changed.
@@ -250,6 +367,27 @@ class EntrantService:
                 EntrantDao.replace_results_zno(person_id, results_zno, session)
                 EntrantDao.replace_specialties(entrant.id, specialties, session)
 
+                # Журнал: один запис на збереження. Деталізацію (diff скалярів +
+                # позначки змінених колекцій) пишемо у `changes` для майбутнього
+                # відображення; логуємо лише якщо щось реально змінилось (DK-55).
+                if old_snap is not None:
+                    new_collections = [specialties, results_zno, identity_documents,
+                                       documents_about_education, military_accountings,
+                                       medical_references, information_about_relatives, special_conditions]
+                    action = EntrantUpdated.from_diff(old_snap, _entrant_snapshot(person, entrant))
+                    changed = [
+                        label
+                        for (label, fields), old_sig, new_items in zip(
+                            _ENTRANT_COLLECTIONS, old_sigs, new_collections
+                        )
+                        if old_sig != _collection_sig(new_items, fields)
+                    ]
+                    action.changed_collections = changed or None
+                    record_action(session, actor_id, person_id, action)
+                self._log_group_assignment(
+                    session, actor_id, entrant.id_entrant_group, old_group_id, person.pib, new_group_title,
+                )
+
                 session.commit()
                 session.refresh(merged_entrant)
                 return merged_entrant
@@ -257,14 +395,17 @@ class EntrantService:
             print(f"[EntrantService][edit_one][ERROR] {e}")
             raise
 
-    def delete_one(self, entrant: EntrantModel) -> bool:
+    def delete_one(self, entrant: EntrantModel, actor_id: Optional[int] = None) -> bool:
         try:
             with rx.session() as session:
                 entrant.is_deleted = True
                 EntrantDao.edit_entrant(entrant, session)
+                pib = entrant.person.pib if entrant.person is not None else ""
+                edbo = entrant.person.edbo if entrant.person is not None else None
                 if entrant.person is not None:
                     entrant.person.is_deleted = True
                     EntrantDao.edit_person(entrant.person, session)
+                record_action(session, actor_id, entrant.id, EntrantDeleted(pib=pib, edbo=edbo))
                 session.commit()
             return True
         except Exception as e:

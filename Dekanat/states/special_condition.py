@@ -103,7 +103,7 @@ class AddSpecialConditionState(AppState):
 
         service = SpecialConditionService()
         try:
-            self.item = service.add_one(self.item)
+            self.item = service.add_one(self.item, actor_id=self._actor_id())
             yield rx.toast.success("Запис додано!")
             yield rx.redirect(routes.SPECIAL_CONDITION_VIEW + str(self.item.subcategory_code))
         except Exception:
@@ -183,7 +183,7 @@ class EditSpecialConditionState(AppState):
 
         service = SpecialConditionService()
         try:
-            self.item = service.edit_one(self.item)
+            self.item = service.edit_one(self.item, actor_id=self._actor_id())
             yield rx.toast.success("Запис змінено!")
             yield rx.redirect(routes.SPECIAL_CONDITION_VIEW + str(self.item.subcategory_code))
         except Exception:
@@ -236,7 +236,7 @@ class ViewSpecialConditionState(AppState):
             return
 
         service = SpecialConditionService()
-        if service.delete_one(self.item):
+        if service.delete_one(self.item, actor_id=self._actor_id()):
             yield rx.redirect(routes.SPECIAL_CONDITION_LIST)
             yield rx.toast.success("Видалено!")
         else:
