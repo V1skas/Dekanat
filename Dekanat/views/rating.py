@@ -11,20 +11,18 @@ from Dekanat.views.templates.audit import audit_history_section_for_key
 from Dekanat.views.auth import require_login
 
 
-# Кольорова кодировка статусів (фон рядка)
+# Кольорова кодировка статусів, що не залежать від конкретного ресурсу
+# фінансування (DK-52): "assigned" бере колір ресурсу, у конкурс якого потрапив
+# абітурієнт (ListRatingState.resource_color_map), решта — фіксовані кольори.
 _STATUS_BG = {
-    "budget": "rgba(34, 197, 94, 0.18)",   # зелений
-    "contract": "rgba(249, 115, 22, 0.18)", # помаранчевий
-    "rejected": "rgba(239, 68, 68, 0.20)",  # червоний
     "kvota": "rgba(59, 130, 246, 0.20)",    # синій
+    "rejected": "rgba(239, 68, 68, 0.20)",  # червоний
     "excluded": "rgba(107, 114, 128, 0.22)", # сірий — не бере участі (DK-43)
 }
 
 _STATUS_LABEL = {
-    "budget": "Бюджет",
-    "contract": "Контракт",
-    "rejected": "Не проходить",
     "kvota": "Квота",
+    "rejected": "Не проходить",
     "excluded": "Не бере участі",
 }
 
@@ -33,27 +31,25 @@ def _select_item(opt: Dict[str, str]) -> rx.Component:
     return rx.select.item(opt["label"], value=opt["value"])
 
 
-def _row_bg(status):
+def _row_bg(item: Dict[str, str]):
     return rx.match(
-        status,
-        ("budget", _STATUS_BG["budget"]),
-        ("contract", _STATUS_BG["contract"]),
+        item["status"],
         ("kvota", _STATUS_BG["kvota"]),
         ("rejected", _STATUS_BG["rejected"]),
         ("excluded", _STATUS_BG["excluded"]),
-        "transparent",
+        # "assigned" (за замовчуванням) — колір ресурсу, у конкурс якого потрапив.
+        ListRatingState.resource_color_map[item["assigned_resource_id"]],
     )
 
 
-def _row_status_label(status):
+def _row_status_label(item: Dict[str, str]):
     return rx.match(
-        status,
-        ("budget", _STATUS_LABEL["budget"]),
-        ("contract", _STATUS_LABEL["contract"]),
+        item["status"],
         ("kvota", _STATUS_LABEL["kvota"]),
         ("rejected", _STATUS_LABEL["rejected"]),
         ("excluded", _STATUS_LABEL["excluded"]),
-        "",
+        # "assigned" (за замовчуванням) — назва ресурсу, у конкурс якого потрапив.
+        ListRatingState.resource_label_map[item["assigned_resource_id"]],
     )
 
 
@@ -64,8 +60,8 @@ def _rating_row(item: Dict[str, str]) -> rx.Component:
         rx.table.row_header_cell(item["position"], align="left"),
         rx.table.cell(item["pib"]),
         rx.table.cell(item["total"]),
-        rx.table.cell(_row_status_label(item["status"])),
-        background_color=_row_bg(item["status"]),
+        rx.table.cell(_row_status_label(item)),
+        background_color=_row_bg(item),
         color=text_color,
         # Клік по рядку веде на картку абітурієнта (DK-43).
         on_click=ListRatingState.on_click_row(item["id"]),
@@ -78,6 +74,12 @@ def _group_table(group: RatingGroup) -> rx.Component:
     return rx.vstack(
         rx.hstack(
             rx.heading(group.spec_label, size="4"),
+            rx.box(
+                rx.text(group.resource_label, size="2", color="white", weight="bold"),
+                background_color=group.resource_color,
+                padding="0.2rem 0.6rem",
+                border_radius="1rem",
+            ),
             rx.spacer(),
             rx.cond(
                 ListRatingState.get_user_actions.contains(Actions.RATING_DOCX),
@@ -109,18 +111,22 @@ def _group_table(group: RatingGroup) -> rx.Component:
     )
 
 
-def _legend() -> rx.Component:
-    def _pill(label: str, color: str) -> rx.Component:
-        return rx.hstack(
-            rx.box(width="0.9rem", height="0.9rem", border_radius="0.2rem", background_color=color),
-            rx.text(label, size="2"),
-            spacing="2",
-            align="center",
-        )
-
+def _pill(label, color) -> rx.Component:
     return rx.hstack(
-        _pill("Бюджет", _STATUS_BG["budget"]),
-        _pill("Контракт", _STATUS_BG["contract"]),
+        rx.box(width="0.9rem", height="0.9rem", border_radius="0.2rem", background_color=color),
+        rx.text(label, size="2"),
+        spacing="2",
+        align="center",
+    )
+
+
+def _resource_pill(opt: Dict[str, str]) -> rx.Component:
+    return _pill(opt["label"], opt["color"])
+
+
+def _legend() -> rx.Component:
+    return rx.hstack(
+        rx.foreach(ListRatingState.resource_options, _resource_pill),
         _pill("Квота", _STATUS_BG["kvota"]),
         _pill("Не проходить", _STATUS_BG["rejected"]),
         _pill("Не бере участі (статус не допускає)", _STATUS_BG["excluded"]),

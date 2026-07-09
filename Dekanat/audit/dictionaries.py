@@ -36,7 +36,7 @@ class KinshipDeleted(DeleteAction):
 
 # --- Source of funding (джерела фінансування) ------------------------------
 
-_SOF_LABELS: Dict[str, str] = {"title": "Назва"}
+_SOF_LABELS: Dict[str, str] = {"title": "Назва", "sequence": "Пріоритет", "color": "Колір"}
 
 
 class SourceOfFundingCreated(CreateAction):
@@ -48,8 +48,10 @@ class SourceOfFundingCreated(CreateAction):
 class SourceOfFundingUpdated(UpdateAction):
     table_name: ClassVar[str] = "source_of_funding"
     FIELD_LABELS: ClassVar[Dict[str, str]] = _SOF_LABELS
-    TRACKED: ClassVar[Tuple[str, ...]] = ("title",)
+    TRACKED: ClassVar[Tuple[str, ...]] = ("title", "sequence", "color")
     title: Optional[FieldChange] = None
+    sequence: Optional[FieldChange] = None
+    color: Optional[FieldChange] = None
 
 
 class SourceOfFundingDeleted(DeleteAction):

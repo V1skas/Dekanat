@@ -1,5 +1,5 @@
 from sqlmodel import Field, Relationship
-from sqlalchemy import Column, LargeBinary, DateTime, Text, Boolean, func
+from sqlalchemy import Column, LargeBinary, DateTime, Text, Boolean, func, ForeignKeyConstraint
 from sqlalchemy.dialects.mysql import LONGBLOB
 from sqlalchemy.sql import expression
 from typing import Optional, List
@@ -117,10 +117,29 @@ class SourceOfFundingModel(rx.Model, table=True):
     # Table columns
     id: int = Field(primary_key=True)
     title: str
+    # Пріоритет ресурсу в конкурсі (DK-52): менше значення — вищий пріоритет
+    # (напр. держзамовлення=1 йде першим, кошти фіз. осіб=2 — другим).
+    sequence: int = Field(default=0)
+    # Колір підсвітки абітурієнтів, що пройшли на цей ресурс, у рейтингу.
+    color: str = Field(default="#22c55e")
     is_deleted: bool = False
 
     # Relationships
     # persons: Optional[List['Person']] = Relationship(back_populates="source_of_funding")
+    # Немає ORM-relationship на SourceOfFundingEligibilityModel навмисно — обидві
+    # колонки посилаються на цю ж таблицю (self-join), DAO працює з нею напряму.
+
+
+@rx.ModelRegistry.register
+class SourceOfFundingEligibilityModel(rx.Model, table=True):
+    """Ресурс `id_source_of_funding` дозволяє своїм абітурієнтам також брати
+    участь у конкурсі ресурсу `id_eligible_source_of_funding` (DK-52). Напрямок —
+    лише "вперед" за sequence (перевіряється на рівні сервісу/стейту)."""
+    __tablename__ = "source_of_funding_eligibility"
+
+    # Table columns
+    id_source_of_funding: int = Field(primary_key=True, foreign_key="source_of_funding.id")
+    id_eligible_source_of_funding: int = Field(primary_key=True, foreign_key="source_of_funding.id")
 
 
 @rx.ModelRegistry.register
@@ -174,13 +193,42 @@ class AdmissionCampaignSpecialityModel(rx.Model, table=True):
     # може існувати кілька квот з різними базою/формою (DK-26).
     id_entry_base: int = Field(primary_key=True, foreign_key="entry_base.id")
     id_form_of_study: int = Field(primary_key=True, foreign_key="forms_of_study.id")
-    budget_places: int = Field(default=0)
-    contract_places: int = Field(default=0)
 
     # Relationships
     speciality: Optional['SpecialityModel'] = Relationship()
     entry_base: Optional['EntryBaseModel'] = Relationship()
     form_of_study: Optional['FormOfStudyModel'] = Relationship()
+    funding: Optional[List['AdmissionCampaignSpecialityFundingModel']] = Relationship()
+
+
+@rx.ModelRegistry.register
+class AdmissionCampaignSpecialityFundingModel(rx.Model, table=True):
+    """Кількість місць квоти (спеціальність+база+форма) по кожному ресурсу
+    фінансування (DK-52) — замінює жорсткі `budget_places`/`contract_places`."""
+    __tablename__ = "admission_campaigns_specialties_funding"
+
+    # Table columns
+    id_admission_campaign: int = Field(primary_key=True, foreign_key="admission_campaigns.id")
+    id_speciality: int = Field(primary_key=True, foreign_key="specialties.id")
+    id_entry_base: int = Field(primary_key=True, foreign_key="entry_base.id")
+    id_form_of_study: int = Field(primary_key=True, foreign_key="forms_of_study.id")
+    id_source_of_funding: int = Field(primary_key=True, foreign_key="source_of_funding.id")
+    places: int = Field(default=0)
+
+    # Relationships
+    source_of_funding: Optional['SourceOfFundingModel'] = Relationship()
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["id_admission_campaign", "id_speciality", "id_entry_base", "id_form_of_study"],
+            [
+                "admission_campaigns_specialties.id_admission_campaign",
+                "admission_campaigns_specialties.id_speciality",
+                "admission_campaigns_specialties.id_entry_base",
+                "admission_campaigns_specialties.id_form_of_study",
+            ],
+        ),
+    )
 
 
 @rx.ModelRegistry.register
@@ -624,16 +672,39 @@ class RatingEntryModel(rx.Model, table=True):
     id_entry_base: int = Field(default=0, nullable=False)
     id_form_of_study: int = Field(default=0, nullable=False)
     id_entrant: int = Field(foreign_key="entrants.id", nullable=False)
+    # Позиція в межах групи (id_speciality, id_entry_base, id_form_of_study,
+    # id_source_of_funding) — не по всій квоті (DK-52).
     position: int = Field(nullable=False)
     # Дробна сума балів (DK-47).
     total_points: float = Field(default=0, nullable=False)
-    # 'budget' | 'contract' | 'kvota' | 'rejected' | 'excluded'
+    # Ресурс, під яким рахується цей рядок (група/таблиця рейтингу): власний
+    # ресурс фінансування абітурієнта, або ресурс з найменшим sequence, якщо
+    # рядок — квота (DK-52).
+    id_source_of_funding: int = Field(foreign_key="source_of_funding.id", nullable=False)
+    # Ресурс, у конкурс якого абітурієнт фактично потрапив (може відрізнятись
+    # від id_source_of_funding при "перестрибуванні"). NULL для rejected/excluded.
+    id_assigned_source_of_funding: Optional[int] = Field(
+        default=None, foreign_key="source_of_funding.id", nullable=True
+    )
+    # 'assigned' | 'kvota' | 'rejected' | 'excluded'
     # 'excluded' (DK-43) — статус картки не допускає до рейтингу: рядок унизу, сірий.
     status: str = Field(nullable=False)
 
     # Relationships
     speciality: Optional['SpecialityModel'] = Relationship()
     entrant: Optional['EntrantModel'] = Relationship()
+    source_of_funding: Optional['SourceOfFundingModel'] = Relationship(
+        sa_relationship_kwargs={
+            "primaryjoin": "RatingEntryModel.id_source_of_funding==SourceOfFundingModel.id",
+            "foreign_keys": "[RatingEntryModel.id_source_of_funding]",
+        }
+    )
+    assigned_source_of_funding: Optional['SourceOfFundingModel'] = Relationship(
+        sa_relationship_kwargs={
+            "primaryjoin": "RatingEntryModel.id_assigned_source_of_funding==SourceOfFundingModel.id",
+            "foreign_keys": "[RatingEntryModel.id_assigned_source_of_funding]",
+        }
+    )
 
 
 @rx.ModelRegistry.register

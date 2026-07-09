@@ -9,6 +9,9 @@ from Dekanat.actions import Actions
 class RatingGroup(BaseModel):
     spec_key: str = ""
     spec_label: str = ""
+    # Ресурс фінансування, під яким рахується ця під-таблиця (DK-52).
+    resource_label: str = ""
+    resource_color: str = ""
     rows: List[Dict[str, str]] = Field(default_factory=list)
 
 from Dekanat import routes
@@ -46,6 +49,8 @@ class ListRatingState(AppState):
     # Лейбли довідників бази вступу та форми навчання (для підписів груп) — DK-26
     entry_base_labels: Dict[str, str] = {}
     form_labels: Dict[str, str] = {}
+    # Ресурси фінансування (DK-52), відсортовані за sequence — для лейблів/кольорів/легенди.
+    resource_options: List[Dict[str, str]] = []
 
     # Згруповано за спеціальністю: окрема таблиця для кожної.
     groups: List[RatingGroup] = []
@@ -83,6 +88,7 @@ class ListRatingState(AppState):
     def _load_reference_labels(self):
         from Dekanat.services.entry_base import EntryBaseService
         from Dekanat.services.form_of_study import FormOfStudyService
+        from Dekanat.services.source_of_funding import SourceOfFundingService
 
         self.entry_base_labels = {
             str(b.id): b.title for b in EntryBaseService().get_list_items()
@@ -90,6 +96,10 @@ class ListRatingState(AppState):
         self.form_labels = {
             str(f.id): f.title for f in FormOfStudyService().get_list_items()
         }
+        self.resource_options = [
+            {"value": str(r.id), "label": r.title, "color": r.color}
+            for r in SourceOfFundingService().get_list_items()
+        ]
 
     def _reload_speciality_options(self):
         from Dekanat.services.admission_campaign_speciality import (
@@ -151,6 +161,8 @@ class ListRatingState(AppState):
     def _fill_from_entries(self, entries):
         groups_by_key: Dict[str, RatingGroup] = {}
         order: List[str] = []
+        resource_meta = {opt["value"]: opt for opt in self.resource_options}
+        resource_seq = {rid: idx for idx, rid in enumerate(resource_meta.keys())}
 
         for e in entries:
             spec_only = str(e.id_speciality)
@@ -160,9 +172,10 @@ class ListRatingState(AppState):
                 continue
             if self.selected_form_key != "__all__" and str(e.id_form_of_study) != self.selected_form_key:
                 continue
-            # Групуємо за кортежем спеціальність+база+форма — однакові спеціальності
-            # з різною базою/формою показуються окремими таблицями (DK-26).
-            group_key = f"{spec_only}|{e.id_entry_base}|{e.id_form_of_study}"
+            # Групуємо за кортежем спеціальність+база+форма+ресурс фінансування —
+            # кожен ресурс дає окрему під-таблицю в межах квоти (DK-52).
+            resource_key = str(e.id_source_of_funding)
+            group_key = f"{spec_only}|{e.id_entry_base}|{e.id_form_of_study}|{resource_key}"
             spec_name = (
                 f"{e.speciality.code} {e.speciality.title} ({e.speciality.tag})"
                 if e.speciality is not None
@@ -171,6 +184,9 @@ class ListRatingState(AppState):
             base_name = self.entry_base_labels.get(str(e.id_entry_base), "—")
             form_name = self.form_labels.get(str(e.id_form_of_study), "—")
             spec_label = f"{spec_name} · {base_name} · {form_name}"
+            resource_meta_row = resource_meta.get(resource_key)
+            resource_label = resource_meta_row["label"] if resource_meta_row else resource_key
+            resource_color = resource_meta_row["color"] if resource_meta_row else ""
             pib = (
                 e.entrant.person.pib
                 if e.entrant is not None and e.entrant.person is not None and e.entrant.person.pib
@@ -182,7 +198,13 @@ class ListRatingState(AppState):
                 else ""
             )
             if group_key not in groups_by_key:
-                groups_by_key[group_key] = RatingGroup(spec_key=group_key, spec_label=spec_label, rows=[])
+                groups_by_key[group_key] = RatingGroup(
+                    spec_key=group_key,
+                    spec_label=spec_label,
+                    resource_label=resource_label,
+                    resource_color=resource_color,
+                    rows=[],
+                )
                 order.append(group_key)
             groups_by_key[group_key].rows.append(
                 {
@@ -192,16 +214,32 @@ class ListRatingState(AppState):
                     "phone": phone,
                     "total": format_grade(e.total_points),
                     "status": e.status,
+                    "assigned_resource_id": str(e.id_assigned_source_of_funding or ""),
                 }
             )
 
-        # Тезки в межах однієї таблиці (спеціальність+база+форма) розрізняємо телефоном (DK-36).
+        # Тезки в межах однієї таблиці (спеціальність+база+форма+ресурс) розрізняємо телефоном (DK-36).
         for group in groups_by_key.values():
             display = disambiguate_pib((r["pib"], r["phone"]) for r in group.rows)
             for row, shown in zip(group.rows, display):
                 row["pib"] = shown
 
-        self.groups = [groups_by_key[k] for k in order]
+        # Впорядковуємо: спершу за появою квоти (спец+база+форма), в межах
+        # квоти — за sequence ресурсу (щоб бюджет ішов перед контрактом).
+        quota_order: Dict[str, int] = {}
+        for key in order:
+            quota_part = "|".join(key.split("|")[:3])
+            if quota_part not in quota_order:
+                quota_order[quota_part] = len(quota_order)
+
+        def _sort_key(key: str):
+            parts = key.split("|")
+            quota_part = "|".join(parts[:3])
+            resource_part = parts[3] if len(parts) > 3 else ""
+            return (quota_order[quota_part], resource_seq.get(resource_part, 0))
+
+        ordered_keys = sorted(order, key=_sort_key)
+        self.groups = [groups_by_key[k] for k in ordered_keys]
 
     @rx.var
     def selected_campaign_id_str(self) -> str:
@@ -210,6 +248,14 @@ class ListRatingState(AppState):
     @rx.var
     def campaign_options(self) -> List[Dict[str, str]]:
         return [{"value": str(c.id), "label": c.title} for c in self.campaigns]
+
+    @rx.var
+    def resource_color_map(self) -> Dict[str, str]:
+        return {opt["value"]: opt["color"] for opt in self.resource_options}
+
+    @rx.var
+    def resource_label_map(self) -> Dict[str, str]:
+        return {opt["value"]: opt["label"] for opt in self.resource_options}
 
     @rx.event
     def set_selected_campaign_id(self, value: str):
@@ -298,8 +344,10 @@ class ListRatingState(AppState):
         if not self.has_permission(Actions.RATING_DOCX):
             yield rx.toast.error("У Вас немає дозволу на завантаження рейтингу!")
             return
+        # group_key = "спец|база|форма|ресурс" (DK-52) — документ формується на
+        # весь потік (спец+база+форма), ресурс ігнорується.
         parts = group_key.split("|")
-        if len(parts) != 3 or not self.selected_campaign_id:
+        if len(parts) < 3 or not self.selected_campaign_id:
             yield rx.toast.error("Не вдалося визначити потік для завантаження.")
             return
         spec_key = parts[0]

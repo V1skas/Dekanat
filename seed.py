@@ -17,8 +17,10 @@ from Dekanat.models import (
     SpecialityModel,
     AdmissionCampaignModel,
     AdmissionCampaignSpecialityModel,
+    AdmissionCampaignSpecialityFundingModel,
     ItemZnoModel,
     SourceOfFundingModel,
+    SourceOfFundingEligibilityModel,
     EntryBaseModel,
     FormOfStudyModel,
     ApplicationStatusModel,
@@ -115,11 +117,38 @@ def seed_reference_data(session):
         )
         item_znos.append(i)
 
-    sof_titles = ["Бюджет", "Контракт", "Цільовий прийом"]
+    # (title, sequence, color) — sequence визначає порядок конкурсу (DK-52):
+    # бюджет першим, далі контракт, далі цільовий прийом.
+    sof_data = [
+        ("Бюджет", 1, "#22c55e"),
+        ("Контракт", 2, "#f97316"),
+        ("Цільовий прийом", 3, "#a855f7"),
+    ]
     sources = []
-    for t in sof_titles:
-        s, _ = get_or_create(session, SourceOfFundingModel, title=t)
+    for t, sequence, color in sof_data:
+        s, _ = get_or_create(
+            session, SourceOfFundingModel, title=t,
+            defaults={"sequence": sequence, "color": color},
+        )
+        s.sequence = sequence
+        s.color = color
         sources.append(s)
+    session.flush()
+
+    # Бюджет також конкурує за контрактні місця (перестрибування, DK-52) —
+    # відтворює стару поведінку (budget_left -> contract_left по черзі).
+    budget_src, contract_src = sources[0], sources[1]
+    existing_elig = session.exec(
+        select(SourceOfFundingEligibilityModel).where(
+            SourceOfFundingEligibilityModel.id_source_of_funding == budget_src.id,
+            SourceOfFundingEligibilityModel.id_eligible_source_of_funding == contract_src.id,
+        )
+    ).first()
+    if existing_elig is None:
+        session.add(SourceOfFundingEligibilityModel(
+            id_source_of_funding=budget_src.id,
+            id_eligible_source_of_funding=contract_src.id,
+        ))
 
     eb_data = [
         ("Повна загальна середня освіта", "ПЗСО"),
@@ -198,7 +227,7 @@ def seed_reference_data(session):
     }
 
 
-def seed_campaign(session, specialties, entry_bases, forms_of_study):
+def seed_campaign(session, specialties, entry_bases, forms_of_study, sources):
     print("→ Вступна кампанія + квоти")
     today = now_local().date()
     start = today - timedelta(days=30)
@@ -220,7 +249,13 @@ def seed_campaign(session, specialties, entry_bases, forms_of_study):
         campaign.end_date = end.isoformat()
         session.flush()
 
-    # Очистимо квоти і перестворимо для свіжих чисел
+    # Очистимо квоти (і їхні ресурси фінансування, DK-52) і перестворимо для свіжих чисел
+    for old in session.exec(
+        select(AdmissionCampaignSpecialityFundingModel).where(
+            AdmissionCampaignSpecialityFundingModel.id_admission_campaign == campaign.id
+        )
+    ).all():
+        session.delete(old)
     for old in session.exec(
         select(AdmissionCampaignSpecialityModel).where(
             AdmissionCampaignSpecialityModel.id_admission_campaign == campaign.id
@@ -229,20 +264,33 @@ def seed_campaign(session, specialties, entry_bases, forms_of_study):
         session.delete(old)
     session.flush()
 
-    # Квоти тепер задаються по кортежу (спеціальність, база вступу, форма навчання).
-    # Для повноти тестових даних створюємо квоту на кожну комбінацію (DK-26).
+    # Квоти тепер задаються по кортежу (спеціальність, база вступу, форма навчання),
+    # а місця — окремим рядком на кожен ресурс фінансування (DK-52).
+    budget_src, contract_src = sources[0], sources[1]
     for s in specialties:
         for base in entry_bases:
             for form in forms_of_study:
-                budget = random.randint(5, 12)
-                contract = random.randint(8, 18)
                 session.add(AdmissionCampaignSpecialityModel(
                     id_admission_campaign=campaign.id,
                     id_speciality=s.id,
                     id_entry_base=base.id,
                     id_form_of_study=form.id,
-                    budget_places=budget,
-                    contract_places=contract,
+                ))
+                session.add(AdmissionCampaignSpecialityFundingModel(
+                    id_admission_campaign=campaign.id,
+                    id_speciality=s.id,
+                    id_entry_base=base.id,
+                    id_form_of_study=form.id,
+                    id_source_of_funding=budget_src.id,
+                    places=random.randint(5, 12),
+                ))
+                session.add(AdmissionCampaignSpecialityFundingModel(
+                    id_admission_campaign=campaign.id,
+                    id_speciality=s.id,
+                    id_entry_base=base.id,
+                    id_form_of_study=form.id,
+                    id_source_of_funding=contract_src.id,
+                    places=random.randint(8, 18),
                 ))
     session.flush()
     return campaign
@@ -293,7 +341,10 @@ def seed_entrants(session, refs, campaign, count=100):
             email=f"entrant{i}@example.com",
             phone_number=f"+38050{random.randint(1000000, 9999999)}",
             the_need_for_a_dormitory=random.random() < 0.3,
-            id_source_of_funding=random.choice(sources).id,
+            # Тільки бюджет/контракт (sources[0]/[1]) — саме на них є місця у
+            # квотах кампанії (DK-52); "Цільовий прийом" лишається довідником
+            # без сконфігурованих місць, щоб не губити абітурієнтів з рейтингу.
+            id_source_of_funding=random.choice(sources[:2]).id,
             id_entry_base=random.choice(entry_bases).id,
         )
         session.add(person)
@@ -351,7 +402,7 @@ def main():
     print("=== Завантаження тестових даних ===\n")
     with rx.session() as session:
         refs = seed_reference_data(session)
-        campaign = seed_campaign(session, refs["specialties"], refs["entry_bases"], refs["forms_of_study"])
+        campaign = seed_campaign(session, refs["specialties"], refs["entry_bases"], refs["forms_of_study"], refs["sources"])
         seed_entrants(session, refs, campaign, count=100)
         session.commit()
     print("\n=== Готово ===")

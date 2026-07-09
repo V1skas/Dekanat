@@ -1,5 +1,7 @@
 import reflex as rx
 
+from typing import Dict
+
 from Dekanat import routes
 from Dekanat.actions import Actions
 from Dekanat.states.source_of_funding import (
@@ -56,12 +58,48 @@ def list_page_content() -> rx.Component:
 def view_page_content() -> rx.Component:
     return rx.vstack(
         rx.heading(ViewSourceOfFundingState.title, size="6"),
+        rx.hstack(
+            rx.text("Пріоритет (sequence):", weight="bold"),
+            rx.text(ViewSourceOfFundingState.sequence_str),
+            spacing="2",
+            align="center",
+        ),
+        rx.hstack(
+            rx.text("Колір:", weight="bold"),
+            rx.box(width="1.5rem", height="1.5rem", border_radius="4px",
+                   background_color=ViewSourceOfFundingState.color, border="1px solid #0002"),
+            rx.text(ViewSourceOfFundingState.color),
+            spacing="2",
+            align="center",
+        ),
+        rx.hstack(
+            rx.text("Також конкурує у ресурсах:", weight="bold"),
+            rx.text(ViewSourceOfFundingState.eligible_titles_str),
+            spacing="2",
+            align="center",
+        ),
 
         spacing="3",
         align="stretch",
         height="100%",
         width="100%"
     )
+
+
+def _eligible_checkbox(form_state):
+    def _item(opt: Dict[str, str]) -> rx.Component:
+        return rx.hstack(
+            rx.checkbox(
+                checked=form_state.eligible_ids.contains(opt["value"]),
+                on_change=lambda _: form_state.toggle_eligible(opt["value"]),
+            ),
+            rx.text(opt["label"]),
+            spacing="2",
+            align="center",
+        )
+
+    return _item
+
 
 def add_page_content() -> rx.Component:
     return rx.vstack(
@@ -70,6 +108,25 @@ def add_page_content() -> rx.Component:
             required=True,
             value=AddSourceOfFundingState.title,
             on_change=AddSourceOfFundingState.set_title,
+        ),
+        rx.text("*Пріоритет (менше — раніше в конкурсі):"),
+        rx.input(
+            type="number",
+            required=True,
+            value=AddSourceOfFundingState.sequence_str,
+            on_change=AddSourceOfFundingState.set_sequence,
+        ),
+        rx.text("Колір підсвітки:"),
+        rx.input(
+            type="color",
+            value=AddSourceOfFundingState.color,
+            on_change=AddSourceOfFundingState.set_color,
+        ),
+        rx.text("Також конкурує у ресурсах (лише з вищим пріоритетом):"),
+        rx.vstack(
+            rx.foreach(AddSourceOfFundingState.other_resource_options, _eligible_checkbox(AddSourceOfFundingState)),
+            spacing="1",
+            align="start",
         ),
 
         align="stretch",
@@ -84,6 +141,25 @@ def edit_page_content() -> rx.Component:
             required=True,
             value=EditSourceOfFundingState.title,
             on_change=EditSourceOfFundingState.set_title,
+        ),
+        rx.text("*Пріоритет (менше — раніше в конкурсі):"),
+        rx.input(
+            type="number",
+            required=True,
+            value=EditSourceOfFundingState.sequence_str,
+            on_change=EditSourceOfFundingState.set_sequence,
+        ),
+        rx.text("Колір підсвітки:"),
+        rx.input(
+            type="color",
+            value=EditSourceOfFundingState.color,
+            on_change=EditSourceOfFundingState.set_color,
+        ),
+        rx.text("Також конкурує у ресурсах (лише з вищим пріоритетом):"),
+        rx.vstack(
+            rx.foreach(EditSourceOfFundingState.other_resource_options, _eligible_checkbox(EditSourceOfFundingState)),
+            spacing="1",
+            align="start",
         ),
 
         align="stretch",
