@@ -16,6 +16,7 @@ from Dekanat.audit.base import (
     UpdateAction,
     DeleteAction,
     FieldChange,
+    FieldRow,
     format_value,
 )
 
@@ -60,3 +61,11 @@ class GroupMembersChanged(BaseAuditAction):
         if self.removed:
             lines.append("Вилучено абітурієнтів: " + format_value(self.removed))
         return lines
+
+    def field_rows(self) -> list[FieldRow]:
+        rows: list[FieldRow] = []
+        if self.added:
+            rows.append(FieldRow(label="Додано абітурієнтів", new=format_value(self.added)))
+        if self.removed:
+            rows.append(FieldRow(label="Вилучено абітурієнтів", old=format_value(self.removed)))
+        return rows

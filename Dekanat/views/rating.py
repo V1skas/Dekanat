@@ -291,7 +291,7 @@ def list_page_content() -> rx.Component:
             ),
             controls.empty_placeholder("Рейтинг порожній. Натисніть «Сформувати рейтинг»."),
         ),
-        audit_history_section_for_key("rating_snapshots", ListRatingState.selected_campaign_id),
+        audit_history_section_for_key(Actions.RATING_HISTORY_VIEW.value, Actions.RATING_HISTORY_DETAIL.value),
         spacing="3",
         align="stretch",
         width="100%",

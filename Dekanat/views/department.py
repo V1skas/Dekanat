@@ -125,7 +125,7 @@ def view_page() -> rx.Component:
         ),
         rx.vstack(
             rx.skeleton(view_page_content(), loading=ViewDepartmentState.in_process, height="100%"),
-            audit_history_section("departments"),
+            audit_history_section(Actions.DEPARTMENT_HISTORY_VIEW.value, Actions.DEPARTMENT_HISTORY_DETAIL.value),
             width="100%",
             align="stretch",
             spacing="4",

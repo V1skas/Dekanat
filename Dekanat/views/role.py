@@ -204,7 +204,7 @@ def view_page() -> rx.Component:
         ),
         rx.vstack(
             rx.skeleton(view_page_content(), loading=ViewRoleState.in_process, height="100%"),
-            audit_history_section("roles"),
+            audit_history_section(Actions.ROLE_HISTORY_VIEW.value, Actions.ROLE_HISTORY_DETAIL.value),
             width="100%",
             align="stretch",
             spacing="4",

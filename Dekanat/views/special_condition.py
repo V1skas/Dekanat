@@ -177,7 +177,7 @@ def view_page() -> rx.Component:
         ),
         rx.vstack(
             rx.skeleton(view_page_content(), loading=ViewSpecialConditionState.in_process, height="100%"),
-            audit_history_section("special_conditions", "code"),
+            audit_history_section(Actions.SPECIAL_CONDITION_HISTORY_VIEW.value, Actions.SPECIAL_CONDITION_HISTORY_DETAIL.value),
             width="100%",
             align="stretch",
             spacing="4",

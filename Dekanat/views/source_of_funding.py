@@ -125,7 +125,7 @@ def view_page() -> rx.Component:
         ),
         rx.vstack(
             rx.skeleton(view_page_content(), loading=ViewSourceOfFundingState.in_process, height="100%"),
-            audit_history_section("source_of_funding"),
+            audit_history_section(Actions.SOURCE_OF_FUNDING_HISTORY_VIEW.value, Actions.SOURCE_OF_FUNDING_HISTORY_DETAIL.value),
             width="100%",
             align="stretch",
             spacing="4",

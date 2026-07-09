@@ -211,7 +211,7 @@ def view_page() -> rx.Component:
         ),
         rx.vstack(
             rx.skeleton(view_page_content(), loading=ViewSpecialityState.in_process, height="100%"),
-            audit_history_section("specialties", "spec_id"),
+            audit_history_section(Actions.SPECIALITY_HISTORY_VIEW.value, Actions.SPECIALITY_HISTORY_DETAIL.value),
             width="100%",
             align="stretch",
             spacing="4",

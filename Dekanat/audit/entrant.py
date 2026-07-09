@@ -9,7 +9,7 @@
 
 from typing import ClassVar, Dict, List, Optional, Tuple
 
-from Dekanat.audit.base import CreateAction, UpdateAction, DeleteAction, FieldChange
+from Dekanat.audit.base import CreateAction, UpdateAction, DeleteAction, FieldChange, FieldRow
 
 
 _ENTRANT_LABELS: Dict[str, str] = {
@@ -82,6 +82,12 @@ class EntrantUpdated(UpdateAction):
         if self.changed_collections:
             lines.append("Оновлено дані: " + ", ".join(self.changed_collections))
         return lines
+
+    def field_rows(self) -> list[FieldRow]:
+        rows = super().field_rows()
+        if self.changed_collections:
+            rows.append(FieldRow(label="Оновлено дані", new=", ".join(self.changed_collections)))
+        return rows
 
 
 class EntrantDeleted(DeleteAction):

@@ -466,7 +466,7 @@ def list_page_content() -> rx.Component:
                 "Звіт ще не сформовано для цієї кампанії. Натисніть «Сформувати звіт»."
             ),
         ),
-        audit_history_section_for_key("admission_campaign_reports", ListAdmissionReportState.selected_campaign_id),
+        audit_history_section_for_key(Actions.REPORT_ADMISSION_HISTORY_VIEW.value, Actions.REPORT_ADMISSION_HISTORY_DETAIL.value),
         spacing="3",
         align="stretch",
         width="100%",

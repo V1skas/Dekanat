@@ -91,7 +91,7 @@ class ListAdmissionReportState(AppState):
             self.compare_campaign_id = 0
             self._reload_primary()
             self._reload_compare()
-            yield AuditHistoryState.load_for_key("admission_campaign_reports", self.selected_campaign_id)
+            yield AuditHistoryState.load_for_key("admission_campaign_reports", self.selected_campaign_id, Actions.REPORT_ADMISSION_HISTORY_VIEW.value, Actions.REPORT_ADMISSION_HISTORY_DETAIL.value)
         except Exception as ex:
             print(f"[ListAdmissionReportState][on_load][ERROR] {ex}")
             yield rx.toast.error("Під час завантаження сталася помилка.")
@@ -163,7 +163,7 @@ class ListAdmissionReportState(AppState):
             self.compare_campaign_id = 0
         self._reload_primary()
         self._reload_compare()
-        yield AuditHistoryState.load_for_key("admission_campaign_reports", self.selected_campaign_id)
+        yield AuditHistoryState.load_for_key("admission_campaign_reports", self.selected_campaign_id, Actions.REPORT_ADMISSION_HISTORY_VIEW.value, Actions.REPORT_ADMISSION_HISTORY_DETAIL.value)
 
     @rx.event
     def set_compare_campaign_id(self, value: str):
@@ -203,7 +203,7 @@ class ListAdmissionReportState(AppState):
             service.persist_payload(campaign_id, payload, actor_id=actor_id)
             self._reload_primary()
             yield rx.toast.success("Звіт сформовано.")
-            yield AuditHistoryState.load_for_key("admission_campaign_reports", campaign_id)
+            yield AuditHistoryState.load_for_key("admission_campaign_reports", campaign_id, Actions.REPORT_ADMISSION_HISTORY_VIEW.value, Actions.REPORT_ADMISSION_HISTORY_DETAIL.value)
         except Exception as ex:
             print(f"[ListAdmissionReportState][on_click_generate][ERROR] {ex}")
             yield rx.toast.error("Під час формування звіту сталася помилка.")

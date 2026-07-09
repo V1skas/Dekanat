@@ -374,7 +374,7 @@ def view_page() -> rx.Component:
         ),
         rx.vstack(
             rx.skeleton(view_page_content(), loading=ViewAdmissionCampaignState.in_process, height="100%"),
-            audit_history_section("admission_campaigns"),
+            audit_history_section(Actions.ADMISSION_CAMPAIGN_HISTORY_VIEW.value, Actions.ADMISSION_CAMPAIGN_HISTORY_DETAIL.value),
             width="100%",
             align="stretch",
             spacing="4",

@@ -103,7 +103,7 @@ def view_page() -> rx.Component:
         ),
         rx.vstack(
             rx.skeleton(view_page_content(), loading=ViewIdentityDocumentTypeState.in_process, height="100%"),
-            audit_history_section("identity_document_type"),
+            audit_history_section(Actions.IDENTITY_DOCUMENT_TYPE_HISTORY_VIEW.value, Actions.IDENTITY_DOCUMENT_TYPE_HISTORY_DETAIL.value),
             width="100%",
             align="stretch",
             spacing="4",

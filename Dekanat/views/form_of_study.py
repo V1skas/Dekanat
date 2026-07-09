@@ -103,7 +103,7 @@ def view_page() -> rx.Component:
         ),
         rx.vstack(
             rx.skeleton(view_page_content(), loading=ViewFormOfStudyState.in_process, height="100%"),
-            audit_history_section("forms_of_study"),
+            audit_history_section(Actions.FORM_OF_STUDY_HISTORY_VIEW.value, Actions.FORM_OF_STUDY_HISTORY_DETAIL.value),
             width="100%",
             align="stretch",
             spacing="4",

@@ -1,15 +1,18 @@
-"""Блок «Історія змін» (DK-55) — переиспользуемый компонент для сторінок записів.
+"""Блок «Історія змін» (DK-55/DK-56) — переиспользуемый компонент для сторінок
+записів.
 
-Гейтиться правом `audit:view`. `audit_history_section` бере record_id з path-
-параметра маршруту (сторінки перегляду сутностей). `audit_history_section_for_key`
-приймає record_id явно (сторінки без [id] — рейтинг/звіт/налаштування).
+Право на сам блок і право на деталізацію — окремі й повністю незалежні:
+`audit_history_section(view_action, detail_action)` гейтить видимість блоку
+лише `view_action`; `detail_action` керує лише можливістю розгорнути рядок
+(шеврон і клік з'являються тільки з цим правом). `audit_history_section_for_key`
+— те саме для сторінок без `[id]` (рейтинг/звіт).
 """
 
 import reflex as rx
 
-from Dekanat.actions import Actions
 from Dekanat.states.app import AppState
 from Dekanat.states.audit import AuditHistoryState, AuditRow
+from Dekanat.audit import FieldRow
 from Dekanat.views.templates import controls
 
 
@@ -25,22 +28,76 @@ def _action_badge(row: AuditRow) -> rx.Component:
     return rx.badge(row.action_label, color_scheme=color, variant="soft", size="1")
 
 
-def _audit_row(row: AuditRow) -> rx.Component:
-    # Наразі показуємо лише факт дії (без деталізації полів) — DK-55.
-    return rx.box(
+def _field_row(fr: FieldRow) -> rx.Component:
+    """Рядок деталізації. Конвенція визначається наявністю old/new (без enum):
+    лише `old`+`new` → diff (старе закреслене червоне → нове жирне зелене);
+    лише `new` → значення «додано» (зелене); лише `old` → «видалено» (червоне,
+    закреслене); порожній `label` → нейтральний текст-примітка."""
+    return rx.cond(
+        fr.label == "",
+        rx.text(fr.text, size="2", color=rx.color("gray", 11)),
         rx.hstack(
-            _action_badge(row),
-            rx.text(row.actor, weight="medium", size="2"),
-            rx.spacer(),
-            rx.text(row.when, size="1", color=rx.color("gray", 10)),
+            rx.text(fr.label + ":", size="2", weight="medium", color=rx.color("gray", 11), white_space="nowrap"),
+            rx.cond(
+                fr.old != "",
+                rx.text(fr.old, size="2", color=rx.color("red", 11), text_decoration="line-through"),
+            ),
+            rx.cond(
+                (fr.old != "") & (fr.new != ""),
+                rx.icon("arrow-right", size=14, color=rx.color("gray", 9)),
+            ),
+            rx.cond(
+                fr.new != "",
+                rx.text(fr.new, size="2", weight="bold", color=rx.color("grass", 11)),
+            ),
+            spacing="2",
+            wrap="wrap",
             align="center",
             width="100%",
+        ),
+    )
+
+
+def _audit_row(row: AuditRow) -> rx.Component:
+    is_expanded = AuditHistoryState.expanded_ids.contains(row.id)
+    header = rx.hstack(
+        _action_badge(row),
+        rx.text(row.actor, weight="medium", size="2"),
+        rx.spacer(),
+        rx.text(row.when, size="1", color=rx.color("gray", 10)),
+        rx.cond(
+            AuditHistoryState.can_detail,
+            rx.icon(
+                rx.cond(is_expanded, "chevron-up", "chevron-down"),
+                size=16,
+                color=rx.color("gray", 9),
+            ),
+        ),
+        align="center",
+        width="100%",
+    )
+    return rx.box(
+        header,
+        rx.cond(
+            is_expanded,
+            rx.vstack(
+                rx.foreach(row.details, _field_row),
+                spacing="1",
+                align="start",
+                width="100%",
+                margin_top="0.5rem",
+                padding_top="0.5rem",
+                border_top=f"1px dashed {rx.color('gray', 5)}",
+            ),
+            rx.fragment(),
         ),
         padding="0.6rem 0.75rem",
         border=f"1px solid {rx.color('gray', 5)}",
         border_radius="0.5rem",
         background_color=rx.color("gray", 1),
         width="100%",
+        cursor=rx.cond(AuditHistoryState.can_detail, "pointer", "default"),
+        on_click=AuditHistoryState.toggle_row(row.id),
     )
 
 
@@ -73,26 +130,26 @@ def _card() -> rx.Component:
     )
 
 
-def audit_history_section(table_name: str = "", id_param: str = "id") -> rx.Component:
+def audit_history_section(view_action: str, detail_action: str) -> rx.Component:
     """Блок історії для сторінок перегляду сутностей.
 
     Лише відображення — завантаження запускає `AuditHistoryState.load(...)`,
     доданий у `on_load` сторінки (`Dekanat/Dekanat.py`). Покладатись на `on_mount`
     компонента ненадійно: постійний layout не перемонтовує контент при навігації
-    (див. DK-37). `table_name`/`id_param` лишаються в сигнатурі для сумісності.
+    (див. DK-37).
     """
     return rx.cond(
-        AppState.get_user_actions.contains(Actions.AUDIT_VIEW),
+        AppState.get_user_actions.contains(view_action),
         _card(),
         rx.fragment(),
     )
 
 
-def audit_history_section_for_key(table_name: str = "", record_id=None) -> rx.Component:
+def audit_history_section_for_key(view_action: str, detail_action: str) -> rx.Component:
     """Те саме для сторінок без [id] (рейтинг/звіт): завантаження запускають
     обробники стейта через `AuditHistoryState.load_for_key(...)`."""
     return rx.cond(
-        AppState.get_user_actions.contains(Actions.AUDIT_VIEW),
+        AppState.get_user_actions.contains(view_action),
         _card(),
         rx.fragment(),
     )

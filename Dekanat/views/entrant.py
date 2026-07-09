@@ -918,7 +918,7 @@ def view_page() -> rx.Component:
         ),
         rx.vstack(
             rx.skeleton(view_page_content(), loading=ViewEntrantState.in_process, height="100%"),
-            audit_history_section("entrants"),
+            audit_history_section(Actions.ENTRANT_HISTORY_VIEW.value, Actions.ENTRANT_HISTORY_DETAIL.value),
             width="100%",
             align="stretch",
             spacing="4",

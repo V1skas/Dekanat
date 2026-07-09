@@ -308,7 +308,7 @@ def view_page() -> rx.Component:
         ),
         rx.vstack(
             rx.skeleton(view_page_content(), loading=ViewWorkerState.in_process, height="100%"),
-            audit_history_section("workers"),
+            audit_history_section(Actions.WORKER_HISTORY_VIEW.value, Actions.WORKER_HISTORY_DETAIL.value),
             width="100%",
             align="stretch",
             spacing="4",

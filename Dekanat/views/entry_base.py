@@ -103,7 +103,7 @@ def view_page() -> rx.Component:
         ),
         rx.vstack(
             rx.skeleton(view_page_content(), loading=ViewEntryBaseState.in_process, height="100%"),
-            audit_history_section("entry_base"),
+            audit_history_section(Actions.ENTRY_BASE_HISTORY_VIEW.value, Actions.ENTRY_BASE_HISTORY_DETAIL.value),
             width="100%",
             align="stretch",
             spacing="4",

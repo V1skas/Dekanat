@@ -75,7 +75,7 @@ class ListRatingState(AppState):
             self._reload_speciality_options()
             self._load_latest_snapshot()
             self.in_progress = False
-            yield AuditHistoryState.load_for_key("rating_snapshots", self.selected_campaign_id)
+            yield AuditHistoryState.load_for_key("rating_snapshots", self.selected_campaign_id, Actions.RATING_HISTORY_VIEW.value, Actions.RATING_HISTORY_DETAIL.value)
         except Exception:
             self.in_progress = False
             yield rx.toast.error("Під час виконання запиту сталася помилка :( Спробуйте знову.")
@@ -222,7 +222,7 @@ class ListRatingState(AppState):
         self.selected_form_key = "__all__"
         self._reload_speciality_options()
         self._load_latest_snapshot()
-        yield AuditHistoryState.load_for_key("rating_snapshots", self.selected_campaign_id)
+        yield AuditHistoryState.load_for_key("rating_snapshots", self.selected_campaign_id, Actions.RATING_HISTORY_VIEW.value, Actions.RATING_HISTORY_DETAIL.value)
 
     @rx.event
     def toggle_filter_collapsed(self):
@@ -283,7 +283,7 @@ class ListRatingState(AppState):
                 self.generated_at_display = str(snapshot.generated_at)
             self._fill_from_entries(fresh_entries)
             yield rx.toast.success("Рейтинг сформовано!")
-            yield AuditHistoryState.load_for_key("rating_snapshots", campaign_id)
+            yield AuditHistoryState.load_for_key("rating_snapshots", campaign_id, Actions.RATING_HISTORY_VIEW.value, Actions.RATING_HISTORY_DETAIL.value)
         except Exception:
             yield rx.toast.error("Під час формування рейтингу сталася помилка. Спробуйте ще раз.")
         finally:

@@ -1,8 +1,9 @@
-"""Тести журналу дій (DK-55).
+"""Тести журналу дій (DK-55/DK-56).
 
 Перевіряють, що `record_action` пише коректний рядок у `audit_log`, що
-`parse_changes` відновлює типізовану дію, `describe()` дає читабельний текст, і
-що порожній diff (update без змін) не логується.
+`parse_changes` відновлює типізовану дію, `describe()`/`field_rows()` дають
+читабельний текст/структуровану деталізацію, і що порожній diff (update без
+змін) не логується.
 """
 
 from types import SimpleNamespace
@@ -12,7 +13,7 @@ from sqlmodel import SQLModel, Session, create_engine, select
 # Імпорт моделей реєструє таблиці у SQLModel.metadata.
 import Dekanat.models  # noqa: F401
 from Dekanat.models import AuditLogModel, WorkerModel
-from Dekanat.audit import record_action, parse_changes, KinshipUpdated
+from Dekanat.audit import record_action, parse_changes, KinshipUpdated, KinshipCreated
 
 
 def _session() -> Session:
@@ -66,6 +67,21 @@ def test_parse_changes_roundtrip_and_describe():
         assert action.title.old == "A"
         assert action.title.new == "B"
         assert action.describe() == ["Назва: A → B"]
+
+
+def test_field_rows_update_and_create():
+    """DK-56: структурована деталізація для UI (label/old/new замість plain text)."""
+    update = KinshipUpdated.from_diff(SimpleNamespace(title="Батько"), SimpleNamespace(title="Мати"))
+    rows = update.field_rows()
+    assert len(rows) == 1
+    assert rows[0].label == "Назва"
+    assert rows[0].old == "Батько"
+    assert rows[0].new == "Мати"
+
+    created = KinshipCreated(title="Дядько")
+    rows = created.field_rows()
+    assert rows[0].label == "" and rows[0].text == "Створено запис"
+    assert rows[1].label == "Назва" and rows[1].new == "Дядько" and rows[1].old == ""
 
 
 def test_update_without_changes_is_not_logged():
