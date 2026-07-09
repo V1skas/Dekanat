@@ -1,0 +1,19 @@
+import{r as e}from"./rolldown-runtime-Dte3XhyD.js";import{t}from"./react-D5nPORWt.js";import"./react-dom-CfS6TUty.js";import{A as n}from"./chunk-JZWAC4HX-C_UR8Kqd.js";import{a as r,d as i,h as a,r as o}from"./context-Clzca4w3.js";import{n as s}from"./emotion-react.browser.esm-IuRf-uQu.js";import{H as c,U as l,V as u,W as d,f,h as p,l as m,m as h,nt as g,p as _,tt as v,u as y,v as b}from"./esm-fhIE1WOF.js";import{f as x,t as S}from"./stateful_components-DeT9-5PE.js";var C=e(t(),1);function w(){let e=(0,C.useContext)(r.reflex___state____state__dekanat___states___app____app_state__dekanat___states___entrants_group____print_entrants_group_state),[t,n]=(0,C.useContext)(o),c=(0,C.useRef)(null);return a.ref_print_area=c,s(b,{height:`100%`,loading:e.in_progress_rx_state_},s(d,{css:{width:`100%`}},s(`div`,{className:`rx-Html`,dangerouslySetInnerHTML:{__html:`
+        <style>
+          @media print {
+            .no-print { display: none !important; }
+            html, body { background: white !important; }
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 100%;
+              padding: 1rem;
+            }
+            .print-group { page-break-after: always; }
+            .print-group:last-child { page-break-after: auto; }
+          }
+        </style>
+        `}}),s(l,{align:`start`,className:`rx-Stack no-print`,css:{width:`100%`,marginBottom:`1rem`},direction:`row`,gap:`3`},s(u,{onClick:e=>t([i(`reflex___state____state.dekanat___states___app____app_state.dekanat___states___entrants_group____print_entrants_group_state.on_click_back`,{},{})],[e],{}),variant:`outline`},`Назад`),s(l,{css:{flex:1,justifySelf:`stretch`,alignSelf:`stretch`}}),s(u,{css:{color:`white`,backgroundImage:`linear-gradient(135deg, var(--accent-11) 20%, var(--accent-9) 65%)`},onClick:e=>t([i(`reflex___state____state.dekanat___states___app____app_state.dekanat___states___entrants_group____print_entrants_group_state.on_click_print`,{},{})],[e],{})},`Друк`)),s(d,{id:`print-area`,ref:c},s(C.Fragment,{},e.groups_rx_state_.length>0?s(C.Fragment,{},s(l,{align:`stretch`,className:`rx-Stack`,css:{width:`100%`},direction:`column`,gap:`4`},Array.prototype.map.call(e.groups_rx_state_??[],(e,t)=>s(d,{className:`print-group`,css:{marginBottom:`1.5rem`},key:t},s(g,{css:{marginBottom:`0.75rem`},size:`5`},e?.title),s(C.Fragment,{},e?.entrants.length>0?s(C.Fragment,{},s(p,{css:{width:`100%`},variant:`surface`},s(_,{},s(m,{},s(h,{},`ПІБ`))),s(f,{},Array.prototype.map.call(e?.entrants??[],(e,t)=>s(m,{key:t},s(y,{align:`left`},e?.pib)))))):s(C.Fragment,{},s(v,{as:`p`,css:{color:`gray`}},`Учасників немає`))))))):s(C.Fragment,{},s(v,{as:`p`,css:{color:`gray`}},`Немає груп для друку.`))))))}function T(){return s(C.Fragment,{},(0,C.useContext)(r.reflex___state____state__dekanat___states___app____app_state).is_auth_rx_state_?s(C.Fragment,{},s(l,{align:`start`,className:`rx-Stack`,css:{flex:`1`,width:`100%`,height:`100%`},direction:`column`,gap:`3`},s(S,{}),s(d,{}),s(d,{css:{flex:`1`,height:`100%`,width:`100%`,overflowY:`auto`}},s(w,{})))):s(C.Fragment,{},s(l,{css:{display:`flex`,alignItems:`center`,justifyContent:`center`,height:`100%`,width:`100%`}},s(l,{align:`start`,className:`rx-Stack`,direction:`row`,gap:`3`},s(c,{size:`3`}),s(x,{})))))}var E=n(function(){return s(C.Fragment,{},s(T,{}),s(`title`,{},`Dekanat | Print`),s(`meta`,{content:`favicon.ico`,property:`og:image`}))});export{E as default};
