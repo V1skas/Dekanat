@@ -1717,6 +1717,60 @@ def _dlg_rz() -> rx.Component:
     )
 
 
+def _dup_row(row: Dict[str, str]) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(row["pib"]),
+        rx.table.cell(row["phone"]),
+        rx.table.cell(row["mokpp"]),
+        rx.table.cell(row["edbo"]),
+        rx.table.cell(row["matched"]),
+        on_click=EntrantFormState.open_duplicate_card(row["id"].to(int)),
+        cursor="pointer",
+        _hover={"background_color": rx.color("accent", 3)},
+    )
+
+
+def _dlg_duplicates() -> rx.Component:
+    """Попередження про можливий дублікат картки (DK-60): перелік полів-збігів +
+    таблиця знайдених карток. Клік по рядку відкриває картку у новій вкладці —
+    щоб не втратити незбережені дані поточної форми."""
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Можливий дублікат картки абітурієнта"),
+            rx.vstack(
+                rx.text(
+                    "Знайдено абітурієнтів зі збігом за полями: " + EntrantFormState.dup_fields,
+                    color=rx.color("tomato", 11),
+                    weight="medium",
+                ),
+                rx.table.root(
+                    _sub_table_header("ПІБ", "Телефон", "ІПН", "ЄДБО", "Поля збігу"),
+                    rx.table.body(rx.foreach(EntrantFormState.dup_rows, _dup_row)),
+                    variant="surface",
+                    width="100%",
+                ),
+                rx.text(
+                    "Перевірте картки у списку. Якщо це не дублікат — продовжте збереження.",
+                    size="2",
+                    color="gray",
+                ),
+                rx.hstack(
+                    controls.button_secondary("Скасувати", on_click=EntrantFormState.on_cancel_duplicate),
+                    controls.button_primary("Продовжити збереження", on_click=EntrantFormState.on_confirm_duplicate),
+                    justify="end",
+                    spacing="2",
+                    width="100%",
+                ),
+                spacing="3",
+                align="stretch",
+            ),
+            max_width="50rem",
+        ),
+        open=EntrantFormState.dup_open,
+        on_open_change=EntrantFormState.set_dup_open,
+    )
+
+
 def _form_content() -> rx.Component:
     return rx.tabs.root(
         rx.tabs.list(
@@ -1759,6 +1813,7 @@ def _form_page() -> rx.Component:
         _dlg_scp(),
         _dlg_sp(),
         _dlg_rz(),
+        _dlg_duplicates(),
         width="100%",
         spacing="3",
     )

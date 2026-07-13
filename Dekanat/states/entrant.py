@@ -1032,6 +1032,13 @@ class EntrantFormState(AppState):
     rz_calc_mode: str = "avg"  # "avg" | "sum"
     rz_calc_components: str = ""
 
+    # ---- Duplicate warning dialog (DK-60) ----
+    dup_open: bool = False
+    # Рядки знайдених можливих дублікатів: id, pib, phone, mokpp, edbo, matched (укр. назви полів через кому).
+    dup_rows: List[Dict[str, str]] = []
+    # Зведений список полів, за якими знайдено збіги (для тексту попередження).
+    dup_fields: str = ""
+
     # ============================================================
     # On-load: shared dropdown init + branch on mode
     # ============================================================
@@ -1123,6 +1130,9 @@ class EntrantFormState(AppState):
         self.specialties = []
         self.specialty_sources = []
         self.results_zno = []
+        self.dup_open = False
+        self.dup_rows = []
+        self.dup_fields = ""
 
     @rx.event
     def on_load_add(self):
@@ -2440,6 +2450,80 @@ class EntrantFormState(AppState):
             yield rx.toast.warning(err)
             return
 
+        # Попередження про можливий дублікат картки (DK-60): шукаємо збіги за
+        # ПІБ/телефоном/ІПН/ЄДБО серед не видалених абітурієнтів (крім себе при
+        # редагуванні). Якщо є хоч один збіг — показуємо діалог і НЕ зберігаємо,
+        # доки користувач сам не підтвердить продовження.
+        try:
+            matches = EntrantService().find_duplicates(
+                pib=self.pib.strip() or None,
+                phone=self.phone_number.strip() or None,
+                mokpp=self.mokpp.strip() or None,
+                edbo=self.edbo.strip() or None,
+                exclude_id=self.entrant_id if self.entrant_id > 0 else None,
+            )
+        except Exception:
+            matches = []
+        if matches:
+            self._open_duplicate_dialog(matches)
+            return
+
+        yield from self._persist_entrant()
+
+    def _open_duplicate_dialog(self, matches: Sequence[EntrantModel]):
+        """Формує рядки таблиці й зведений список полів-збігів для діалогу
+        попередження про дублікат (DK-60)."""
+        pib_q = self.pib.strip().lower()
+        phone_q = self.phone_number.strip()
+        mokpp_q = self.mokpp.strip()
+        edbo_q = self.edbo.strip().lower()
+
+        rows: List[Dict[str, str]] = []
+        fields_found: set = set()
+        for e in matches:
+            p = e.person
+            matched: List[str] = []
+            if pib_q and p is not None and p.pib and p.pib.strip().lower() == pib_q:
+                matched.append("ПІБ")
+            if phone_q and p is not None and p.phone_number and p.phone_number.strip() == phone_q:
+                matched.append("Телефон")
+            if mokpp_q and p is not None and p.mokpp and p.mokpp.strip() == mokpp_q:
+                matched.append("ІПН")
+            if edbo_q and p is not None and p.edbo and p.edbo.strip().lower() == edbo_q:
+                matched.append("ЄДБО")
+            fields_found.update(matched)
+            rows.append({
+                "id": str(e.id),
+                "pib": p.pib if p is not None and p.pib else "—",
+                "phone": p.phone_number if p is not None and p.phone_number else "—",
+                "mokpp": p.mokpp if p is not None and p.mokpp else "—",
+                "edbo": p.edbo if p is not None and p.edbo else "—",
+                "matched": ", ".join(matched),
+            })
+        self.dup_rows = rows
+        self.dup_fields = ", ".join(sorted(fields_found))
+        self.dup_open = True
+
+    @rx.event
+    def set_dup_open(self, value: bool):
+        self.dup_open = value
+
+    @rx.event
+    def on_cancel_duplicate(self):
+        self.dup_open = False
+
+    @rx.event
+    def on_confirm_duplicate(self):
+        self.dup_open = False
+        yield from self._persist_entrant()
+
+    @rx.event
+    def open_duplicate_card(self, entrant_id: int):
+        """Відкриває картку знайденого можливого дублікату у новій вкладці (DK-60) —
+        щоб не втратити незбережені дані поточної форми."""
+        return rx.redirect(routes.ENTRANT_VIEW + str(entrant_id), is_external=True)
+
+    def _persist_entrant(self):
         service = EntrantService()
         try:
             person = self._build_person()

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Sequence, Optional, Tuple
 from sqlmodel import Session, select
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload, aliased, make_transient
 
 from Dekanat.models import (
@@ -302,6 +302,43 @@ class EntrantDao:
         if exclude_id is not None:
             statement = statement.where(PersonModel.id != exclude_id)
         return session.exec(statement).first()
+
+    @staticmethod
+    def find_duplicates(
+        session: Session,
+        pib: Optional[str] = None,
+        phone: Optional[str] = None,
+        mokpp: Optional[str] = None,
+        edbo: Optional[str] = None,
+        exclude_id: Optional[int] = None,
+    ) -> Sequence[EntrantModel]:
+        """Шукає не видалених абітурієнтів, що збігаються хоча б по одному з полів
+        ПІБ/телефон/ІПН/ЄДБО — попередження про можливий дублікат картки (DK-60).
+        Порівняння точне (без урахування регістру та зайвих пробілів по краях);
+        порожні поля в порівнянні участі не беруть. `exclude_id` — не зачепити
+        саму картку, що редагується."""
+        conditions = []
+        if pib:
+            # ua_lower — кирилиця-aware нижній регістр (SQLite lower() її не бере), DK-36/DK-60.
+            conditions.append(ua_lower(PersonModel.pib) == pib.strip().lower())
+        if phone:
+            conditions.append(PersonModel.phone_number == phone.strip())
+        if mokpp:
+            conditions.append(PersonModel.mokpp == mokpp.strip())
+        if edbo:
+            conditions.append(ua_lower(PersonModel.edbo) == edbo.strip().lower())
+        if not conditions:
+            return []
+        statement = (
+            select(EntrantModel)
+            .options(selectinload(EntrantModel.person))
+            .join(PersonModel, EntrantModel.id == PersonModel.id)
+            .where(EntrantModel.is_deleted == False)
+            .where(or_(*conditions))
+        )
+        if exclude_id is not None:
+            statement = statement.where(EntrantModel.id != exclude_id)
+        return session.exec(statement).all()
 
     @staticmethod
     def add_person(person: PersonModel, session: Session) -> PersonModel:

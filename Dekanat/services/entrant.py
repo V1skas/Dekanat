@@ -147,6 +147,25 @@ class EntrantService:
             print(f"[EntrantService][get_by_id][ERROR] {e}")
             raise
 
+    def find_duplicates(
+        self,
+        pib: Optional[str] = None,
+        phone: Optional[str] = None,
+        mokpp: Optional[str] = None,
+        edbo: Optional[str] = None,
+        exclude_id: Optional[int] = None,
+    ) -> Sequence[EntrantModel]:
+        """Попередній пошук можливих дублікатів картки за ПІБ/телефоном/ІПН/ЄДБО
+        перед збереженням (DK-60). Не блокує збереження — лише інформує."""
+        try:
+            with rx.session() as session:
+                return EntrantDao.find_duplicates(
+                    session, pib=pib, phone=phone, mokpp=mokpp, edbo=edbo, exclude_id=exclude_id,
+                )
+        except Exception as e:
+            print(f"[EntrantService][find_duplicates][ERROR] {e}")
+            raise
+
     @staticmethod
     def _validate_mokpp(person: PersonModel) -> None:
         """ІПН — необов'язковий (DK-38), але якщо вказаний, має бути рівно 10 цифр.
