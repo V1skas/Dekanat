@@ -294,6 +294,15 @@ def _general_filter_panel() -> rx.Component:
                 ),
             ),
             _filter_field(
+                "ІПН містить:",
+                rx.input(
+                    value=ListEntrantState.filter_mokpp,
+                    on_change=ListEntrantState.set_filter_mokpp,
+                    placeholder="Пошук по ІПН…",
+                    width="100%",
+                ),
+            ),
+            _filter_field(
                 "Статус заяви:",
                 _select(
                     ListEntrantState.application_status_options,

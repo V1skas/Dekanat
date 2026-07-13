@@ -67,6 +67,7 @@ def apply_entrant_filters(
     *,
     pib_substring: Optional[str] = None,
     phone_substring: Optional[str] = None,
+    mokpp_substring: Optional[str] = None,
     application_status_id: Optional[int] = None,
     entry_base_id: Optional[int] = None,
     created_between: Optional[Tuple[datetime, datetime]] = None,
@@ -86,6 +87,10 @@ def apply_entrant_filters(
     if phone_substring:
         qp = phone_substring.strip().lower()
         statement = statement.where(func.lower(PersonModel.phone_number).like(f"%{qp}%"))
+    if mokpp_substring:
+        # ІПН — цифри, латинська колонка, звичайного func.lower() достатньо (DK-61).
+        qm = mokpp_substring.strip()
+        statement = statement.where(func.lower(PersonModel.mokpp).like(f"%{qm}%"))
     if entry_base_id:
         statement = statement.where(PersonModel.id_entry_base == entry_base_id)
     if application_status_id:
@@ -205,6 +210,7 @@ class EntrantDao:
         created_date_between: Optional[Tuple[datetime, datetime]] = None,
         pib_substring: Optional[str] = None,
         phone_substring: Optional[str] = None,
+        mokpp_substring: Optional[str] = None,
         application_status_id: Optional[int] = None,
         entry_base_id: Optional[int] = None,
         priority_speciality_id: Optional[int] = None,
@@ -226,6 +232,7 @@ class EntrantDao:
             statement,
             pib_substring=pib_substring,
             phone_substring=phone_substring,
+            mokpp_substring=mokpp_substring,
             application_status_id=application_status_id,
             entry_base_id=entry_base_id,
             created_between=created_between,

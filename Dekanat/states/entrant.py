@@ -100,6 +100,8 @@ class ListEntrantState(AppState):
     filter_open: bool = False
     filter_pib: str = ""
     filter_phone: str = ""
+    # Пошук по ІПН абітурієнта (DK-61).
+    filter_mokpp: str = ""
     filter_status_id: int = 0
     filter_entry_base_id: int = 0
     filter_campaign_id: int = 0  # 0 — без фільтра по кампанії
@@ -202,6 +204,7 @@ class ListEntrantState(AppState):
         self.items = service.get_list_items(
             pib=self.filter_pib.strip() or None,
             phone=self.filter_phone.strip() or None,
+            mokpp=self.filter_mokpp.strip() or None,
             status_id=self.filter_status_id or None,
             entry_base_id=self.filter_entry_base_id or None,
             created_between=self._campaign_range(),
@@ -398,6 +401,17 @@ class ListEntrantState(AppState):
         finally:
             self.in_progress = False
 
+    @rx.event
+    def set_filter_mokpp(self, value: str):
+        # ІПН — лише цифри, максимум 10 (DK-61), за зразком EntrantFormState.set_mokpp.
+        self.filter_mokpp = "".join(c for c in value if c.isdigit())[:10]
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+
     @rx.var
     def filter_status_id_str(self) -> str:
         return str(self.filter_status_id) if self.filter_status_id else ""
@@ -479,6 +493,7 @@ class ListEntrantState(AppState):
     def clear_filters(self):
         self.filter_pib = ""
         self.filter_phone = ""
+        self.filter_mokpp = ""
         self.filter_status_id = 0
         self.filter_entry_base_id = 0
         self.filter_campaign_id = 0
