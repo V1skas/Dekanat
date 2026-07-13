@@ -365,13 +365,18 @@ def _general_filter_panel() -> rx.Component:
 def _date_filter() -> rx.Component:
     """Фільтр по даті створення (DK-34): перемикач «день / період» + відповідні поля."""
     return rx.vstack(
-        rx.text("Дата створення:", weight="medium"),
-        rx.radio(
-            ["День", "Період"],
-            value=rx.cond(ListEntrantState.is_date_mode_period, "Період", "День"),
-            on_change=ListEntrantState.set_filter_date_mode,
-            direction="row",
-            spacing="4",
+        rx.hstack(
+            rx.text("Дата створення:", weight="medium"),
+            rx.radio(
+                ["День", "Період"],
+                value=rx.cond(ListEntrantState.is_date_mode_period, "Період", "День"),
+                on_change=ListEntrantState.set_filter_date_mode,
+                direction="row",
+                spacing="4",
+            ),
+            justify="between",
+            align="center",
+            width="100%",
         ),
         rx.cond(
             ListEntrantState.is_date_mode_period,
@@ -421,13 +426,18 @@ def _date_filter() -> rx.Component:
 def _priority_date_filter() -> rx.Component:
     """Фільтр по даті створення для представлення пріоритетів (окремі поля p_filter_*)."""
     return rx.vstack(
-        rx.text("Дата створення:", weight="medium"),
-        rx.radio(
-            ["День", "Період"],
-            value=rx.cond(ListEntrantState.is_p_date_mode_period, "Період", "День"),
-            on_change=ListEntrantState.set_p_filter_date_mode,
-            direction="row",
-            spacing="4",
+        rx.hstack(
+            rx.text("Дата створення:", weight="medium"),
+            rx.radio(
+                ["День", "Період"],
+                value=rx.cond(ListEntrantState.is_p_date_mode_period, "Період", "День"),
+                on_change=ListEntrantState.set_p_filter_date_mode,
+                direction="row",
+                spacing="4",
+            ),
+            justify="between",
+            align="center",
+            width="100%",
         ),
         rx.cond(
             ListEntrantState.is_p_date_mode_period,
