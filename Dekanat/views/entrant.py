@@ -783,6 +783,11 @@ def _v_sp_row(item: SpecialtieEntrantModel) -> rx.Component:
         rx.table.cell(rx.cond(item.speciality, item.speciality.title, "—")),
         rx.table.cell(rx.cond(item.speciality, item.speciality.tag, "—")),
         rx.table.cell(rx.cond(item.form_of_study, item.form_of_study.title, "—")),
+        rx.table.cell(
+            ViewEntrantState.sp_source_titles[
+                item.id_speciality.to_string() + "|" + item.id_form_of_study.to_string()
+            ]
+        ),
     )
 
 
@@ -797,6 +802,7 @@ def _v_sp_table() -> rx.Component:
                     rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
                     rx.table.column_header_cell("Тег", color=rx.color("accent", 2)),
                     rx.table.column_header_cell("Форма навчання", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Ресурси фінансування", color=rx.color("accent", 2)),
                 ),
                 background_color=rx.color("accent", 9),
             ),
@@ -1291,6 +1297,11 @@ def _f_sp_row(item, idx: int) -> rx.Component:
         rx.table.cell(item.priority),
         rx.table.cell(EntrantFormState.speciality_labels[item.id_speciality.to_string()]),
         rx.table.cell(EntrantFormState.form_labels[item.id_form_of_study.to_string()]),
+        rx.table.cell(
+            EntrantFormState.sp_source_titles[
+                item.id_speciality.to_string() + "|" + item.id_form_of_study.to_string()
+            ]
+        ),
         _action_cell(
             EntrantFormState.open_sp_edit(idx),
             EntrantFormState.delete_sp(idx),
@@ -1349,7 +1360,7 @@ def _f_sp_section() -> rx.Component:
         rx.cond(
             EntrantFormState.specialties.length() > 0,
             rx.table.root(
-                _sub_table_header("Пріоритет", "Спеціальність", "Форма навчання", "Дії"),
+                _sub_table_header("Пріоритет", "Спеціальність", "Форма навчання", "Ресурси фінансування", "Дії"),
                 rx.table.body(rx.foreach(EntrantFormState.specialties, _f_sp_row)),
                 variant="surface",
                 width="100%",
@@ -1564,6 +1575,14 @@ def _dlg_scp() -> rx.Component:
     )
 
 
+def _sp_source_checkbox(opt: Dict[str, str]) -> rx.Component:
+    return rx.checkbox(
+        opt["label"],
+        checked=EntrantFormState.sp_accepted_sources_str.contains(opt["value"]),
+        on_change=lambda checked: EntrantFormState.toggle_sp_source(opt["value"].to(int), checked),
+    )
+
+
 def _dlg_sp() -> rx.Component:
     return rx.dialog.root(
         rx.dialog.content(
@@ -1589,6 +1608,13 @@ def _dlg_sp() -> rx.Component:
                 ),
                 rx.text("*Пріоритет:"),
                 rx.input(type="number", value=EntrantFormState.sp_priority.to_string(), on_change=EntrantFormState.set_sp_priority, width="100%"),
+                rx.text("Прийнятні ресурси фінансування:"),
+                rx.vstack(
+                    rx.foreach(EntrantFormState.source_of_funding_options, _sp_source_checkbox),
+                    spacing="1",
+                    align="stretch",
+                    width="100%",
+                ),
                 _dialog_buttons(EntrantFormState.save_sp, EntrantFormState.close_sp),
                 spacing="2",
                 align="stretch",

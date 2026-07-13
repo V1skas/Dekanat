@@ -513,6 +513,35 @@ class SpecialtieEntrantModel(rx.Model, table=True):
     entrant: Optional['EntrantModel'] = Relationship(back_populates="specialties")
     speciality: Optional['SpecialityModel'] = Relationship()
     form_of_study: Optional['FormOfStudyModel'] = Relationship()
+    accepted_sources: Optional[List['SpecialtieEntrantSourceOfFundingModel']] = Relationship()
+
+
+@rx.ModelRegistry.register
+class SpecialtieEntrantSourceOfFundingModel(rx.Model, table=True):
+    """Ресурси фінансування, на які абітурієнт згоден для конкретного пріоритету
+    зі списку спеціальностей (DK-59). Довідкова інформація про абітурієнта —
+    не впливає на формування рейтингового списку."""
+    __tablename__ = "specialties_entrants_sources"
+
+    # Table columns
+    id_entrant: int = Field(primary_key=True, foreign_key="entrants.id")
+    id_speciality: int = Field(primary_key=True, foreign_key="specialties.id")
+    id_form_of_study: int = Field(primary_key=True, foreign_key="forms_of_study.id")
+    id_source_of_funding: int = Field(primary_key=True, foreign_key="source_of_funding.id")
+
+    # Relationships
+    source_of_funding: Optional['SourceOfFundingModel'] = Relationship()
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["id_entrant", "id_speciality", "id_form_of_study"],
+            [
+                "specialties_entrants.id_entrant",
+                "specialties_entrants.id_speciality",
+                "specialties_entrants.id_form_of_study",
+            ],
+        ),
+    )
 
 
 @rx.ModelRegistry.register

@@ -9,6 +9,7 @@ from Dekanat.models import (
     EntrantGroupModel,
     PersonModel,
     SpecialtieEntrantModel,
+    SpecialtieEntrantSourceOfFundingModel,
     SpecialityModel,
     SourceOfFundingModel,
     EntryBaseModel,
@@ -46,6 +47,9 @@ def _entrant_loaders():
         selectinload(EntrantModel.entrant_group),
         selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.speciality),
         selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.form_of_study),
+        selectinload(EntrantModel.specialties)
+        .selectinload(SpecialtieEntrantModel.accepted_sources)
+        .selectinload(SpecialtieEntrantSourceOfFundingModel.source_of_funding),
         selectinload(EntrantModel.person).selectinload(PersonModel.source_of_funding),
         selectinload(EntrantModel.person).selectinload(PersonModel.entry_base),
         selectinload(EntrantModel.person).selectinload(PersonModel.identity_document).selectinload(IdentityDocumentModel.type),
@@ -398,6 +402,32 @@ class EntrantDao:
         for old in session.exec(select(SpecialtieEntrantModel).where(SpecialtieEntrantModel.id_entrant == entrant_id)).all():
             session.delete(old)
         session.flush()
+        for item in items:
+            make_transient(item)
+            item.id_entrant = entrant_id
+            session.add(item)
+
+    @staticmethod
+    def delete_specialty_sources(entrant_id: int, session: Session) -> None:
+        """Видаляє прийнятні ресурси фінансування абітурієнта (DK-59). Виконується
+        ОКРЕМО і ДО `replace_specialties` — це дочірня таблиця з FK-constraint'ом на
+        `specialties_entrants`, тож MariaDB не дозволить видалити батьківські рядки
+        поки лишаються ці дочірні."""
+        for old in session.exec(
+            select(SpecialtieEntrantSourceOfFundingModel).where(
+                SpecialtieEntrantSourceOfFundingModel.id_entrant == entrant_id
+            )
+        ).all():
+            session.delete(old)
+        session.flush()
+
+    @staticmethod
+    def insert_specialty_sources(
+        entrant_id: int, items: list[SpecialtieEntrantSourceOfFundingModel], session: Session
+    ) -> None:
+        """Вставляє нові позначки прийнятних ресурсів (DK-59). Викликається ПІСЛЯ
+        `replace_specialties`, щоб батьківські рядки `specialties_entrants` уже
+        існували на момент вставки (FK-constraint)."""
         for item in items:
             make_transient(item)
             item.id_entrant = entrant_id

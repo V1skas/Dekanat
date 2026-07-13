@@ -12,6 +12,7 @@ from Dekanat.models import (
     EntrantModel,
     PersonModel,
     SpecialtieEntrantModel,
+    SpecialtieEntrantSourceOfFundingModel,
     IdentityDocumentModel,
     DocumentAboutEducationModel,
     MilitaryAccountingModel,
@@ -826,6 +827,23 @@ class ViewEntrantState(AppState):
             return "—"
         return self._fmt_dt(self.item.application_status_changed_at)
 
+    @rx.var
+    def sp_source_titles(self) -> Dict[str, str]:
+        """Назви прийнятних ресурсів фінансування, зведені у рядок через кому, для
+        кожного пріоритету (ключ "id_speciality|id_form_of_study") — DK-59."""
+        if self.item is None:
+            return {}
+        result: Dict[str, str] = {}
+        for sp in self.item.specialties or []:
+            titles = [
+                src.source_of_funding.title
+                for src in (sp.accepted_sources or [])
+                if src.source_of_funding is not None
+            ]
+            if titles:
+                result[f"{sp.id_speciality}|{sp.id_form_of_study}"] = ", ".join(titles)
+        return result
+
 
 # ---------- Add / Edit (shared form state) ----------
 
@@ -922,6 +940,9 @@ class EntrantFormState(AppState):
     information_about_relatives: List[InformationAboutRelativesModel] = []
     special_conditions_person: List[SpecialConditionPersonModel] = []
     specialties: List[SpecialtieEntrantModel] = []
+    # Прийнятні ресурси фінансування по кожному пріоритету (DK-59) — довідкова
+    # інформація, не впливає на формування рейтингу.
+    specialty_sources: List[SpecialtieEntrantSourceOfFundingModel] = []
     results_zno: List[ResultZnoModel] = []
 
     # ---- Identity document dialog ----
@@ -981,6 +1002,8 @@ class EntrantFormState(AppState):
     sp_combined: str = ""  # "code|id_department"
     sp_id_form_of_study: int = 0
     sp_priority: int = 1
+    # Обрані у діалозі ресурси фінансування, прийнятні для цього пріоритету (DK-59).
+    sp_accepted_sources: List[int] = []
 
     # ---- ZNO result dialog ----
     rz_open: bool = False
@@ -1083,6 +1106,7 @@ class EntrantFormState(AppState):
         self.information_about_relatives = []
         self.special_conditions_person = []
         self.specialties = []
+        self.specialty_sources = []
         self.results_zno = []
 
     @rx.event
@@ -1160,6 +1184,11 @@ class EntrantFormState(AppState):
             self.information_about_relatives = list(person.information_about_relatives or [])
             self.special_conditions_person = list(person.special_conditions or [])
             self.specialties = list(entrant.specialties or [])
+            self.specialty_sources = [
+                src
+                for sp in (entrant.specialties or [])
+                for src in (sp.accepted_sources or [])
+            ]
             self.results_zno = list(person.results_zno or [])
 
             self.in_process = False
@@ -1540,6 +1569,18 @@ class EntrantFormState(AppState):
         return {opt["value"]: opt["label"] for opt in self.form_of_study_options}
 
     @rx.var
+    def sp_source_titles(self) -> Dict[str, str]:
+        """Назви прийнятних ресурсів фінансування, зведені у рядок через кому, для
+        кожного пріоритету (ключ "id_speciality|id_form_of_study") — DK-59."""
+        titles = {opt["value"]: opt["label"] for opt in self.source_of_funding_options}
+        result: Dict[str, str] = {}
+        for src in self.specialty_sources:
+            key = f"{src.id_speciality}|{src.id_form_of_study}"
+            label = titles.get(str(src.id_source_of_funding), str(src.id_source_of_funding))
+            result[key] = f"{result[key]}, {label}" if key in result else label
+        return result
+
+    @rx.var
     def sp_form_options(self) -> List[Dict[str, str]]:
         """Форми навчання, доступні для бази вступу абітурієнта (з квот активної
         кампанії). Обираються ПЕРШИМИ у діалозі. Поки база не обрана — порожньо (DK-26)."""
@@ -1558,6 +1599,11 @@ class EntrantFormState(AppState):
             seen.add(fid)
             result.append({"value": fid, "label": form_map.get(fid, fid)})
         return result
+
+    @rx.var
+    def sp_accepted_sources_str(self) -> List[str]:
+        """Рядкові id обраних ресурсів (DK-59) — для contains-перевірки чекбоксів."""
+        return [str(s) for s in self.sp_accepted_sources]
 
     @rx.var
     def sp_speciality_options(self) -> List[Dict[str, str]]:
@@ -2006,6 +2052,7 @@ class EntrantFormState(AppState):
         self.sp_combined = ""
         self.sp_id_form_of_study = 0
         self.sp_priority = 1
+        self.sp_accepted_sources = []
 
     @rx.event
     def open_sp_add(self):
@@ -2026,7 +2073,20 @@ class EntrantFormState(AppState):
         self.sp_combined = str(item.id_speciality) if item.id_speciality else ""
         self.sp_id_form_of_study = item.id_form_of_study or 0
         self.sp_priority = item.priority or 1
+        self.sp_accepted_sources = [
+            src.id_source_of_funding
+            for src in self.specialty_sources
+            if src.id_speciality == item.id_speciality and src.id_form_of_study == item.id_form_of_study
+        ]
         self.sp_open = True
+
+    @rx.event
+    def toggle_sp_source(self, id_source: int, checked: bool):
+        if checked:
+            if id_source not in self.sp_accepted_sources:
+                self.sp_accepted_sources = self.sp_accepted_sources + [id_source]
+        else:
+            self.sp_accepted_sources = [s for s in self.sp_accepted_sources if s != id_source]
 
     @rx.event
     def close_sp(self):
@@ -2092,16 +2152,39 @@ class EntrantFormState(AppState):
             id_form_of_study=self.sp_id_form_of_study,
             priority=self.sp_priority,
         )
+        # Прибираємо старі позначки ресурсів для цього рядка (за старим ключем — на
+        # випадок редагування зі зміною спеціальності/форми) і додаємо нові (DK-59).
         if 0 <= self.sp_index < len(self.specialties):
+            old = self.specialties[self.sp_index]
+            self.specialty_sources = [
+                src
+                for src in self.specialty_sources
+                if not (src.id_speciality == old.id_speciality and src.id_form_of_study == old.id_form_of_study)
+            ]
             self.specialties[self.sp_index] = item
         else:
             self.specialties.append(item)
+        self.specialty_sources = self.specialty_sources + [
+            SpecialtieEntrantSourceOfFundingModel(
+                id_entrant=self.entrant_id if self.entrant_id > 0 else 0,
+                id_speciality=id_speciality,
+                id_form_of_study=self.sp_id_form_of_study,
+                id_source_of_funding=src_id,
+            )
+            for src_id in self.sp_accepted_sources
+        ]
         self.sp_open = False
         self._reset_sp_dialog()
 
     @rx.event
     def delete_sp(self, index: int):
         if 0 <= index < len(self.specialties):
+            removed = self.specialties[index]
+            self.specialty_sources = [
+                src
+                for src in self.specialty_sources
+                if not (src.id_speciality == removed.id_speciality and src.id_form_of_study == removed.id_form_of_study)
+            ]
             del self.specialties[index]
 
     # ============================================================
@@ -2307,6 +2390,22 @@ class EntrantFormState(AppState):
             is_deleted=False,
         )
 
+    def _build_specialty_sources(self) -> list[SpecialtieEntrantSourceOfFundingModel]:
+        """Нові інстанси для передачі в сервіс (DK-59): DAO робить `make_transient`
+        на переданих обʼєктах і додає їх у сесію, що після `commit` (expire_on_commit)
+        робить їх detached — якщо передати ті самі обʼєкти, що лежать у
+        `self.specialty_sources`, наступне звернення до їхніх атрибутів (напр. у
+        `sp_source_titles` при обчисленні дельти стану) впаде з DetachedInstanceError."""
+        return [
+            SpecialtieEntrantSourceOfFundingModel(
+                id_entrant=s.id_entrant,
+                id_speciality=s.id_speciality,
+                id_form_of_study=s.id_form_of_study,
+                id_source_of_funding=s.id_source_of_funding,
+            )
+            for s in self.specialty_sources
+        ]
+
     @rx.event
     def on_save(self):
         # Серверний захист статусу: без права ENTRANT_EDIT_STATUS поле статусу
@@ -2346,6 +2445,7 @@ class EntrantFormState(AppState):
                     special_conditions=list(self.special_conditions_person),
                     specialties=list(self.specialties),
                     results_zno=list(self.results_zno),
+                    specialty_sources=self._build_specialty_sources(),
                     new_group_title=self.pending_new_group_title or None,
                     actor_id=self._actor_id(),
                 )
@@ -2366,6 +2466,7 @@ class EntrantFormState(AppState):
                     special_conditions=list(self.special_conditions_person),
                     specialties=list(self.specialties),
                     results_zno=list(self.results_zno),
+                    specialty_sources=self._build_specialty_sources(),
                     new_group_title=self.pending_new_group_title or None,
                     actor_id=self._actor_id(),
                 )

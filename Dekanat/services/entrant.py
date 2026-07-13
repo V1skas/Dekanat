@@ -12,6 +12,7 @@ from Dekanat.models import (
     EntrantGroupModel,
     PersonModel,
     SpecialtieEntrantModel,
+    SpecialtieEntrantSourceOfFundingModel,
     IdentityDocumentModel,
     DocumentAboutEducationModel,
     MilitaryAccountingModel,
@@ -264,6 +265,7 @@ class EntrantService:
         special_conditions: list[SpecialConditionPersonModel],
         specialties: list[SpecialtieEntrantModel],
         results_zno: list[ResultZnoModel],
+        specialty_sources: Optional[list[SpecialtieEntrantSourceOfFundingModel]] = None,
         new_group_title: Optional[str] = None,
         actor_id: Optional[int] = None,
     ) -> EntrantModel:
@@ -294,6 +296,9 @@ class EntrantService:
                 EntrantDao.replace_special_conditions(person_id, special_conditions, session)
                 EntrantDao.replace_results_zno(person_id, results_zno, session)
                 EntrantDao.replace_specialties(person_id, specialties, session)
+                # Прийнятні ресурси фінансування по кожному пріоритету (DK-59): нова
+                # картка — старих рядків немає, тож достатньо вставити.
+                EntrantDao.insert_specialty_sources(person_id, specialty_sources or [], session)
 
                 record_action(session, actor_id, person_id, EntrantCreated(
                     pib=person.pib, edbo=person.edbo,
@@ -322,6 +327,7 @@ class EntrantService:
         special_conditions: list[SpecialConditionPersonModel],
         specialties: list[SpecialtieEntrantModel],
         results_zno: list[ResultZnoModel],
+        specialty_sources: Optional[list[SpecialtieEntrantSourceOfFundingModel]] = None,
         new_group_title: Optional[str] = None,
         actor_id: Optional[int] = None,
     ) -> EntrantModel:
@@ -365,7 +371,11 @@ class EntrantService:
                 EntrantDao.replace_information_about_relatives(person_id, information_about_relatives, session)
                 EntrantDao.replace_special_conditions(person_id, special_conditions, session)
                 EntrantDao.replace_results_zno(person_id, results_zno, session)
+                # Старі позначки прийнятних ресурсів видаляємо ДО заміни спеціальностей
+                # (FK-constraint на specialties_entrants — DK-59), нові вставляємо ПІСЛЯ.
+                EntrantDao.delete_specialty_sources(entrant.id, session)
                 EntrantDao.replace_specialties(entrant.id, specialties, session)
+                EntrantDao.insert_specialty_sources(entrant.id, specialty_sources or [], session)
 
                 # Журнал: один запис на збереження. Деталізацію (diff скалярів +
                 # позначки змінених колекцій) пишемо у `changes` для майбутнього
