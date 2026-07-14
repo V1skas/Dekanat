@@ -74,6 +74,17 @@ class WorkerDao:
             return []
 
     @staticmethod
+    def set_last_seen_update(worker_id: int, up_to_id: int, session: Session) -> None:
+        try:
+            worker = session.get(WorkerModel, worker_id)
+            if worker is None:
+                return
+            worker.last_seen_update_id = up_to_id
+            session.add(worker)
+        except Exception as e:
+            print(f"[WorkerDao][set_last_seen_update][ERROR] {e}")
+
+    @staticmethod
     def get_by_login(login: str, session: Session, with_delete=False):
         try:
             statement = select(WorkerModel).where(WorkerModel.login == login)

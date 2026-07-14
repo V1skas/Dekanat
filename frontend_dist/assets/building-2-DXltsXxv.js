@@ -1,0 +1,1 @@
+import"./react-MtReoTQm.js";import{n as e,t}from"./building-2-_2TjaDdK.js";export{e as __iconNode,t as default};

@@ -1,0 +1,1 @@
+import"./react-MtReoTQm.js";import{t as e}from"./createLucideIcon-Cj8s_pcZ.js";var t=[[`path`,{d:`M5 12h14`,key:`1ays0h`}]],n=e(`minus`,t);export{t as __iconNode,n as default};

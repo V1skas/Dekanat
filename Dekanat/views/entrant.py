@@ -294,6 +294,15 @@ def _general_filter_panel() -> rx.Component:
                 ),
             ),
             _filter_field(
+                "ІПН містить:",
+                rx.input(
+                    value=ListEntrantState.filter_mokpp,
+                    on_change=ListEntrantState.set_filter_mokpp,
+                    placeholder="Пошук по ІПН…",
+                    width="100%",
+                ),
+            ),
+            _filter_field(
                 "Статус заяви:",
                 _select(
                     ListEntrantState.application_status_options,
@@ -356,13 +365,18 @@ def _general_filter_panel() -> rx.Component:
 def _date_filter() -> rx.Component:
     """Фільтр по даті створення (DK-34): перемикач «день / період» + відповідні поля."""
     return rx.vstack(
-        rx.text("Дата створення:", weight="medium"),
-        rx.radio(
-            ["День", "Період"],
-            value=rx.cond(ListEntrantState.is_date_mode_period, "Період", "День"),
-            on_change=ListEntrantState.set_filter_date_mode,
-            direction="row",
-            spacing="4",
+        rx.hstack(
+            rx.text("Дата створення:", weight="medium"),
+            rx.radio(
+                ["День", "Період"],
+                value=rx.cond(ListEntrantState.is_date_mode_period, "Період", "День"),
+                on_change=ListEntrantState.set_filter_date_mode,
+                direction="row",
+                spacing="4",
+            ),
+            justify="between",
+            align="center",
+            width="100%",
         ),
         rx.cond(
             ListEntrantState.is_date_mode_period,
@@ -412,13 +426,18 @@ def _date_filter() -> rx.Component:
 def _priority_date_filter() -> rx.Component:
     """Фільтр по даті створення для представлення пріоритетів (окремі поля p_filter_*)."""
     return rx.vstack(
-        rx.text("Дата створення:", weight="medium"),
-        rx.radio(
-            ["День", "Період"],
-            value=rx.cond(ListEntrantState.is_p_date_mode_period, "Період", "День"),
-            on_change=ListEntrantState.set_p_filter_date_mode,
-            direction="row",
-            spacing="4",
+        rx.hstack(
+            rx.text("Дата створення:", weight="medium"),
+            rx.radio(
+                ["День", "Період"],
+                value=rx.cond(ListEntrantState.is_p_date_mode_period, "Період", "День"),
+                on_change=ListEntrantState.set_p_filter_date_mode,
+                direction="row",
+                spacing="4",
+            ),
+            justify="between",
+            align="center",
+            width="100%",
         ),
         rx.cond(
             ListEntrantState.is_p_date_mode_period,
@@ -783,6 +802,11 @@ def _v_sp_row(item: SpecialtieEntrantModel) -> rx.Component:
         rx.table.cell(rx.cond(item.speciality, item.speciality.title, "—")),
         rx.table.cell(rx.cond(item.speciality, item.speciality.tag, "—")),
         rx.table.cell(rx.cond(item.form_of_study, item.form_of_study.title, "—")),
+        rx.table.cell(
+            ViewEntrantState.sp_source_titles[
+                item.id_speciality.to_string() + "|" + item.id_form_of_study.to_string()
+            ]
+        ),
     )
 
 
@@ -797,6 +821,7 @@ def _v_sp_table() -> rx.Component:
                     rx.table.column_header_cell("Назва", color=rx.color("accent", 2)),
                     rx.table.column_header_cell("Тег", color=rx.color("accent", 2)),
                     rx.table.column_header_cell("Форма навчання", color=rx.color("accent", 2)),
+                    rx.table.column_header_cell("Ресурси фінансування", color=rx.color("accent", 2)),
                 ),
                 background_color=rx.color("accent", 9),
             ),
@@ -1291,6 +1316,11 @@ def _f_sp_row(item, idx: int) -> rx.Component:
         rx.table.cell(item.priority),
         rx.table.cell(EntrantFormState.speciality_labels[item.id_speciality.to_string()]),
         rx.table.cell(EntrantFormState.form_labels[item.id_form_of_study.to_string()]),
+        rx.table.cell(
+            EntrantFormState.sp_source_titles[
+                item.id_speciality.to_string() + "|" + item.id_form_of_study.to_string()
+            ]
+        ),
         _action_cell(
             EntrantFormState.open_sp_edit(idx),
             EntrantFormState.delete_sp(idx),
@@ -1349,7 +1379,7 @@ def _f_sp_section() -> rx.Component:
         rx.cond(
             EntrantFormState.specialties.length() > 0,
             rx.table.root(
-                _sub_table_header("Пріоритет", "Спеціальність", "Форма навчання", "Дії"),
+                _sub_table_header("Пріоритет", "Спеціальність", "Форма навчання", "Ресурси фінансування", "Дії"),
                 rx.table.body(rx.foreach(EntrantFormState.specialties, _f_sp_row)),
                 variant="surface",
                 width="100%",
@@ -1564,6 +1594,14 @@ def _dlg_scp() -> rx.Component:
     )
 
 
+def _sp_source_checkbox(opt: Dict[str, str]) -> rx.Component:
+    return rx.checkbox(
+        opt["label"],
+        checked=EntrantFormState.sp_accepted_sources_str.contains(opt["value"]),
+        on_change=lambda checked: EntrantFormState.toggle_sp_source(opt["value"].to(int), checked),
+    )
+
+
 def _dlg_sp() -> rx.Component:
     return rx.dialog.root(
         rx.dialog.content(
@@ -1589,6 +1627,13 @@ def _dlg_sp() -> rx.Component:
                 ),
                 rx.text("*Пріоритет:"),
                 rx.input(type="number", value=EntrantFormState.sp_priority.to_string(), on_change=EntrantFormState.set_sp_priority, width="100%"),
+                rx.text("Прийнятні ресурси фінансування:"),
+                rx.vstack(
+                    rx.foreach(EntrantFormState.source_of_funding_options, _sp_source_checkbox),
+                    spacing="1",
+                    align="stretch",
+                    width="100%",
+                ),
                 _dialog_buttons(EntrantFormState.save_sp, EntrantFormState.close_sp),
                 spacing="2",
                 align="stretch",
@@ -1672,6 +1717,60 @@ def _dlg_rz() -> rx.Component:
     )
 
 
+def _dup_row(row: Dict[str, str]) -> rx.Component:
+    return rx.table.row(
+        rx.table.cell(row["pib"]),
+        rx.table.cell(row["phone"]),
+        rx.table.cell(row["mokpp"]),
+        rx.table.cell(row["edbo"]),
+        rx.table.cell(row["matched"]),
+        on_click=EntrantFormState.open_duplicate_card(row["id"].to(int)),
+        cursor="pointer",
+        _hover={"background_color": rx.color("accent", 3)},
+    )
+
+
+def _dlg_duplicates() -> rx.Component:
+    """Попередження про можливий дублікат картки (DK-60): перелік полів-збігів +
+    таблиця знайдених карток. Клік по рядку відкриває картку у новій вкладці —
+    щоб не втратити незбережені дані поточної форми."""
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Можливий дублікат картки абітурієнта"),
+            rx.vstack(
+                rx.text(
+                    "Знайдено абітурієнтів зі збігом за полями: " + EntrantFormState.dup_fields,
+                    color=rx.color("tomato", 11),
+                    weight="medium",
+                ),
+                rx.table.root(
+                    _sub_table_header("ПІБ", "Телефон", "ІПН", "ЄДБО", "Поля збігу"),
+                    rx.table.body(rx.foreach(EntrantFormState.dup_rows, _dup_row)),
+                    variant="surface",
+                    width="100%",
+                ),
+                rx.text(
+                    "Перевірте картки у списку. Якщо це не дублікат — продовжте збереження.",
+                    size="2",
+                    color="gray",
+                ),
+                rx.hstack(
+                    controls.button_secondary("Скасувати", on_click=EntrantFormState.on_cancel_duplicate),
+                    controls.button_primary("Продовжити збереження", on_click=EntrantFormState.on_confirm_duplicate),
+                    justify="end",
+                    spacing="2",
+                    width="100%",
+                ),
+                spacing="3",
+                align="stretch",
+            ),
+            max_width="50rem",
+        ),
+        open=EntrantFormState.dup_open,
+        on_open_change=EntrantFormState.set_dup_open,
+    )
+
+
 def _form_content() -> rx.Component:
     return rx.tabs.root(
         rx.tabs.list(
@@ -1714,6 +1813,7 @@ def _form_page() -> rx.Component:
         _dlg_scp(),
         _dlg_sp(),
         _dlg_rz(),
+        _dlg_duplicates(),
         width="100%",
         spacing="3",
     )

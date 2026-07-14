@@ -7,6 +7,9 @@
     <loc>http://0.0.0.0/login</loc>
   </url>
   <url>
+    <loc>http://0.0.0.0/account/settings</loc>
+  </url>
+  <url>
     <loc>http://0.0.0.0/dashboard</loc>
   </url>
   <url>

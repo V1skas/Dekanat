@@ -9,6 +9,7 @@ register_ua_collation()
 from Dekanat.views.auth import require_login, index as login_page
 from Dekanat.views.templates.layouts import page_wrapper, header_subpage
 from Dekanat.views.templates.app_shell import app_shell_wrap, content_area_wrap
+from Dekanat.views import account
 from Dekanat.views import admission_campaign
 from Dekanat.views import admission_campaign_report
 from Dekanat.views import app_setting
@@ -35,6 +36,7 @@ from Dekanat.views import worker
 from Dekanat.states.auth import AuthState
 from Dekanat.states.audit import AuditHistoryState
 from Dekanat.actions import Actions
+from Dekanat.states import account as account_states
 from Dekanat.states import admission_campaign as admission_campaign_states
 from Dekanat.states import admission_campaign_report as admission_campaign_report_states
 from Dekanat.states import app_setting as app_setting_states
@@ -88,6 +90,7 @@ app.add_page(
     on_load=rx.redirect(routes.DASHBOARD),
 )
 app.add_page(login_page, route=routes.LOGIN, on_load=AuthState.on_load)
+app.add_page(account.settings_page, route=routes.ACCOUNT_SETTINGS, on_load=account_states.AccountSettingsState.on_load)
 app.add_page(dashboard.dashboard_page, route=routes.DASHBOARD)
 app.add_page(dashboard.base_dashboard_page, route=routes.DASHBOARD_BASE)
 app.add_page(dashboard.contingent_dashboard_page, route=routes.DASHBOARD_CONTINGENT)

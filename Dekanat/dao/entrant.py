@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Sequence, Optional, Tuple
 from sqlmodel import Session, select
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload, aliased, make_transient
 
 from Dekanat.models import (
@@ -9,6 +9,7 @@ from Dekanat.models import (
     EntrantGroupModel,
     PersonModel,
     SpecialtieEntrantModel,
+    SpecialtieEntrantSourceOfFundingModel,
     SpecialityModel,
     SourceOfFundingModel,
     EntryBaseModel,
@@ -46,6 +47,9 @@ def _entrant_loaders():
         selectinload(EntrantModel.entrant_group),
         selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.speciality),
         selectinload(EntrantModel.specialties).selectinload(SpecialtieEntrantModel.form_of_study),
+        selectinload(EntrantModel.specialties)
+        .selectinload(SpecialtieEntrantModel.accepted_sources)
+        .selectinload(SpecialtieEntrantSourceOfFundingModel.source_of_funding),
         selectinload(EntrantModel.person).selectinload(PersonModel.source_of_funding),
         selectinload(EntrantModel.person).selectinload(PersonModel.entry_base),
         selectinload(EntrantModel.person).selectinload(PersonModel.identity_document).selectinload(IdentityDocumentModel.type),
@@ -63,6 +67,7 @@ def apply_entrant_filters(
     *,
     pib_substring: Optional[str] = None,
     phone_substring: Optional[str] = None,
+    mokpp_substring: Optional[str] = None,
     application_status_id: Optional[int] = None,
     entry_base_id: Optional[int] = None,
     created_between: Optional[Tuple[datetime, datetime]] = None,
@@ -82,6 +87,10 @@ def apply_entrant_filters(
     if phone_substring:
         qp = phone_substring.strip().lower()
         statement = statement.where(func.lower(PersonModel.phone_number).like(f"%{qp}%"))
+    if mokpp_substring:
+        # ІПН — цифри, латинська колонка, звичайного func.lower() достатньо (DK-61).
+        qm = mokpp_substring.strip()
+        statement = statement.where(func.lower(PersonModel.mokpp).like(f"%{qm}%"))
     if entry_base_id:
         statement = statement.where(PersonModel.id_entry_base == entry_base_id)
     if application_status_id:
@@ -201,6 +210,7 @@ class EntrantDao:
         created_date_between: Optional[Tuple[datetime, datetime]] = None,
         pib_substring: Optional[str] = None,
         phone_substring: Optional[str] = None,
+        mokpp_substring: Optional[str] = None,
         application_status_id: Optional[int] = None,
         entry_base_id: Optional[int] = None,
         priority_speciality_id: Optional[int] = None,
@@ -222,6 +232,7 @@ class EntrantDao:
             statement,
             pib_substring=pib_substring,
             phone_substring=phone_substring,
+            mokpp_substring=mokpp_substring,
             application_status_id=application_status_id,
             entry_base_id=entry_base_id,
             created_between=created_between,
@@ -291,6 +302,43 @@ class EntrantDao:
         if exclude_id is not None:
             statement = statement.where(PersonModel.id != exclude_id)
         return session.exec(statement).first()
+
+    @staticmethod
+    def find_duplicates(
+        session: Session,
+        pib: Optional[str] = None,
+        phone: Optional[str] = None,
+        mokpp: Optional[str] = None,
+        edbo: Optional[str] = None,
+        exclude_id: Optional[int] = None,
+    ) -> Sequence[EntrantModel]:
+        """Шукає не видалених абітурієнтів, що збігаються хоча б по одному з полів
+        ПІБ/телефон/ІПН/ЄДБО — попередження про можливий дублікат картки (DK-60).
+        Порівняння точне (без урахування регістру та зайвих пробілів по краях);
+        порожні поля в порівнянні участі не беруть. `exclude_id` — не зачепити
+        саму картку, що редагується."""
+        conditions = []
+        if pib:
+            # ua_lower — кирилиця-aware нижній регістр (SQLite lower() її не бере), DK-36/DK-60.
+            conditions.append(ua_lower(PersonModel.pib) == pib.strip().lower())
+        if phone:
+            conditions.append(PersonModel.phone_number == phone.strip())
+        if mokpp:
+            conditions.append(PersonModel.mokpp == mokpp.strip())
+        if edbo:
+            conditions.append(ua_lower(PersonModel.edbo) == edbo.strip().lower())
+        if not conditions:
+            return []
+        statement = (
+            select(EntrantModel)
+            .options(selectinload(EntrantModel.person))
+            .join(PersonModel, EntrantModel.id == PersonModel.id)
+            .where(EntrantModel.is_deleted == False)
+            .where(or_(*conditions))
+        )
+        if exclude_id is not None:
+            statement = statement.where(EntrantModel.id != exclude_id)
+        return session.exec(statement).all()
 
     @staticmethod
     def add_person(person: PersonModel, session: Session) -> PersonModel:
@@ -398,6 +446,32 @@ class EntrantDao:
         for old in session.exec(select(SpecialtieEntrantModel).where(SpecialtieEntrantModel.id_entrant == entrant_id)).all():
             session.delete(old)
         session.flush()
+        for item in items:
+            make_transient(item)
+            item.id_entrant = entrant_id
+            session.add(item)
+
+    @staticmethod
+    def delete_specialty_sources(entrant_id: int, session: Session) -> None:
+        """Видаляє прийнятні ресурси фінансування абітурієнта (DK-59). Виконується
+        ОКРЕМО і ДО `replace_specialties` — це дочірня таблиця з FK-constraint'ом на
+        `specialties_entrants`, тож MariaDB не дозволить видалити батьківські рядки
+        поки лишаються ці дочірні."""
+        for old in session.exec(
+            select(SpecialtieEntrantSourceOfFundingModel).where(
+                SpecialtieEntrantSourceOfFundingModel.id_entrant == entrant_id
+            )
+        ).all():
+            session.delete(old)
+        session.flush()
+
+    @staticmethod
+    def insert_specialty_sources(
+        entrant_id: int, items: list[SpecialtieEntrantSourceOfFundingModel], session: Session
+    ) -> None:
+        """Вставляє нові позначки прийнятних ресурсів (DK-59). Викликається ПІСЛЯ
+        `replace_specialties`, щоб батьківські рядки `specialties_entrants` уже
+        існували на момент вставки (FK-constraint)."""
         for item in items:
             make_transient(item)
             item.id_entrant = entrant_id

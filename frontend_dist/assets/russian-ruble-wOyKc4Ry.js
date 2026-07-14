@@ -1,0 +1,1 @@
+import"./react-MtReoTQm.js";import{t as e}from"./createLucideIcon-Cj8s_pcZ.js";var t=[[`path`,{d:`M6 11h8a4 4 0 0 0 0-8H9v18`,key:`18ai8t`}],[`path`,{d:`M6 15h8`,key:`1y8f6l`}]],n=e(`russian-ruble`,t);export{t as __iconNode,n as default};

@@ -102,6 +102,9 @@ class WorkerModel(rx.Model, table=True): # type: ignore
     password: str
     password_salt: str
     permissions_version: int = Field(default=0, nullable=False)
+    # High-watermark ID найновішого прочитаного запису app_updates (DK-32).
+    # Непрочитано ⇔ AppUpdateModel.id > last_seen_update_id.
+    last_seen_update_id: int = Field(default=0, nullable=False)
     is_deleted: bool = False
 
     # Relationships
@@ -513,6 +516,35 @@ class SpecialtieEntrantModel(rx.Model, table=True):
     entrant: Optional['EntrantModel'] = Relationship(back_populates="specialties")
     speciality: Optional['SpecialityModel'] = Relationship()
     form_of_study: Optional['FormOfStudyModel'] = Relationship()
+    accepted_sources: Optional[List['SpecialtieEntrantSourceOfFundingModel']] = Relationship()
+
+
+@rx.ModelRegistry.register
+class SpecialtieEntrantSourceOfFundingModel(rx.Model, table=True):
+    """Ресурси фінансування, на які абітурієнт згоден для конкретного пріоритету
+    зі списку спеціальностей (DK-59). Довідкова інформація про абітурієнта —
+    не впливає на формування рейтингового списку."""
+    __tablename__ = "specialties_entrants_sources"
+
+    # Table columns
+    id_entrant: int = Field(primary_key=True, foreign_key="entrants.id")
+    id_speciality: int = Field(primary_key=True, foreign_key="specialties.id")
+    id_form_of_study: int = Field(primary_key=True, foreign_key="forms_of_study.id")
+    id_source_of_funding: int = Field(primary_key=True, foreign_key="source_of_funding.id")
+
+    # Relationships
+    source_of_funding: Optional['SourceOfFundingModel'] = Relationship()
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["id_entrant", "id_speciality", "id_form_of_study"],
+            [
+                "specialties_entrants.id_entrant",
+                "specialties_entrants.id_speciality",
+                "specialties_entrants.id_form_of_study",
+            ],
+        ),
+    )
 
 
 @rx.ModelRegistry.register
@@ -627,6 +659,25 @@ class AdmissionCampaignReportModel(rx.Model, table=True):
     # звіт відображається цілком як знімок (DK-25). Тип Text (а не VARCHAR(255)),
     # бо JSON завідомо довший за 255 символів — на MySQL інакше «Data too long».
     payload: str = Field(sa_column=Column("payload", Text, nullable=False))
+
+
+@rx.ModelRegistry.register
+class AppUpdateModel(rx.Model, table=True):
+    """Запис історії оновлень (changelog) системи (DK-32). Тексти оголошуються в
+    коді (`Dekanat/declared/updates.py`) і синхронізуються сюди скриптом `update.py`
+    (за зразком `sync_actions`) — джерело правди залишається в git."""
+    __tablename__ = "app_updates"
+
+    # Table columns
+    id: int = Field(primary_key=True)
+    version: str = Field(nullable=False, unique=True)
+    title: Optional[str] = Field(default=None, nullable=True)
+    body: str = Field(sa_column=Column("body", Text, nullable=False))
+    published_at: datetime = Field(
+        default_factory=now_local,
+        sa_column=Column("published_at", DateTime, nullable=False, server_default=func.current_timestamp()),
+    )
+    is_deleted: bool = False
 
 
 @rx.ModelRegistry.register

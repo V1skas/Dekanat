@@ -4,6 +4,8 @@ import reflex as rx
 
 from Dekanat import routes
 from Dekanat.states.app import AppState
+from Dekanat.states.feedback import FeedbackState
+from Dekanat.states.app_update import ChangelogState, UpdateRow
 from Dekanat.declared.submenu import MenuItem
 from Dekanat.views.templates import controls
 
@@ -23,6 +25,145 @@ _ACCENT_GRADIENT = f"linear-gradient(135deg, {rx.color('accent', 11)} 20%, {rx.c
 _PANEL_SHADOW = "inset 0 0 0 0.1rem rgba(255, 255, 255, 0.4), 0.2rem 0.2rem 0.4rem 0 rgba(0, 0, 0, 0.25)"
 
 
+def _header_icon_button(icon_name: str, on_click, **prop) -> rx.Component:
+    """Маленька ghost-іконка в шапці (біла на градієнті), для дій без випадного
+    меню (фідбек, історія оновлень) — стиль підбирається під `_user_popover`."""
+    return rx.box(
+        rx.icon(icon_name, size=22, color="white"),
+        on_click=on_click,
+        cursor="pointer",
+        padding="0.4rem",
+        border_radius="0.8rem",
+        transition="background-color 0.2s ease",
+        _hover={"background_color": "rgba(255, 255, 255, 0.15)"},
+        **prop,
+    )
+
+
+def _updates_button() -> rx.Component:
+    """Іконка історії оновлень з маркером непрочитаного (червона крапка, як
+    індикатор нового повідомлення в месенджерах)."""
+    return rx.box(
+        _header_icon_button("bell", ChangelogState.open_changelog),
+        rx.cond(
+            AppState.has_unread_update,
+            rx.box(
+                width="0.5rem",
+                height="0.5rem",
+                border_radius="50%",
+                background_color="#ef4444",
+                position="absolute",
+                top="0.3rem",
+                right="0.3rem",
+            ),
+        ),
+        position="relative",
+    )
+
+
+def _changelog_row(row: UpdateRow) -> rx.Component:
+    """Плоский рядок замість вкладеного `rx.foreach` (див. `UpdateRow` — Reflex
+    не дозволяє foreach над атрибутом елемента зовнішнього foreach)."""
+    header = rx.cond(
+        row.is_header,
+        rx.vstack(
+            rx.hstack(
+                rx.heading(row.version, size="4"),
+                rx.text(row.published_at_str, size="2", color="gray"),
+                align="baseline",
+                spacing="3",
+            ),
+            rx.cond(row.title != "", rx.text(row.title, weight="bold", size="3")),
+            spacing="1",
+            align="stretch",
+            width="100%",
+            padding_top="0.75rem",
+            border_top=f"1px solid {rx.color('gray', 5)}",
+        ),
+    )
+    line = rx.cond(
+        row.is_bullet,
+        rx.hstack(
+            rx.text("•", color=rx.color("accent", 9)),
+            rx.text(row.text, size="3"),
+            spacing="2",
+            align="start",
+            padding_left="0.5rem",
+        ),
+        rx.cond(row.text != "", rx.text(row.text, size="3", padding_left="0.5rem")),
+    )
+    return rx.fragment(header, line)
+
+
+def _changelog_dialog() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Історія оновлень"),
+            rx.cond(
+                ChangelogState.rows.is_not_none() & (ChangelogState.rows.length() > 0),
+                rx.vstack(
+                    rx.foreach(ChangelogState.rows, _changelog_row),
+                    spacing="1",
+                    align="stretch",
+                    width="100%",
+                ),
+                controls.empty_placeholder("Оновлень поки немає"),
+            ),
+            rx.hstack(
+                rx.dialog.close(controls.button_secondary("Закрити")),
+                justify="end",
+                margin_top="1rem",
+                width="100%",
+            ),
+            max_width="36rem",
+            style={"max_height": "80vh", "overflow_y": "auto"},
+        ),
+        open=ChangelogState.changelog_open,
+        on_open_change=ChangelogState.set_changelog_open,
+    )
+
+
+def _feedback_dialog() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Зворотний зв'язок"),
+            rx.dialog.description(
+                "Тут ви можете залишити пропозиції щодо впровадження нових функцій "
+                "у програму або повідомити про проблеми в її роботі.",
+                size="2",
+                margin_bottom="0.75rem",
+            ),
+            rx.vstack(
+                rx.text_area(
+                    value=FeedbackState.feedback_text,
+                    on_change=FeedbackState.set_feedback_text,
+                    placeholder="Напишіть повідомлення...",
+                    rows="6",
+                    resize="vertical",
+                    width="100%",
+                ),
+                rx.hstack(
+                    rx.dialog.close(controls.button_secondary("Скасувати")),
+                    controls.button_primary(
+                        "Надіслати",
+                        on_click=FeedbackState.on_submit,
+                        loading=FeedbackState.feedback_sending,
+                    ),
+                    justify="end",
+                    spacing="2",
+                    width="100%",
+                ),
+                spacing="3",
+                align="stretch",
+                width="100%",
+            ),
+            max_width="30rem",
+        ),
+        open=FeedbackState.feedback_open,
+        on_open_change=FeedbackState.set_feedback_open,
+    )
+
+
 def _user_popover() -> rx.Component:
     return rx.popover.root(
         rx.popover.trigger(
@@ -35,18 +176,37 @@ def _user_popover() -> rx.Component:
             ),
         ),
         rx.popover.content(
-            rx.hstack(
-                rx.icon("log-out", size=18, color="white"),
-                rx.text("Вийти", size="3", weight="medium", color="white", white_space="nowrap"),
-                align="center",
-                spacing="2",
-                padding_y="0.5rem",
-                padding_x="0.75rem",
-                border_radius="0.8rem",
-                cursor="pointer",
-                transition="background-color 0.2s ease",
-                _hover={"background_color": "rgba(255, 255, 255, 0.15)"},
-                on_click=AppState.logout,
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("settings", size=18, color="white"),
+                    rx.text("Налаштування облікового запису", size="3", weight="medium", color="white", white_space="nowrap"),
+                    align="center",
+                    spacing="2",
+                    padding_y="0.5rem",
+                    padding_x="0.75rem",
+                    border_radius="0.8rem",
+                    width="100%",
+                    cursor="pointer",
+                    transition="background-color 0.2s ease",
+                    _hover={"background_color": "rgba(255, 255, 255, 0.15)"},
+                    on_click=[AppState.set_user_menu_open(False), rx.redirect(routes.ACCOUNT_SETTINGS)],
+                ),
+                rx.hstack(
+                    rx.icon("log-out", size=18, color="white"),
+                    rx.text("Вийти", size="3", weight="medium", color="white", white_space="nowrap"),
+                    align="center",
+                    spacing="2",
+                    padding_y="0.5rem",
+                    padding_x="0.75rem",
+                    border_radius="0.8rem",
+                    width="100%",
+                    cursor="pointer",
+                    transition="background-color 0.2s ease",
+                    _hover={"background_color": "rgba(255, 255, 255, 0.15)"},
+                    on_click=AppState.logout,
+                ),
+                spacing="1",
+                width="100%",
             ),
 
             side="bottom",
@@ -96,7 +256,15 @@ def header() -> rx.Component:
             min_width="0",
         ),
 
-        _user_popover(),
+        rx.hstack(
+            _header_icon_button("message-square", FeedbackState.open_feedback),
+            _updates_button(),
+            _user_popover(),
+            align="center",
+            spacing="3",
+        ),
+        _feedback_dialog(),
+        _changelog_dialog(),
 
         width="100%",
         height="3.7rem",
