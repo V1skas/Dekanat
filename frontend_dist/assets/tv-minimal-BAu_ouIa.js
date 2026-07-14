@@ -1,0 +1,1 @@
+import"./react-MtReoTQm.js";import{t as e}from"./createLucideIcon-Cj8s_pcZ.js";var t=[[`path`,{d:`M7 21h10`,key:`1b0cd5`}],[`rect`,{width:`20`,height:`14`,x:`2`,y:`3`,rx:`2`,key:`48i651`}]],n=e(`tv-minimal`,t);export{t as __iconNode,n as default};

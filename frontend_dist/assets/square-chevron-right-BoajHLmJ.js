@@ -1,1 +1,0 @@
-import"./react-D5nPORWt.js";import{t as e}from"./createLucideIcon-CTGaDH8j.js";var t=[[`rect`,{width:`18`,height:`18`,x:`3`,y:`3`,rx:`2`,key:`afitv7`}],[`path`,{d:`m10 8 4 4-4 4`,key:`1wy4r4`}]],n=e(`square-chevron-right`,t);export{t as __iconNode,n as default};

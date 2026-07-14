@@ -1,1 +1,0 @@
-import"./react-D5nPORWt.js";import{t as e}from"./createLucideIcon-CTGaDH8j.js";var t=[[`circle`,{cx:`12`,cy:`12`,r:`10`,key:`1mglay`}],[`path`,{d:`M12 6v6l2 4`,key:`1287s9`}]],n=e(`clock-5`,t);export{t as __iconNode,n as default};
