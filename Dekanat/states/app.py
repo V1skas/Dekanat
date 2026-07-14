@@ -6,6 +6,7 @@ from Dekanat import routes
 
 from Dekanat.services.auth import AuthService, WorkerModel, AuthTokenModel
 from Dekanat.services.worker import WorkerService
+from Dekanat.services.app_update import AppUpdateService
 from Dekanat.actions import Actions
 from Dekanat.declared.submenu import SECTION_TITLES
 
@@ -21,6 +22,14 @@ class AppState(rx.State):
     auth_token: Optional[AuthTokenModel]
     # Кеш версії прав воркера — для звірки із актуальною у БД (DK-21).
     permissions_version_seen: int = 0
+
+    # Маркер непрочитаного оновлення (DK-32) — спільний для всіх підстейтів
+    # (оголошений лише тут; ChangelogState скидає його при відкритті вікна).
+    has_unread_update: bool = False
+    # Тост «систему оновлено» показуємо не частіше одного разу за сесію.
+    update_notice_shown: bool = False
+    # Кеш MAX(id) app_updates — читаємо раз за сесію (оновлення виходять на релізі).
+    latest_update_id_cache: int = -1
 
     page_title: str = "Головна"
     sidebar_open: bool = True
@@ -73,7 +82,8 @@ class AppState(rx.State):
     @rx.event
     def require_auth(self):
         if not self.token:
-            return rx.redirect(routes.LOGIN)
+            yield rx.redirect(routes.LOGIN)
+            return
 
         # На кожному виклику тягнемо токен з БД — get_auth_token попутно:
         #   * чистить протерміновані токени;
@@ -82,7 +92,8 @@ class AppState(rx.State):
         # None означає: токен невалідний або протермінований — розлогуємось.
         token = self._auth_service.get_auth_token(self.token)
         if token is None:
-            return self.logout()
+            yield self.logout()
+            return
 
         first_load = self.auth_token is None
         self.auth_token = token
@@ -91,9 +102,12 @@ class AppState(rx.State):
             service = WorkerService()
             self.worker = service.get_by_id(self.auth_token.id_worker)
             if self.worker is None:
-                return self.logout()
+                yield self.logout()
+                return
             self.actions_worker = self._auth_service.get_list_worker_actions(self.worker.id)
             self.permissions_version_seen = self.worker.permissions_version or 0
+            if self._refresh_unread_update_flag():
+                yield rx.toast.info("Систему оновлено! 🎉 Перегляньте, що нового.")
             return
 
         # Перевірка bump'у прав — щоб зміни адміна застосовувалися без релогіну.
@@ -102,10 +116,29 @@ class AppState(rx.State):
             service = WorkerService()
             refreshed = service.get_by_id(self.worker.id)
             if refreshed is None:
-                return self.logout()
+                yield self.logout()
+                return
             self.worker = refreshed
             self.actions_worker = self._auth_service.get_list_worker_actions(self.worker.id)
             self.permissions_version_seen = current_version
+
+        if self._refresh_unread_update_flag():
+            yield rx.toast.info("Систему оновлено! 🎉 Перегляньте, що нового.")
+
+    def _refresh_unread_update_flag(self) -> bool:
+        """Оновлює `has_unread_update` (DK-32); повертає `True`, якщо саме зараз
+        require_auth має показати одноразовий тост «систему оновлено» (щоб не
+        плодити вкладені генератори — `yield` лишається за require_auth).
+        Read-only (лише `SELECT MAX(id)`) — безпечно на hot path авторизації."""
+        if self.worker is None:
+            return False
+        if self.latest_update_id_cache < 0:
+            self.latest_update_id_cache = AppUpdateService().get_latest_id()
+        self.has_unread_update = self.latest_update_id_cache > (self.worker.last_seen_update_id or 0)
+        if self.has_unread_update and not self.update_notice_shown:
+            self.update_notice_shown = True
+            return True
+        return False
 
     @rx.var
     def worker_pib(self) -> str:

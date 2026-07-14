@@ -7,6 +7,7 @@ from typing import Optional, Sequence, List
 
 from Dekanat.models import ActionModel, RoleModel, WorkerModel
 from Dekanat.dao.worker import WorkerDao
+from Dekanat.dao.app_update import AppUpdateDao
 from Dekanat.utils.generators import generate_password_hash
 from Dekanat.audit import (
     record_action,
@@ -78,6 +79,10 @@ class WorkerService:
                 roles = [r for r in (session.get(RoleModel, rid) for rid in role_ids) if r is not None]
                 actions = [a for a in (session.get(ActionModel, aid) for aid in action_ids) if a is not None]
 
+                # Новий воркер не має бачити тост про оновлення, які вийшли до
+                # створення його акаунту (DK-32).
+                last_seen_update_id = AppUpdateDao.get_max_id(session)
+
                 worker = WorkerModel(
                     pib=pib,
                     login=login,
@@ -88,6 +93,7 @@ class WorkerService:
                     photo=photo,
                     roles=roles,
                     actions=actions,
+                    last_seen_update_id=last_seen_update_id,
                 )
                 session.add(worker)
                 session.flush()
@@ -156,6 +162,28 @@ class WorkerService:
             return True
         except Exception as e:
             print(f"[WorkerService][edit_one][ERROR] {e}")
+            raise
+
+    def change_password(self, worker_id: int, current_password: str, new_password: str) -> bool:
+        """Самостійна зміна пароля користувачем (DK-32). `False` — неправильний
+        поточний пароль; винятки — лише при неочікуваних помилках БД."""
+        try:
+            with rx.session() as session:
+                worker = WorkerDao.get_by_id(worker_id, session)
+                if worker is None:
+                    return False
+
+                if generate_password_hash(current_password, worker.password_salt) != worker.password:
+                    return False
+
+                salt = os.urandom(16).hex()
+                worker.password_salt = salt
+                worker.password = generate_password_hash(new_password, salt)
+                session.add(worker)
+                session.commit()
+            return True
+        except Exception as e:
+            print(f"[WorkerService][change_password][ERROR] {e}")
             raise
 
     def delete_one(self, item: WorkerModel, actor_id: Optional[int] = None) -> bool:

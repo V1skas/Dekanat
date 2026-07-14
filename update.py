@@ -3,6 +3,7 @@ from sqlmodel import select
 
 from Dekanat.models import ActionModel
 from Dekanat.actions import Actions as SystemAction
+from Dekanat.services.app_update import AppUpdateService
 
 def sync_actions(session: rx.session):
     print("\n\n\nПочинаю синхронізацію дій (Actions)...")
@@ -44,3 +45,4 @@ def sync_actions(session: rx.session):
 if __name__ == "__main__":
     with rx.session() as session:
         sync_actions(session)
+        AppUpdateService().sync_updates(session)

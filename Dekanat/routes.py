@@ -5,6 +5,9 @@ CONTINGENT = "/contingent"
 ADMIN = "/admin"
 ADMISSION_COMMISSION = "/admission_commission"
 REPORTING = "/reporting"
+ACCOUNT = "/account"
+
+ACCOUNT_SETTINGS = ACCOUNT + "/settings"
 
 # Розділові dashboard'и — кожен розділ глобального меню має власну сторінку
 # з картками-посиланнями на свої пункти. Згортання бокового меню робить

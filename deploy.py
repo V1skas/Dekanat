@@ -6,7 +6,9 @@ from sqlalchemy.orm import selectinload
 
 from Dekanat.models import ActionModel, RoleModel, WorkerModel
 from Dekanat.actions import Actions
+from Dekanat.dao.app_update import AppUpdateDao
 from Dekanat.services.app_setting import AppSettingService
+from Dekanat.services.app_update import AppUpdateService
 from Dekanat.utils.generators import generate_password_hash
 from update import sync_actions
 
@@ -91,12 +93,14 @@ def ensure_admin_user(session, admin_role: RoleModel) -> WorkerModel:
         print(f"Створюємо користувача '{ADMIN_LOGIN}'.")
         salt = os.urandom(16).hex()
         pwd_hash = generate_password_hash(ADMIN_DEFAULT_PASSWORD, salt)
+        # Адмін не повинен бачити тост про оновлення, вже наявні на момент деплою (DK-32).
         worker = WorkerModel(
             pib=ADMIN_PIB,
             login=ADMIN_LOGIN,
             password_salt=salt,
             password=pwd_hash,
             roles=[admin_role],
+            last_seen_update_id=AppUpdateDao.get_max_id(session),
         )
         session.add(worker)
         print(f"  Логін: {ADMIN_LOGIN}")
@@ -123,6 +127,9 @@ def ensure_admin_user(session, admin_role: RoleModel) -> WorkerModel:
 def initial_deploy():
     with rx.session() as session:
         sync_actions(session)
+        print()
+
+        AppUpdateService().sync_updates(session)
         print()
 
         admin_role = ensure_admin_role(session)
