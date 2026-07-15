@@ -92,7 +92,7 @@ class AppState(rx.State):
         # None означає: токен невалідний або протермінований — розлогуємось.
         token = self._auth_service.get_auth_token(self.token)
         if token is None:
-            yield self.logout()
+            yield AppState.logout
             return
 
         first_load = self.auth_token is None
@@ -102,7 +102,7 @@ class AppState(rx.State):
             service = WorkerService()
             self.worker = service.get_by_id(self.auth_token.id_worker)
             if self.worker is None:
-                yield self.logout()
+                yield AppState.logout
                 return
             self.actions_worker = self._auth_service.get_list_worker_actions(self.worker.id)
             self.permissions_version_seen = self.worker.permissions_version or 0
@@ -116,7 +116,7 @@ class AppState(rx.State):
             service = WorkerService()
             refreshed = service.get_by_id(self.worker.id)
             if refreshed is None:
-                yield self.logout()
+                yield AppState.logout
                 return
             self.worker = refreshed
             self.actions_worker = self._auth_service.get_list_worker_actions(self.worker.id)
