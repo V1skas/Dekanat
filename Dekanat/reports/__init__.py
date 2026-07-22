@@ -33,6 +33,7 @@ from Dekanat.reports.entrant_exam import (
 )
 from Dekanat.reports.xlsx_reports import (
     ExamApplicant,
+    SubjectColumn,
     VidomistReport,
     VykladachamReport,
     TelefonyReport,
@@ -68,6 +69,7 @@ __all__ = [
     "ExamScheduleReport",
     "ExamScheduleRow",
     "ExamApplicant",
+    "SubjectColumn",
     "VidomistReport",
     "VykladachamReport",
     "TelefonyReport",

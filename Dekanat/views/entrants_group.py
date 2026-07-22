@@ -723,6 +723,54 @@ def auto_generate_page() -> rx.Component:
         rx.skeleton(auto_generate_page_content(), loading=AutoGenerateEntrantsGroupState.in_progress, height="100%"),
     )
 
+def _vyk_subject_row(subject: Dict[str, str]) -> rx.Component:
+    return rx.checkbox(
+        subject["title"],
+        checked=ViewEntrantsGroupState.vyk_selected_set.contains(subject["id"]),
+        on_change=ViewEntrantsGroupState.toggle_vyk_subject(subject["id"]),
+    )
+
+
+def _vyk_dialog() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.dialog.title("Оберіть предмети"),
+            rx.vstack(
+                rx.cond(
+                    ViewEntrantsGroupState.vyk_subject_options.length() > 0,
+                    rx.vstack(
+                        rx.foreach(ViewEntrantsGroupState.vyk_subject_options, _vyk_subject_row),
+                        spacing="2",
+                        align="start",
+                        width="100%",
+                    ),
+                    controls.empty_placeholder("Предметів ЗНО не знайдено"),
+                ),
+                rx.hstack(
+                    controls.button_secondary(
+                        "Скасувати",
+                        on_click=ViewEntrantsGroupState.set_vyk_dialog_open(False),
+                    ),
+                    controls.button_primary(
+                        "Сформувати",
+                        on_click=ViewEntrantsGroupState.on_click_generate_vykladacham,
+                        loading=ViewEntrantsGroupState.downloading,
+                    ),
+                    justify="end",
+                    width="100%",
+                ),
+                spacing="3",
+                align="stretch",
+                max_height="70vh",
+                overflow_y="auto",
+            ),
+            max_width="30rem",
+        ),
+        open=ViewEntrantsGroupState.vyk_dialog_open,
+        on_open_change=ViewEntrantsGroupState.set_vyk_dialog_open,
+    )
+
+
 @require_login
 def view_page() -> rx.Component:
     return page_wrapper(
@@ -738,7 +786,7 @@ def view_page() -> rx.Component:
                     ),
                     controls.button_secondary(
                         rx.icon("file-spreadsheet", size=18), "Викладачі",
-                        on_click=ViewEntrantsGroupState.on_click_sheet("vykladacham"),
+                        on_click=ViewEntrantsGroupState.open_vyk_dialog,
                         loading=ViewEntrantsGroupState.downloading,
                     ),
                     controls.button_secondary(
@@ -746,6 +794,7 @@ def view_page() -> rx.Component:
                         on_click=ViewEntrantsGroupState.on_click_sheet("telefony"),
                         loading=ViewEntrantsGroupState.downloading,
                     ),
+                    _vyk_dialog(),
                 ),
             ),
             controls.button_image_secondary(name_icon="printer", on_click=ViewEntrantsGroupState.on_click_print),

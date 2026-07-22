@@ -11,6 +11,7 @@ from Dekanat.models import EntrantGroupModel, EntrantModel, EntrantExamModel, Ad
 from Dekanat.services.entrants_group import EntrantsGroupService
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.services.app_setting import AppSettingService
+from Dekanat.services.item_zno import ItemZnoService
 from Dekanat.utils.display import disambiguate_pib
 from Dekanat.utils.background import run_blocking
 from Dekanat.utils.clock import now_local
@@ -517,6 +518,15 @@ class ViewEntrantsGroupState(AppState):
     # бо у Var[datetime] немає зручного локалізованого форматування на фронті.
     exams_display: List[Dict[str, str]] = []
 
+    # Діалог вибору предметів для документа «Викладачам» (DK-62).
+    vyk_dialog_open: bool = False
+    vyk_subject_options: List[Dict[str, str]] = []  # [{"id": "1", "title": "Математика"}]
+    vyk_selected_ids: List[int] = []
+
+    @rx.var
+    def vyk_selected_set(self) -> List[str]:
+        return [str(i) for i in self.vyk_selected_ids]
+
     def _reload_item(self):
         service = EntrantsGroupService()
         group_id = int(self._route_param("id", "-1"))
@@ -565,13 +575,53 @@ class ViewEntrantsGroupState(AppState):
         return rx.redirect(f"{routes.ENTRANTS_GROUP_PRINT}?ids={self.item.id}")
 
     @rx.event
+    def open_vyk_dialog(self):
+        """Відкрити діалог вибору предметів для документа «Викладачам» (DK-62)."""
+        if not self.has_permission(Actions.ENTRANTS_GROUP_SHEETS):
+            yield rx.toast.error("У Вас немає дозволу на формування відомостей!")
+            return
+        if self.item is None or self.item.id is None:
+            yield rx.toast.warning("Групу не завантажено.")
+            return
+        items = ItemZnoService().get_list_items()
+        self.vyk_subject_options = [{"id": str(i.id), "title": i.title} for i in items]
+        self.vyk_selected_ids = []
+        self.vyk_dialog_open = True
+
+    @rx.event
+    def set_vyk_dialog_open(self, value: bool):
+        self.vyk_dialog_open = value
+
+    @rx.event
+    def toggle_vyk_subject(self, subject_id: str, checked: bool):
+        sid = int(subject_id)
+        if checked:
+            if sid not in self.vyk_selected_ids:
+                self.vyk_selected_ids = self.vyk_selected_ids + [sid]
+        else:
+            self.vyk_selected_ids = [i for i in self.vyk_selected_ids if i != sid]
+
+    @rx.event
+    async def on_click_generate_vykladacham(self):
+        """Сформувати документ «Викладачам» з обраними у діалозі предметами
+        (DK-62) і закрити діалог."""
+        self.vyk_dialog_open = False
+        subject_ids = list(self.vyk_selected_ids)
+        async for event in self._generate_sheet("vykladacham", subject_ids=subject_ids):
+            yield event
+
+    @rx.event
     async def on_click_sheet(self, kind: str):
         """Сформувати екзаменаційну відомість групи у XLSX і віддати на
-        завантаження (DK-29). kind: 'vidomist' | 'vykladacham' | 'telefony'.
-        Перевірка права — і на сервері (back-end).
+        завантаження (DK-29). kind: 'vidomist' | 'telefony' ('vykladacham' іде
+        через `open_vyk_dialog` → `on_click_generate_vykladacham`, DK-62)."""
+        async for event in self._generate_sheet(kind):
+            yield event
 
-        Рендер XLSX винесено у фоновий потік (`run_blocking`), щоб формування
-        відомості не блокувало event loop та роботу інших користувачів (DK-41)."""
+    async def _generate_sheet(self, kind: str, subject_ids: Optional[List[int]] = None):
+        """Спільна логіка формування відомості — перевірка прав, фоновий рендер
+        (DK-41), завантаження. Викликається і з `on_click_sheet` (vidomist/
+        telefony), і з `on_click_generate_vykladacham` (DK-62)."""
         if not self.has_permission(Actions.ENTRANTS_GROUP_SHEETS):
             yield rx.toast.error("У Вас немає дозволу на формування відомостей!")
             return
@@ -586,7 +636,7 @@ class ViewEntrantsGroupState(AppState):
         self.downloading = True
         yield
         try:
-            result = await run_blocking(self._render_sheet_document, group_id, kind)
+            result = await run_blocking(self._render_sheet_document, group_id, kind, subject_ids)
             if result is None:
                 yield rx.toast.warning("У групі немає абітурієнтів.")
                 return
@@ -598,18 +648,19 @@ class ViewEntrantsGroupState(AppState):
             self.downloading = False
 
     @staticmethod
-    def _render_sheet_document(group_id: int, kind: str):
+    def _render_sheet_document(group_id: int, kind: str, subject_ids: Optional[List[int]] = None):
         """Блокуюча частина: читання даних + рендер XLSX-відомості групи.
         Виконується у фоновому потоці — жодних мутацій стану / `yield`.
         Повертає `(bytes, filename)` або None, якщо у групі немає абітурієнтів."""
         from Dekanat.reports import (
             ExamApplicant,
+            SubjectColumn,
             VidomistReport,
             VykladachamReport,
             TelefonyReport,
         )
 
-        payload = EntrantsGroupService().get_exam_sheet_payload(group_id)
+        payload = EntrantsGroupService().get_exam_sheet_payload(group_id, subject_ids=subject_ids)
         applicants = [ExamApplicant(**a) for a in payload["applicants"]]
         if not applicants:
             return None
@@ -623,7 +674,8 @@ class ViewEntrantsGroupState(AppState):
                 applicants=applicants,
             )
         elif kind == "vykladacham":
-            report = VykladachamReport(applicants=applicants)
+            subjects = [SubjectColumn(**s) for s in payload.get("subjects", [])]
+            report = VykladachamReport(applicants=applicants, subjects=subjects)
         else:  # telefony (kind вже провалідовано в on_click_sheet)
             report = TelefonyReport(applicants=applicants)
 

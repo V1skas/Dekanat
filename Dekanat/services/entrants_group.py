@@ -19,9 +19,12 @@ from Dekanat.models import (
     EntryBaseModel,
     FormOfStudyModel,
     InformationAboutRelativesModel,
+    ItemZnoModel,
+    ResultZnoModel,
 )
 from Dekanat.services.admission_campaign import AdmissionCampaignService
 from Dekanat.utils.clock import now_local
+from Dekanat.utils.display import format_grade
 from Dekanat.audit import (
     record_action,
     GroupCreated,
@@ -584,7 +587,7 @@ class EntrantsGroupService:
             print(f"[EntrantsGroupService][get_exams][ERROR] {e}")
             raise
 
-    def get_exam_sheet_payload(self, group_id: int) -> Dict:
+    def get_exam_sheet_payload(self, group_id: int, subject_ids: Optional[List[int]] = None) -> Dict:
         """Збирає дані для екзаменаційних відомостей по групі (DK-29).
 
         Повертає `{group_title, specialty, subject, applicants}`, де applicants —
@@ -592,6 +595,12 @@ class EntrantsGroupService:
         специальності абітурієнтів групи (вони з однієї специальності), subject —
         з предметів запланованих іспитів групи. Один запит за абітурієнтами
         (з особою, родичами, специальностями) і один — за іспитами.
+
+        `subject_ids` (DK-62) — якщо передано, у кожен applicant-словник
+        додається `grades: {id_items_zno: "форматований бал"}` (лише ті
+        предмети, за якими є `results_zno`; `points` — підсумковий бал з
+        урахуванням коефіцієнта), а в payload — `subjects: [{id, title}]` у
+        порядку `subject_ids`, для колонок документа «Викладачам».
         """
         try:
             with rx.session() as session:
@@ -626,6 +635,31 @@ class EntrantsGroupService:
                         subjects.append(t)
                 subject = ", ".join(subjects)
 
+                # Оцінки за обрані предмети (DK-62). `entrants.id == persons.id`
+                # (спільний PK), тому вибірка одразу за id абітурієнтів групи.
+                grades_by_person: Dict[int, Dict[int, str]] = {}
+                subject_columns: List[Dict] = []
+                if subject_ids:
+                    entrant_ids = [e.id for e in entrants]
+                    if entrant_ids:
+                        results = session.exec(
+                            select(ResultZnoModel)
+                            .where(ResultZnoModel.id_person.in_(entrant_ids))  # type: ignore[attr-defined]
+                            .where(ResultZnoModel.id_items_zno.in_(subject_ids))  # type: ignore[attr-defined]
+                        ).all()
+                        for r in results:
+                            grades_by_person.setdefault(r.id_person, {})[r.id_items_zno] = format_grade(r.points)
+
+                    items = session.exec(
+                        select(ItemZnoModel).where(ItemZnoModel.id.in_(subject_ids))  # type: ignore[attr-defined]
+                    ).all()
+                    titles_by_id = {i.id: i.title for i in items}
+                    subject_columns = [
+                        {"id": sid, "title": titles_by_id.get(sid, "")}
+                        for sid in subject_ids
+                        if sid in titles_by_id
+                    ]
+
                 specialty = ""
                 opp = ""
                 applicants: List[Dict] = []
@@ -647,6 +681,7 @@ class EntrantsGroupService:
                         "name": pib,
                         "phone": phone,
                         "relatives": "\n".join(rel_parts),
+                        "grades": grades_by_person.get(e.id, {}),
                     })
                     if not specialty:
                         top = next((s for s in (e.specialties or []) if s.priority == 1), None)
@@ -663,6 +698,7 @@ class EntrantsGroupService:
                     "opp": opp,
                     "subject": subject,
                     "applicants": applicants,
+                    "subjects": subject_columns,
                 }
         except Exception as e:
             print(f"[EntrantsGroupService][get_exam_sheet_payload][ERROR] {e}")
