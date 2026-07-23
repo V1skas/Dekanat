@@ -9,6 +9,7 @@ from sqlmodel import select
 from sqlalchemy.orm import selectinload
 
 from Dekanat.dao.entrants_group import EntrantsGroupDao
+from Dekanat.dao.speciality import SpecialityDao
 from Dekanat.models import (
     EntrantGroupModel,
     EntrantModel,
@@ -584,14 +585,38 @@ class EntrantsGroupService:
             print(f"[EntrantsGroupService][get_exams][ERROR] {e}")
             raise
 
+    @staticmethod
+    def _resolve_speciality_by_group_tag(group_title: str, session) -> Tuple[str, str, bool]:
+        """Визначає спеціальність/ОПП відомості за тегом у назві групи (DK-66),
+        а не за пріоритетними спеціальностями абітурієнтів (ті можуть відрізнятись
+        від того, під яку спеціальність фактично сформована група).
+
+        Тег — початковий сегмент назви групи (`<TAG>-<YY><тег>-<N>`, `_bucket_prefix`).
+        Матчимо префіксом (`group_title.startswith(f"{spec.tag}-")`), а не парсингом
+        по першому дефісу — тег сам може містити дефіс. Якщо збігів немає або
+        збігів декілька (тег не унікальний) — визначити однозначно неможливо,
+        поля лишаються порожніми (`specialty_unknown=True`), відомість підсвічує
+        їх жовтим, щоб оператор заповнив вручну."""
+        candidates = [
+            s for s in SpecialityDao.get_all(session)
+            if group_title.startswith(f"{s.tag}-")
+        ]
+        if len(candidates) == 1:
+            spec = candidates[0]
+            specialty = f"{spec.code} {spec.title} ({spec.tag})"
+            opp = spec.educational_and_professional_program or ""
+            return specialty, opp, False
+        return "", "", True
+
     def get_exam_sheet_payload(self, group_id: int) -> Dict:
         """Збирає дані для екзаменаційних відомостей по групі (DK-29).
 
-        Повертає `{group_title, specialty, subject, applicants}`, де applicants —
-        список `{name, phone, relatives}`. specialty береться з пріоритетної
-        специальності абітурієнтів групи (вони з однієї специальності), subject —
-        з предметів запланованих іспитів групи. Один запит за абітурієнтами
-        (з особою, родичами, специальностями) і один — за іспитами.
+        Повертає `{group_title, specialty, opp, specialty_unknown, subject,
+        applicants}`, де applicants — список `{name, phone, relatives}`.
+        specialty/opp визначаються за тегом назви групи (DK-66, див.
+        `_resolve_speciality_by_group_tag`), subject — з предметів запланованих
+        іспитів групи. Один запит за абітурієнтами (з особою, родичами) і один —
+        за іспитами.
         """
         try:
             with rx.session() as session:
@@ -599,14 +624,16 @@ class EntrantsGroupService:
                 if group is None:
                     raise ValueError(f"Групу #{group_id} не знайдено")
 
+                specialty, opp, specialty_unknown = self._resolve_speciality_by_group_tag(
+                    group.title or "", session,
+                )
+
                 entrants = list(session.exec(
                     select(EntrantModel)
                     .options(
                         selectinload(EntrantModel.person)
                         .selectinload(PersonModel.information_about_relatives)
                         .selectinload(InformationAboutRelativesModel.kinship),
-                        selectinload(EntrantModel.specialties)
-                        .selectinload(SpecialtieEntrantModel.speciality),
                     )
                     .where(EntrantModel.id_entrant_group == group_id)
                     .where(EntrantModel.is_deleted == False)
@@ -626,8 +653,6 @@ class EntrantsGroupService:
                         subjects.append(t)
                 subject = ", ".join(subjects)
 
-                specialty = ""
-                opp = ""
                 applicants: List[Dict] = []
                 for e in entrants:
                     p = e.person
@@ -648,19 +673,13 @@ class EntrantsGroupService:
                         "phone": phone,
                         "relatives": "\n".join(rel_parts),
                     })
-                    if not specialty:
-                        top = next((s for s in (e.specialties or []) if s.priority == 1), None)
-                        if top is None and e.specialties:
-                            top = e.specialties[0]
-                        if top is not None and top.speciality is not None:
-                            specialty = f"{top.speciality.code} {top.speciality.title} ({top.speciality.tag})"
-                            opp = top.speciality.educational_and_professional_program or ""
 
                 applicants.sort(key=lambda a: a["name"].lower())
                 return {
                     "group_title": group.title or f"#{group_id}",
                     "specialty": specialty,
                     "opp": opp,
+                    "specialty_unknown": specialty_unknown,
                     "subject": subject,
                     "applicants": applicants,
                 }

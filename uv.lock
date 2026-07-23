@@ -230,7 +230,7 @@ wheels = [
 
 [[package]]
 name = "dekanat"
-version = "0.8"
+version = "0.8.2"
 source = { virtual = "." }
 dependencies = [
     { name = "aiosqlite" },

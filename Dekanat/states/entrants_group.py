@@ -618,6 +618,7 @@ class ViewEntrantsGroupState(AppState):
             report = VidomistReport(
                 specialty=payload["specialty"],
                 opp=payload.get("opp", ""),
+                specialty_unknown=payload.get("specialty_unknown", False),
                 subject=payload["subject"],
                 report_date=now_local().date(),
                 applicants=applicants,

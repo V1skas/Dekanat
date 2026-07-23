@@ -7,14 +7,35 @@ from typing import Optional, Sequence, List, Tuple, Dict
 from sqlmodel import select
 
 from Dekanat.dao.entrant_exam import EntrantExamDao
+from Dekanat.dao.entrants_group import EntrantsGroupDao
+from Dekanat.dao.item_zno import ItemZnoDao
+from Dekanat.dao.worker import WorkerDao
 from Dekanat.models import EntrantExamModel, EntrantExamWorkerModel
 from Dekanat.audit import (
     record_action,
-    FieldChange,
+    diff_string_list,
     ExamCreated,
     ExamUpdated,
     ExamDeleted,
 )
+
+
+def _group_title(id_group: Optional[int], session) -> str:
+    if id_group is None:
+        return ""
+    group = EntrantsGroupDao.get_by_id(id_group, session, with_del=True)
+    return group.title if group is not None else f"#{id_group}"
+
+
+def _item_zno_title(id_item_zno: Optional[int], session) -> str:
+    if id_item_zno is None:
+        return ""
+    item = ItemZnoDao.get_by_id(id_item_zno, session, with_del=True)
+    return item.title if item is not None else f"#{id_item_zno}"
+
+
+def _worker_pib_map(session) -> Dict[int, str]:
+    return {w.id: w.pib for w in WorkerDao.get_all(session, with_del=True)}
 
 
 # День тижня українською за Python-індексом (Пн=0 … Нд=6).
@@ -132,8 +153,8 @@ class EntrantExamService:
                 session.flush()
                 EntrantExamDao.replace_workers(managed.id, worker_ids, session)
                 record_action(session, actor_id, managed.id, ExamCreated(
-                    id_group=managed.id_group,
-                    id_item_zno=managed.id_item_zno,
+                    id_group=_group_title(managed.id_group, session),
+                    id_item_zno=_item_zno_title(managed.id_item_zno, session),
                     date=managed.date,
                     time_start=managed.time_start,
                     time_end=managed.time_end,
@@ -155,8 +176,8 @@ class EntrantExamService:
                 # впав би на identity-map конфлікті (як у картці абітурієнта) — DK-55.
                 old = session.get(EntrantExamModel, item.id)
                 old_snap = SimpleNamespace(
-                    id_group=old.id_group if old else None,
-                    id_item_zno=old.id_item_zno if old else None,
+                    id_group=_group_title(old.id_group, session) if old else None,
+                    id_item_zno=_item_zno_title(old.id_item_zno, session) if old else None,
                     date=old.date if old else None,
                     time_start=old.time_start if old else None,
                     time_end=old.time_end if old else None,
@@ -168,10 +189,20 @@ class EntrantExamService:
                 managed = EntrantExamDao.edit_one(item, session)
                 session.flush()
                 EntrantExamDao.replace_workers(managed.id, worker_ids, session)
-                action = ExamUpdated.from_diff(old_snap, managed)
-                new_worker_ids = sorted(worker_ids)
-                if new_worker_ids != old_worker_ids:
-                    action.responsible_workers = FieldChange(old=old_worker_ids, new=new_worker_ids)
+
+                pib_map = _worker_pib_map(session)
+                new_snap = SimpleNamespace(
+                    id_group=_group_title(managed.id_group, session),
+                    id_item_zno=_item_zno_title(managed.id_item_zno, session),
+                    date=managed.date, time_start=managed.time_start,
+                    time_end=managed.time_end, description=managed.description,
+                )
+                action = ExamUpdated.from_diff(old_snap, new_snap)
+                old_pibs = sorted(pib_map.get(wid, f"#{wid}") for wid in old_worker_ids)
+                new_pibs = sorted(pib_map.get(wid, f"#{wid}") for wid in sorted(worker_ids))
+                workers_change = diff_string_list("Відповідальні", old_pibs, new_pibs)
+                if workers_change.has_changes():
+                    action.responsible_workers = workers_change
                 record_action(session, actor_id, item.id, action)
                 session.commit()
                 session.refresh(managed)
@@ -186,7 +217,9 @@ class EntrantExamService:
                 item.is_deleted = True
                 EntrantExamDao.edit_one(item, session)
                 record_action(session, actor_id, item.id, ExamDeleted(
-                    id_group=item.id_group, id_item_zno=item.id_item_zno, date=item.date,
+                    id_group=_group_title(item.id_group, session),
+                    id_item_zno=_item_zno_title(item.id_item_zno, session),
+                    date=item.date,
                 ))
                 session.commit()
             return True

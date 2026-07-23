@@ -15,6 +15,8 @@ from datetime import date
 from io import BytesIO
 from typing import ClassVar
 
+from openpyxl.styles import PatternFill
+from openpyxl.workbook import Workbook
 from pydantic import BaseModel
 
 from Dekanat.reports.engine import render_xlsx
@@ -41,15 +43,22 @@ class XlsxReport(BaseModel):
     def context(self) -> dict:
         return {"applicants": self.applicants, "sheet_name": self.sheet_name}
 
+    def post_process(self, wb: Workbook) -> None:
+        """Хук пост-обробки готової книги (DK-66) — за замовчуванням no-op."""
+        return None
+
     @property
     def filename(self) -> str:
         return f"{self.file_basename}.xlsx"
 
     def render(self) -> BytesIO:
-        return render_xlsx(self.template_name, self.context())
+        return render_xlsx(self.template_name, self.context(), post_process=self.post_process)
 
     def render_bytes(self) -> bytes:
         return self.render().getvalue()
+
+
+_UNKNOWN_SPECIALTY_FILL = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
 
 
 class VidomistReport(XlsxReport):
@@ -57,8 +66,9 @@ class VidomistReport(XlsxReport):
     file_basename: ClassVar[str] = "vidomist"
     sheet_name: ClassVar[str] = "Відомість"
 
-    specialty: str            # «D1 Інженерія ...» — тягнеться з групи
+    specialty: str            # «D1 Інженерія ...» — визначається за тегом групи (DK-66)
     opp: str = ""             # освітньо-професійна програма спеціальності (DK-44)
+    specialty_unknown: bool = False  # тег групи не дав однозначної спеціальності (DK-66)
     subject: str = ""         # форма контролю / предмет випробування
     report_date: date         # дата формування (Pydantic розпарсить ISO-рядок)
     number: str = ""          # № відомості — лишається порожнім (від руки)
@@ -74,6 +84,18 @@ class VidomistReport(XlsxReport):
             "applicants": self.applicants,
             "sheet_name": self.sheet_name,
         }
+
+    def post_process(self, wb: Workbook) -> None:
+        """Якщо спеціальність за тегом групи визначити не вдалось (DK-66) —
+        підсвічуємо порожні клітинки спеціальності/ОПП жовтим, щоб оператор
+        помітив і заповнив вручну."""
+        if not self.specialty_unknown:
+            return
+        ws = wb[self.sheet_name] if self.sheet_name in wb.sheetnames else wb.active
+        if ws is None:
+            return
+        ws["D3"].fill = _UNKNOWN_SPECIALTY_FILL
+        ws["D4"].fill = _UNKNOWN_SPECIALTY_FILL
 
 
 class VykladachamReport(XlsxReport):
