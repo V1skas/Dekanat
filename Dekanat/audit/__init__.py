@@ -14,6 +14,9 @@
 from Dekanat.audit.base import (
     FieldChange,
     FieldRow,
+    CollectionChange,
+    diff_collection,
+    diff_string_list,
     BaseAuditAction,
     CreateAction,
     UpdateAction,
@@ -50,7 +53,8 @@ from Dekanat.audit.reports import RatingGenerated, AdmissionReportGenerated
 
 
 __all__ = [
-    "FieldChange", "FieldRow", "BaseAuditAction", "CreateAction", "UpdateAction", "DeleteAction",
+    "FieldChange", "FieldRow", "CollectionChange", "diff_collection", "diff_string_list",
+    "BaseAuditAction", "CreateAction", "UpdateAction", "DeleteAction",
     "format_value", "record_action", "ACTIONS", "parse_changes",
     "KinshipCreated", "KinshipUpdated", "KinshipDeleted",
     "SourceOfFundingCreated", "SourceOfFundingUpdated", "SourceOfFundingDeleted",

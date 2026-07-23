@@ -272,7 +272,7 @@ _SPEC_LABELS: Dict[str, str] = {
     "title": "Назва",
     "tag": "Тег ОПП",
     "educational_and_professional_program": "ОПП",
-    "id_department": "Відділення (id)",
+    "id_department": "Відділення",
 }
 
 
@@ -282,7 +282,7 @@ class SpecialityCreated(CreateAction):
     code: str
     title: str
     tag: str
-    id_department: int
+    id_department: str  # назва відділення (DK-66), не id
 
 
 class SpecialityUpdated(UpdateAction):

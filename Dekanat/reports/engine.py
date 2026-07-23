@@ -15,7 +15,9 @@ from io import BytesIO
 from pathlib import Path
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Callable, Optional
+
+from openpyxl.workbook import Workbook
 
 from docxtpl import DocxTemplate
 from jinja2 import Environment, StrictUndefined
@@ -188,7 +190,11 @@ def _autofit_row_heights(ws) -> None:
                 rd.height = needed
 
 
-def render_xlsx(template_name: str, context: dict) -> BytesIO:
+def render_xlsx(
+    template_name: str,
+    context: dict,
+    post_process: Optional[Callable[[Workbook], None]] = None,
+) -> BytesIO:
     """Відрендерити xlsx-шаблон `template_name` з `context` → `BytesIO` (.xlsx).
 
     Поверх `xlsxtpl` (BookWriter/xltpl): Jinja2 прямо в клітинках, таблиця росте
@@ -200,7 +206,9 @@ def render_xlsx(template_name: str, context: dict) -> BytesIO:
 
     Після рендеру висота рядків підганяється під вміст клітинок із переносом слів
     (`_autofit_row_heights`) — окремим проходом через openpyxl, бо merged-клітинки
-    Excel сам не авто-підганяє.
+    Excel сам не авто-підганяє. `post_process` (DK-66) — опційний хук звіту для
+    додаткової стилізації (напр. жовта заливка непорожньої клітинки), викликається
+    тим самим openpyxl-проходом, до фінального збереження.
 
     Особливість xlsx-рушія: директиви циклу (`for`/`endfor`) живуть у коментарях
     клітинок шаблону, а не у значеннях (закладено у самих шаблонах, DK-29).
@@ -225,6 +233,8 @@ def render_xlsx(template_name: str, context: dict) -> BytesIO:
         wb = _load_xlsx(rendered)
         for ws in wb.worksheets:
             _autofit_row_heights(ws)
+        if post_process is not None:
+            post_process(wb)
         buffer = BytesIO()
         wb.save(buffer)
         buffer.seek(0)

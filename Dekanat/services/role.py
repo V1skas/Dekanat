@@ -4,15 +4,24 @@ from types import SimpleNamespace
 from typing import Optional, Sequence, List
 from sqlmodel import select
 
+from Dekanat.actions import Actions
 from Dekanat.dao.role import RoleDao
 from Dekanat.models import ActionModel, RoleModel, WorkerModel, WorkersRolesModel
 from Dekanat.audit import (
     record_action,
-    FieldChange,
+    diff_string_list,
     RoleCreated,
     RoleUpdated,
     RoleDeleted,
 )
+
+
+def _action_title(code: str) -> str:
+    """Українська назва права за кодом (DK-66) — для журналу замість сирого коду."""
+    try:
+        return Actions(code).title_attr  # type: ignore[attr-defined]
+    except ValueError:
+        return code
 
 
 class RoleService:
@@ -54,7 +63,7 @@ class RoleService:
                 if role is None:
                     return False
                 old_snap = SimpleNamespace(title=role.title, description=role.description)
-                old_action_codes = sorted(a.code for a in (role.actions or []))
+                old_action_titles = sorted(_action_title(a.code) for a in (role.actions or []))
                 role.title = title
                 role.description = description
                 actions = [a for a in (session.get(ActionModel, aid) for aid in action_ids) if a is not None]
@@ -75,9 +84,10 @@ class RoleService:
                 session.flush()
 
                 action = RoleUpdated.from_diff(old_snap, role)
-                new_action_codes = sorted(a.code for a in (role.actions or []))
-                if new_action_codes != old_action_codes:
-                    action.actions = FieldChange(old=old_action_codes, new=new_action_codes)
+                new_action_titles = sorted(_action_title(a.code) for a in (role.actions or []))
+                actions_change = diff_string_list("Права", old_action_titles, new_action_titles)
+                if actions_change.has_changes():
+                    action.actions = actions_change
                 record_action(session, actor_id, id, action)
 
                 session.commit()

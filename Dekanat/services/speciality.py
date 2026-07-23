@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import Optional, Sequence
 
 from Dekanat.dao.speciality import SpecialityDao
+from Dekanat.dao.department import DepartmentDao
 from Dekanat.models import SpecialityModel
 from Dekanat.audit import (
     record_action,
@@ -11,6 +12,13 @@ from Dekanat.audit import (
     SpecialityUpdated,
     SpecialityDeleted,
 )
+
+
+def _department_title(id_department: Optional[int], session) -> str:
+    if id_department is None:
+        return ""
+    dept = DepartmentDao.get_by_id(id_department, session, with_del=True)
+    return dept.title if dept is not None else f"#{id_department}"
 
 
 class SpecialityService:
@@ -40,7 +48,8 @@ class SpecialityService:
                 SpecialityDao.add_one(item, session)
                 session.flush()
                 record_action(session, actor_id, item.id, SpecialityCreated(
-                    code=item.code, title=item.title, tag=item.tag, id_department=item.id_department,
+                    code=item.code, title=item.title, tag=item.tag,
+                    id_department=_department_title(item.id_department, session),
                 ))
                 session.commit()
                 session.refresh(item)
@@ -63,11 +72,16 @@ class SpecialityService:
                     title=old.title if old else None,
                     tag=old.tag if old else None,
                     educational_and_professional_program=old.educational_and_professional_program if old else None,
-                    id_department=old.id_department if old else None,
+                    id_department=_department_title(old.id_department, session) if old else None,
                 )
                 managed = SpecialityDao.edit_one(item, session)
                 session.flush()
-                record_action(session, actor_id, item.id, SpecialityUpdated.from_diff(old_snap, managed))
+                new_snap = SimpleNamespace(
+                    code=managed.code, title=managed.title, tag=managed.tag,
+                    educational_and_professional_program=managed.educational_and_professional_program,
+                    id_department=_department_title(managed.id_department, session),
+                )
+                record_action(session, actor_id, item.id, SpecialityUpdated.from_diff(old_snap, new_snap))
                 session.commit()
                 session.refresh(managed)
             return managed

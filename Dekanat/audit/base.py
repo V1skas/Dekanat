@@ -15,9 +15,9 @@
 Конкретні дії живуть у `audit/<entity>.py` і реєструються в `audit/registry.py`.
 """
 
-from typing import Any, ClassVar, Dict, Self, Tuple
+from typing import Any, ClassVar, Dict, List, Self, Tuple
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 def format_value(value: Any) -> str:
@@ -55,6 +55,71 @@ class FieldRow(BaseModel):
     text: str = ""
     old: str = ""
     new: str = ""
+
+
+class CollectionChange(BaseModel):
+    """Зміна дочірньої колекції (DK-66): що додано / вилучено / відредаговано,
+    людиночитаними рядками (назви, а не id). Порожня — якщо колекція не
+    змінилась (`has_changes()` це і перевіряє)."""
+
+    label: str = ""
+    added: List[str] = Field(default_factory=list)
+    removed: List[str] = Field(default_factory=list)
+    edited: List[FieldRow] = Field(default_factory=list)
+
+    def has_changes(self) -> bool:
+        return bool(self.added or self.removed or self.edited)
+
+    def field_rows(self) -> list[FieldRow]:
+        if not self.has_changes():
+            return []
+        rows = [FieldRow(text=f"{self.label}:")]
+        rows.extend(FieldRow(new=v) for v in self.added)
+        rows.extend(FieldRow(old=v) for v in self.removed)
+        rows.extend(self.edited)
+        return rows
+
+
+def diff_collection(
+    label: str,
+    old_rows: list[Dict[str, Any]],
+    new_rows: list[Dict[str, Any]],
+) -> CollectionChange:
+    """Diff двох списків уже підготовлених рядків: кожен `row` —
+    `{"id_key": ..., "identity": str, "value": Optional[str]}`. Викликач резолвить
+    id→назва і будує ці три поля ДО виклику (DK-66) — тут лише порівняння.
+
+    `id_key` — ідентичність рядка (без значення, що диффиться); `identity` —
+    людиночитаний підпис (для added/removed і як label edited-рядка); `value` —
+    змінна частина для порівняння і показу old→new. `value is None` (в обох
+    рядках з однаковим `id_key`) означає «немає з чим порівнювати» — рядок
+    ніколи не потрапить у `edited`, лишиться add+remove при будь-якій зміні."""
+    old_map = {r["id_key"]: r for r in old_rows}
+    new_map = {r["id_key"]: r for r in new_rows}
+    old_ids, new_ids = set(old_map), set(new_map)
+
+    added = sorted(new_map[k]["identity"] for k in new_ids - old_ids)
+    removed = sorted(old_map[k]["identity"] for k in old_ids - new_ids)
+    edited: list[FieldRow] = []
+    for k in old_ids & new_ids:
+        old_r, new_r = old_map[k], new_map[k]
+        old_v, new_v = old_r.get("value"), new_r.get("value")
+        if old_v is not None and new_v is not None and old_v != new_v:
+            edited.append(FieldRow(label=new_r["identity"], old=old_v, new=new_v))
+
+    return CollectionChange(label=label, added=added, removed=removed, edited=edited)
+
+
+def diff_string_list(label: str, old_names: list[str], new_names: list[str]) -> CollectionChange:
+    """Diff двох списків рядків (уже людиночитаних назв, DK-66) — лише
+    added/removed, без `edited` (немає складеного значення для порівняння).
+    Для простих M2M-наборів: ролі воркера, права ролі, відповідальні на іспиті."""
+    old_set, new_set = set(old_names), set(new_names)
+    return CollectionChange(
+        label=label,
+        added=sorted(new_set - old_set),
+        removed=sorted(old_set - new_set),
+    )
 
 
 class BaseAuditAction(BaseModel):

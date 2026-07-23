@@ -328,7 +328,7 @@ class AddAdmissionCampaignState(_CampaignFormBase):
             self.item = service.add_one(self.item, actor_id=self._actor_id())
             if len(self.quotas) > 0:
                 AdmissionCampaignSpecialityService().replace_all_for_campaign(
-                    self.item.id, list(self.quotas)
+                    self.item.id, list(self.quotas), actor_id=self._actor_id()
                 )
             yield rx.toast.success("Запис додано!")
             yield rx.redirect(routes.ADMISSION_CAMPAIGN_VIEW + str(self.item.id))
@@ -406,7 +406,7 @@ class EditAdmissionCampaignState(_CampaignFormBase):
         try:
             self.item = service.edit_one(self.item, actor_id=self._actor_id())
             AdmissionCampaignSpecialityService().replace_all_for_campaign(
-                self.item.id, list(self.quotas)
+                self.item.id, list(self.quotas), actor_id=self._actor_id()
             )
             yield rx.toast.success("Запис змінено!")
             yield rx.redirect(routes.ADMISSION_CAMPAIGN_VIEW + str(self.item.id))

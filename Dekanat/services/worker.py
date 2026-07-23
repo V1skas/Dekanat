@@ -11,7 +11,7 @@ from Dekanat.dao.app_update import AppUpdateDao
 from Dekanat.utils.generators import generate_password_hash
 from Dekanat.audit import (
     record_action,
-    FieldChange,
+    diff_string_list,
     WorkerCreated,
     WorkerUpdated,
     WorkerDeleted,
@@ -154,8 +154,9 @@ class WorkerService:
 
                 action = WorkerUpdated.from_diff(old_snap, worker)
                 new_roles = sorted(r.title for r in (worker.roles or []))
-                if new_roles != old_roles:
-                    action.roles = FieldChange(old=old_roles, new=new_roles)
+                roles_change = diff_string_list("Ролі", old_roles, new_roles)
+                if roles_change.has_changes():
+                    action.roles = roles_change
                 record_action(session, actor_id, id, action)
 
                 session.commit()
