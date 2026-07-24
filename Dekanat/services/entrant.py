@@ -35,6 +35,7 @@ from Dekanat.models import (
 from Dekanat.audit import (
     record_action,
     diff_collection,
+    FieldChange,
     CollectionChange,
     EntrantCreated,
     EntrantUpdated,
@@ -584,6 +585,53 @@ class EntrantService:
                 return merged_entrant
         except Exception as e:
             print(f"[EntrantService][edit_one][ERROR] {e}")
+            raise
+
+    def bulk_change_status(
+        self,
+        entrant_ids: Sequence[int],
+        new_status_id: int,
+        actor_id: Optional[int] = None,
+    ) -> int:
+        """Масова зміна статусу заявки для набору абітурієнтів (DK-68).
+
+        Оновлює лише ті картки, де статус реально відрізняється від нового; для
+        кожної зміненої бампить `application_status_changed_at` і пише окремий
+        запис у журнал (`EntrantUpdated` зі зміною поля статусу — назви резолвлені).
+        Все в одній транзакції. Повертає кількість реально змінених карток.
+
+        Запис у БД лишається на event loop (короткі UPDATE'и): виносити у потік не
+        можна — паралельний INSERT дав би `database is locked`."""
+        try:
+            if not entrant_ids or not new_status_id:
+                return 0
+            with rx.session() as session:
+                status_titles = {
+                    r.id: r.title for r in ApplicationStatusDao.get_all(session, with_del=True)
+                }
+                new_title = status_titles.get(new_status_id)
+                if new_title is None:
+                    raise ValueError(f"Статус #{new_status_id} не знайдено.")
+                entrants = EntrantDao.get_by_ids_lite(entrant_ids, session)
+                changed = 0
+                for entrant in entrants:
+                    old_status_id = entrant.id_application_status
+                    if old_status_id == new_status_id:
+                        continue
+                    entrant.id_application_status = new_status_id
+                    entrant.application_status_changed_at = now_local()
+                    session.add(entrant)
+                    action = EntrantUpdated(
+                        id_application_status=FieldChange(
+                            old=status_titles.get(old_status_id), new=new_title,
+                        ),
+                    )
+                    record_action(session, actor_id, entrant.id, action)
+                    changed += 1
+                session.commit()
+                return changed
+        except Exception as e:
+            print(f"[EntrantService][bulk_change_status][ERROR] {e}")
             raise
 
     def delete_one(self, entrant: EntrantModel, actor_id: Optional[int] = None) -> bool:
