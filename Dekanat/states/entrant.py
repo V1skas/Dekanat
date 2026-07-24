@@ -130,6 +130,15 @@ class ListEntrantState(AppState):
     sort_field: str = ""
     sort_dir: str = "asc"  # "asc" | "desc"
 
+    # --- масова зміна статусу (DK-68) ---
+    # Режим вибору карток чекбоксами (лише у загальному представленні). Тулбар над
+    # таблицею дозволяє виділити набір і застосувати до нього новий статус заяви.
+    select_mode: bool = False
+    selected_ids: List[int] = []
+    # Діалог вибору цільового статусу.
+    bulk_status_open: bool = False
+    bulk_status_id: int = 0
+
     def _campaign_range(self):
         if not self.filter_campaign_id:
             return None
@@ -309,6 +318,9 @@ class ListEntrantState(AppState):
         if view not in (VIEW_GENERAL, VIEW_PRIORITIES) or view == self.current_view:
             return
         self.current_view = view
+        # Режим вибору живе лише у загальному представленні (DK-68) — скидаємо.
+        self.select_mode = False
+        self.selected_ids = []
         self.in_progress = True
         yield
         try:
@@ -726,6 +738,102 @@ class ListEntrantState(AppState):
             "entrant_group": arrow if self.sort_field == "entrant_group" else "",
             "application_status": arrow if self.sort_field == "application_status" else "",
         }
+
+    # --- масова зміна статусу (DK-68) ---
+
+    @rx.event
+    def toggle_select_mode(self):
+        """Вхід/вихід із режиму вибору карток. Гейт правом ENTRANT_EDIT_STATUS —
+        те саме право, що й на зміну статусу в картці."""
+        if not self.select_mode and not self.has_permission(Actions.ENTRANT_EDIT_STATUS):
+            yield rx.toast.error("У Вас немає дозволу на зміну статусу заявок!")
+            return
+        self.select_mode = not self.select_mode
+        if not self.select_mode:
+            self.selected_ids = []
+
+    @rx.event
+    def select_all(self):
+        if self.items is None:
+            self.selected_ids = []
+            return
+        self.selected_ids = [it.id for it in self.items if it.id is not None]
+
+    @rx.event
+    def clear_selection(self):
+        self.selected_ids = []
+
+    @rx.event
+    def toggle_selected(self, entrant_id: int):
+        if entrant_id in self.selected_ids:
+            self.selected_ids = [i for i in self.selected_ids if i != entrant_id]
+        else:
+            self.selected_ids = self.selected_ids + [entrant_id]
+
+    @rx.var
+    def selected_set(self) -> List[str]:
+        """`contains`-перевірка для рендеру стану чекбокса (порівняння з типом
+        списку Var; id конвертуємо в рядки)."""
+        return [str(i) for i in self.selected_ids]
+
+    @rx.var
+    def selected_count(self) -> int:
+        return len(self.selected_ids)
+
+    @rx.event
+    def open_bulk_status_dialog(self):
+        if not self.has_permission(Actions.ENTRANT_EDIT_STATUS):
+            yield rx.toast.error("У Вас немає дозволу на зміну статусу заявок!")
+            return
+        if not self.selected_ids:
+            yield rx.toast.warning("Оберіть принаймні одного абітурієнта.")
+            return
+        self.bulk_status_id = 0
+        self.bulk_status_open = True
+
+    @rx.event
+    def set_bulk_status_open(self, value: bool):
+        self.bulk_status_open = value
+
+    @rx.var
+    def bulk_status_id_str(self) -> str:
+        return str(self.bulk_status_id) if self.bulk_status_id else ""
+
+    @rx.event
+    def set_bulk_status_id(self, value: str):
+        try:
+            self.bulk_status_id = int(value) if value else 0
+        except (ValueError, TypeError):
+            self.bulk_status_id = 0
+
+    @rx.event
+    def apply_bulk_status(self):
+        if not self.has_permission(Actions.ENTRANT_EDIT_STATUS):
+            yield rx.toast.error("У Вас немає дозволу на зміну статусу заявок!")
+            return
+        if not self.selected_ids:
+            yield rx.toast.warning("Оберіть принаймні одного абітурієнта.")
+            return
+        if not self.bulk_status_id:
+            yield rx.toast.warning("Оберіть новий статус заяви.")
+            return
+        try:
+            changed = EntrantService().bulk_change_status(
+                self.selected_ids, self.bulk_status_id, actor_id=self._actor_id(),
+            )
+        except Exception:
+            yield rx.toast.error("Під час зміни статусу сталася помилка :( Спробуйте знову.")
+            return
+        self.bulk_status_open = False
+        self.select_mode = False
+        self.selected_ids = []
+        self.in_progress = True
+        yield
+        try:
+            self._reload_items()
+        finally:
+            self.in_progress = False
+        yield rx.toast.success(f"Статус змінено для {changed} абітурієнт(ів).")
 
 
 # ---------- View page ----------

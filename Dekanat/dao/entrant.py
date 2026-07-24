@@ -291,6 +291,20 @@ class EntrantDao:
         return session.exec(statement).one_or_none()
 
     @staticmethod
+    def get_by_ids_lite(ids: Sequence[int], session: Session) -> Sequence[EntrantModel]:
+        """Полегшена вибірка не видалених абітурієнтів за списком id БЕЗ підвантаження
+        дочірніх колекцій (DK-68) — для масової зміни статусу достатньо самих рядків
+        entrants (id + поточний статус)."""
+        if not ids:
+            return []
+        statement = (
+            select(EntrantModel)
+            .where(EntrantModel.id.in_(list(ids)))
+            .where(EntrantModel.is_deleted == False)
+        )
+        return session.exec(statement).all()
+
+    @staticmethod
     def get_person_by_mokpp(mokpp: str, session: Session, exclude_id: Optional[int] = None) -> Optional[PersonModel]:
         """Шукає не видалену особу за ІПН (mokpp) — для перевірки дублікатів карток
         абітурієнтів (DK-36). `exclude_id` дозволяє не зачепити саму себе при edit."""
